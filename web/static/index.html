@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CS2 2D Demo Replay</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #111;
+      color: #eee;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      height: 100%;
+    }
+    #toolbar {
+      background: #222;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    #toolbar button {
+      padding: 4px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #status {
+      opacity: 0.8;
+    }
+    #progress {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 120px;
+    }
+    #progressLabel {
+      font-weight: bold;
+      font-size: 12px;
+    }
+    #progressBar {
+      position: relative;
+      flex: 1;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    #progressFill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 0%;
+      background: #3fa46a;
+    }
+    #canvasContainer {
+      position: fixed;
+      top: 32px;
+      bottom: 0;
+      left: 0;
+      right: 0;
+    }
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <input type="file" id="demoFile" accept=".dem" />
+    <button id="loadDemo">Load Demo</button>
+    <button id="playPause">Play</button>
+    <span id="status">No replay loaded. Choose a .dem file.</span>
+    <div id="progress">
+      <span id="progressLabel">Progress</span>
+      <div id="progressBar">
+        <div id="progressFill"></div>
+      </div>
+    </div>
+  </div>
+  <div id="canvasContainer">
+    <canvas id="canvas"></canvas>
+  </div>
+  <script src="wasm_exec.js"></script>
+  <script>
+    if (typeof Go === 'function') {
+      const go = new Go();
+      WebAssembly.instantiateStreaming(fetch('main.wasm'), go.importObject)
+        .then(result => {
+          go.run(result.instance);
+        })
+        .catch(err => {
+          console.error('Failed to load WASM:', err);
+        });
+    } else {
+      console.error('Go WASM runtime (wasm_exec.js) not loaded.');
+    }
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
