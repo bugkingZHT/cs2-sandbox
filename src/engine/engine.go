@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"fmt"
 	"io"
 	"log"
+	"time"
 
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
 	// "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"  // COMMENTED OUT: Not used without smoke tracking
@@ -41,7 +43,10 @@ type Replay struct {
 	Frames []Frame `json:"frames"`
 }
 
-func BuildReplay(r io.Reader) (*Replay, error) {
+func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
+	if onStatus != nil {
+		onStatus("Creating demo parser...")
+	}
 	log.Println("[3/5] Creating demo parser...")
 	p := demoinfocs.NewParser(r)
 	defer p.Close()
@@ -104,6 +109,9 @@ func BuildReplay(r io.Reader) (*Replay, error) {
 		})
 	*/
 
+	if onStatus != nil {
+		onStatus("Parsing frames...")
+	}
 	log.Println("Parsing frames...")
 	for {
 		more, err := p.ParseNextFrame()
@@ -121,9 +129,15 @@ func BuildReplay(r io.Reader) (*Replay, error) {
 		currentTick := gs.IngameTick()
 		frameCount++
 
-		// Log progress every 1000 frames
+		// Log status and notify callback every 1000 frames
 		if frameCount%1000 == 0 {
-			log.Printf("  Parsed %d frames (tick: %d)...\n", frameCount, currentTick)
+			msg := fmt.Sprintf("Parsed %d frames (tick: %d)...", frameCount, currentTick)
+			log.Printf("  %s\n", msg)
+			if onStatus != nil {
+				onStatus(msg)
+			}
+			// Yield to JS main thread to keep UI responsive
+			time.Sleep(time.Millisecond)
 		}
 
 		var players []PlayerFrame
@@ -179,7 +193,11 @@ func BuildReplay(r io.Reader) (*Replay, error) {
 		})
 	}
 
-	log.Printf("Parsed total %d frames. Normalizing coordinates...\n", frameCount)
+	msg := fmt.Sprintf("Parsed total %d frames. Normalizing coordinates...", frameCount)
+	log.Println(msg)
+	if onStatus != nil {
+		onStatus(msg)
+	}
 
 	if boundsInited {
 		width := maxX - minX

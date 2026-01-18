@@ -56,6 +56,52 @@
       width: 0%;
       background: #3fa46a;
     }
+    /* Log Overlay - Centered and more prominent */
+    #logOverlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 400px;
+      background: #1a1a1a;
+      border: 1px solid #3fa46a;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.8);
+      z-index: 2000;
+      display: none;
+      flex-direction: column;
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow: hidden;
+    }
+    #logHeader {
+      background: #222;
+      padding: 10px 15px;
+      font-weight: bold;
+      color: #3fa46a;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      letter-spacing: 1px;
+    }
+    #logContent {
+      padding: 12px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.5;
+      color: #bbb;
+    }
+    .log-entry {
+      margin-bottom: 4px;
+      border-left: 2px solid #444;
+      padding-left: 8px;
+    }
+    .log-entry.important {
+      color: #eee;
+      border-left-color: #3fa46a;
+    }
     #canvasContainer {
       position: fixed;
       top: 32px;
@@ -83,6 +129,12 @@
         <div id="progressFill"></div>
       </div>
     </div>
+  </div>
+  <div id="logOverlay">
+    <div id="logHeader">
+      <span>PARSING LOGS</span>
+    </div>
+    <div id="logContent"></div>
   </div>
   <div id="canvasContainer">
     <canvas id="canvas"></canvas>

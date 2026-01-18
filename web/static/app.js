@@ -5,6 +5,8 @@
   const statusEl = document.getElementById('status');
   const progressBar = document.getElementById('progressBar');
   const progressFill = document.getElementById('progressFill');
+  const logOverlay = document.getElementById('logOverlay');
+  const logContent = document.getElementById('logContent');
   const demoFileInput = document.getElementById('demoFile');
   const loadDemoBtn = document.getElementById('loadDemo');
 
@@ -114,18 +116,75 @@
       return;
     }
 
+    const originalConsoleLog = console.log;
+    let logBuffer = [];
+    
+    // Intercept console.log to capture Go logs and JS logs
+    console.log = function(...args) {
+      const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+      logBuffer.push({
+        msg,
+        time: new Date().toLocaleTimeString()
+      });
+      originalConsoleLog.apply(console, args);
+    };
+
+    const flushLogs = () => {
+      if (logBuffer.length === 0 || !logContent) return;
+      
+      const fragment = document.createDocumentFragment();
+      logBuffer.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        div.textContent = `[${item.time}] ${item.msg}`;
+        fragment.appendChild(div);
+      });
+      
+      logContent.appendChild(fragment);
+      logContent.scrollTop = logContent.scrollHeight;
+      logBuffer = [];
+    };
+
+    let logInterval = null;
+
+    const startLogging = () => {
+      if (logOverlay) logOverlay.style.display = 'flex';
+      if (logContent) logContent.innerHTML = '';
+      logBuffer = [];
+      logInterval = setInterval(flushLogs, 1000);
+    };
+
+    const stopLogging = (delay = 1000) => {
+      setTimeout(() => {
+        clearInterval(logInterval);
+        flushLogs();
+        if (logOverlay) logOverlay.style.display = 'none';
+        // Restore console.log
+        console.log = originalConsoleLog;
+      }, delay);
+    };
+
+    startLogging();
     statusEl.textContent = 'Parsing ' + file.name + '···';
+    
     const reader = new FileReader();
     reader.onload = (e) => {
       const buffer = e.target.result;
       const bytes = new Uint8Array(buffer);
+      console.log('File loaded into memory. Starting WASM parser...');
+      
+      const onStatus = (msg) => {
+        statusEl.textContent = 'Parsing ' + file.name + ' · ' + msg;
+        console.log(msg);
+      };
+
       window.parseDemo(bytes, (jsonStr, err) => {
         if (err) {
-          console.error(err);
+          console.log('ERROR: ' + err);
           statusEl.textContent = 'Parse error: ' + err;
+          stopLogging(3000);
           return;
         }
-        console.log('Parse successful! Replay data size:', (jsonStr.length / 1024 / 1024).toFixed(2), 'MB');
         
         // Save to IndexedDB
         saveReplayToDB(jsonStr).catch(saveErr => {
@@ -135,12 +194,16 @@
         setReplayFromJSON(jsonStr);
         if (replay && replay.frames) {
           statusEl.textContent = 'Parsed ' + file.name + ' · Frames: ' + replay.frames.length + ' (cached)';
+          console.log('Parse successful! Frames: ' + replay.frames.length);
         }
-      });
+
+        stopLogging(1000);
+      }, onStatus);
     };
     reader.onerror = () => {
       console.error(reader.error);
       statusEl.textContent = 'Failed to read file: ' + reader.error;
+      stopLogging(1000);
     };
     reader.readAsArrayBuffer(file);
   }
@@ -367,6 +430,10 @@
       const file = demoFileInput && demoFileInput.files ? demoFileInput.files[0] : null;
       parseDemoFile(file);
     });
+  }
+
+  if (logOverlay) {
+    // Optional: add a close button logic if header had one, but user said "完成后关掉"
   }
 
   if (progressBar) {

@@ -23,12 +23,16 @@ func main() {
 
 func parseDemo(this js.Value, args []js.Value) interface{} {
 	if len(args) < 2 {
-		log.Println("parseDemo expects (Uint8Array, callback)")
+		log.Println("parseDemo expects (Uint8Array, callback, optional statusCallback)")
 		return nil
 	}
 
 	dataVal := args[0]
 	callback := args[1]
+	var statusCallback js.Value
+	if len(args) >= 3 {
+		statusCallback = args[2]
+	}
 
 	go func() {
 		log.Println("[1/5] Starting to copy demo file bytes...")
@@ -36,7 +40,14 @@ func parseDemo(this js.Value, args []js.Value) interface{} {
 		js.CopyBytesToGo(buf, dataVal)
 		log.Printf("[2/5] Copied %d bytes, starting to parse demo...\n", len(buf))
 
-		replay, err := engine.BuildReplay(bytes.NewReader(buf))
+		var onStatus func(string)
+		if !statusCallback.IsUndefined() && !statusCallback.IsNull() {
+			onStatus = func(s string) {
+				statusCallback.Invoke(s)
+			}
+		}
+
+		replay, err := engine.BuildReplay(bytes.NewReader(buf), onStatus)
 		if err != nil {
 			log.Printf("Parse error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())
