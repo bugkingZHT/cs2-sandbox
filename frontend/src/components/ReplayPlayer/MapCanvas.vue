@@ -185,7 +185,7 @@ const clearPlayers = () => {
 const drawPlayersForFrame = () => {
   if (!playerLayer || !mapSprite || !props.frames) return;
   const frame = props.frames[props.currentFrameIndex];
-  if (!frame || !frame.players) {
+  if (!frame || !frame.players || frame.players.length === 0) {
     clearPlayers();
     hoverPlayer.value = null;
     return;

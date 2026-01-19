@@ -155,7 +155,7 @@ export function useReplayData(): UseReplayResult {
 
     for (let i = 0; i < sampleCount; i++) {
       const frame = allFrames[i];
-      if (!frame.players) continue;
+      if (!frame.players || frame.players.length === 0) continue;
       for (const p of frame.players) {
         if (p.x < minX) minX = p.x;
         if (p.x > maxX) maxX = p.x;

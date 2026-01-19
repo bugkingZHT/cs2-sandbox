@@ -13,7 +13,9 @@ export interface PlayerState {
 }
 export interface Frame {
   timeMs: number;
-  players: PlayerState[] | null;
+  tick: number;
+  round: number;
+  players: PlayerState[];
 }
 
 export interface ReplayData {
