@@ -54,3 +54,7 @@ Thumbs.db
 # Debug files
 debug
 __debug_bin
+
+# Test files
+test/manifests/*
+!test/manifests/.placeholder
