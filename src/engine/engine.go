@@ -7,8 +7,8 @@ import (
 	"time"
 
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
+	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
 	// "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"  // COMMENTED OUT: Not used without smoke tracking
-	// "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"  // COMMENTED OUT: Not used without smoke tracking
 )
 
 type PlayerFrame struct {
@@ -35,6 +35,7 @@ type SmokeFrame struct {
 type Frame struct {
 	TimeMs  int64         `json:"timeMs"`
 	Tick    int           `json:"tick"`
+	Round   int           `json:"round"`
 	Players []PlayerFrame `json:"players"`
 	// Smokes  []SmokeFrame  `json:"smokes"` // COMMENTED OUT: Projectile/Smoke data
 }
@@ -57,6 +58,7 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		minY, maxY   float64
 		boundsInited bool
 		frameCount   int
+		currentRound int
 
 		// COMMENTED OUT: Projectile/Smoke tracking
 		/*
@@ -67,47 +69,10 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		*/
 	)
 
-	// COMMENTED OUT: Smoke event handlers
-	/*
-		// Register smoke start event
-		p.RegisterEventHandler(func(e events.SmokeStart) {
-			if e.GrenadeEntityID > 0 {
-				proj := smokeProjectiles[e.GrenadeEntityID]
-				smoke := &SmokeFrame{
-					X:         e.Position.X,
-					Y:         e.Position.Y,
-					StartTick: p.GameState().IngameTick(),
-					EndTick:   -1,
-				}
-
-				// Copy trajectory if available
-				if proj != nil {
-					for _, te := range proj.Trajectory {
-						smoke.Trajectory = append(smoke.Trajectory, struct {
-							X float64 `json:"x"`
-							Y float64 `json:"y"`
-						}{X: te.Position.X, Y: te.Position.Y})
-					}
-				}
-
-				activeSmokes[e.GrenadeEntityID] = smoke
-			}
-		})
-
-		// Register smoke expired event
-		p.RegisterEventHandler(func(e events.SmokeExpired) {
-			if smoke, ok := activeSmokes[e.GrenadeEntityID]; ok {
-				smoke.EndTick = p.GameState().IngameTick()
-			}
-		})
-
-		// Track grenade projectiles for trajectory
-		p.RegisterEventHandler(func(e events.GrenadeProjectileThrow) {
-			if e.Projectile.WeaponInstance.Type == common.EqSmoke {
-				smokeProjectiles[e.Projectile.Entity.ID()] = e.Projectile
-			}
-		})
-	*/
+	// Register round start handler to increment round counter
+	p.RegisterEventHandler(func(e events.RoundStart) {
+		currentRound++
+	})
 
 	if onStatus != nil {
 		onStatus("Parsing frames...")
@@ -188,6 +153,7 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		frames = append(frames, Frame{
 			TimeMs:  p.CurrentTime().Milliseconds(),
 			Tick:    currentTick,
+			Round:   currentRound,
 			Players: players,
 			// Smokes:  smokes, // COMMENTED OUT: Projectile/Smoke data
 		})
