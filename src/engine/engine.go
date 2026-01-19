@@ -40,7 +40,12 @@ type Frame struct {
 }
 
 type Replay struct {
-	Frames []Frame `json:"frames"`
+	MapName string  `json:"mapName"`
+	TeamCT  string  `json:"teamCT"`
+	TeamT   string  `json:"teamT"`
+	ScoreCT int     `json:"scoreCT"`
+	ScoreT  int     `json:"scoreT"`
+	Frames  []Frame `json:"frames"`
 }
 
 func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
@@ -199,6 +204,24 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		onStatus(msg)
 	}
 
+	gs := p.GameState()
+	// Get map name from ConVars
+	mapName := "unknown"
+	if convars := gs.Rules().ConVars(); convars != nil {
+		if name, ok := convars["host_map"]; ok {
+			mapName = name
+		}
+	}
+
+	replay := &Replay{
+		MapName: mapName,
+		TeamCT:  gs.TeamCounterTerrorists().ClanName(),
+		TeamT:   gs.TeamTerrorists().ClanName(),
+		ScoreCT: gs.TeamCounterTerrorists().Score(),
+		ScoreT:  gs.TeamTerrorists().Score(),
+		Frames:  frames,
+	}
+
 	if boundsInited {
 		width := maxX - minX
 		height := maxY - minY
@@ -236,5 +259,5 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		log.Println("Normalization complete.")
 	}
 
-	return &Replay{Frames: frames}, nil
+	return replay, nil
 }
