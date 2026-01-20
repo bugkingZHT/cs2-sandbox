@@ -7,42 +7,9 @@ import (
 	"time"
 
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
+	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
-	// "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"  // COMMENTED OUT: Not used without smoke tracking
 )
-
-type PlayerFrame struct {
-	ID    int     `json:"id"`
-	Name  string  `json:"name"`
-	Team  int     `json:"team"`
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	Alive bool    `json:"alive"`
-	Yaw   float32 `json:"yaw"`
-}
-
-type SmokeFrame struct {
-	X          float64 `json:"x"`
-	Y          float64 `json:"y"`
-	StartTick  int     `json:"startTick"`
-	EndTick    int     `json:"endTick"` // -1 if still active
-	Trajectory []struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	} `json:"trajectory"`
-}
-
-type Frame struct {
-	TimeMs  int64         `json:"timeMs"`
-	Tick    int           `json:"tick"`
-	Round   int           `json:"round"`
-	Players []PlayerFrame `json:"players"`
-	// Smokes  []SmokeFrame  `json:"smokes"` // COMMENTED OUT: Projectile/Smoke data
-}
-
-type Replay struct {
-	Frames []Frame `json:"frames"`
-}
 
 func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 	if onStatus != nil {
@@ -60,19 +27,26 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		frameCount   int
 		currentRound int
 
-		// COMMENTED OUT: Projectile/Smoke tracking
-		/*
-			// Track active smokes: key = grenade entity ID
-			activeSmokes = make(map[int]*SmokeFrame)
-			// Track projectile trajectories before they become smokes
-			smokeProjectiles = make(map[int]*common.GrenadeProjectile)
-		*/
+		// Bomb tracking
+		bombState string = "carried"
+		bombSite  string
 	)
 
 	// Register round start handler to increment round counter
 	p.RegisterEventHandler(func(e events.RoundStart) {
 		currentRound++
+		bombState = "carried"
+		bombSite = ""
 	})
+
+	// Bomb event handlers
+	p.RegisterEventHandler(func(e events.BombPlantBegin) { bombState = "planting"; bombSite = string(e.Site) })
+	p.RegisterEventHandler(func(e events.BombPlanted) { bombState = "planted"; bombSite = string(e.Site) })
+	p.RegisterEventHandler(func(e events.BombDefuseStart) { bombState = "defusing" })
+	p.RegisterEventHandler(func(e events.BombDefused) { bombState = "defused" })
+	p.RegisterEventHandler(func(e events.BombExplode) { bombState = "exploded" })
+	p.RegisterEventHandler(func(e events.BombDropped) { bombState = "dropped" })
+	p.RegisterEventHandler(func(e events.BombPickup) { bombState = "carried" })
 
 	if onStatus != nil {
 		onStatus("Parsing frames...")
@@ -87,6 +61,12 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 			return nil, err
 		}
 		if !more {
+			break
+		}
+
+		// HACK & FIXME: Temporarily truncate to only keep the first two rounds
+		// Currently for testing purposes only
+		if currentRound > 2 {
 			break
 		}
 
@@ -128,34 +108,143 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 				}
 			}
 
+			// Extract inventory
+			var inventory []common.EquipmentType
+			for _, w := range pl.Weapons() {
+				inventory = append(inventory, w.Type)
+			}
+
+			activeWeapon := common.EqUnknown
+			if aw := pl.ActiveWeapon(); aw != nil {
+				activeWeapon = aw.Type
+			}
+
 			players = append(players, PlayerFrame{
-				ID:    pl.UserID,
-				Name:  pl.Name,
-				Team:  int(pl.Team),
-				X:     x,
-				Y:     y,
-				Alive: pl.IsAlive(),
-				Yaw:   pl.ViewDirectionX(),
+				ID:                  pl.UserID,
+				Name:                pl.Name,
+				Team:                int(pl.Team),
+				X:                   x,
+				Y:                   y,
+				Z:                   pos.Z,
+				Alive:               pl.IsAlive(),
+				Yaw:                 pl.ViewDirectionX(),
+				Pitch:               pl.ViewDirectionY(),
+				Health:              pl.Health(),
+				Armor:               pl.Armor(),
+				Money:               pl.Money(),
+				HasHelmet:           pl.HasHelmet(),
+				HasDefuseKit:        pl.HasDefuseKit(),
+				IsScoped:            pl.IsScoped(),
+				FlashDuration:       pl.FlashDuration,
+				IsBlinded:           pl.IsBlinded(),
+				Inventory:           inventory,
+				ActiveWeapon:        activeWeapon,
+				UsingItem:           pl.IsPressingButton(common.ButtonAttack) || pl.IsPressingButton(common.ButtonAttack2),
+				Kills:               pl.Kills(),
+				Assists:             pl.Assists(),
+				Deaths:              pl.Deaths(),
+				MoneySpentTotal:     pl.MoneySpentTotal(),
+				MoneySpentThisRound: pl.MoneySpentThisRound(),
+				EquipmentValue:      pl.EquipmentValueCurrent(),
+				SteamID:             pl.SteamID64,
+				IsBot:               pl.IsBot,
 			})
 		}
 
-		// COMMENTED OUT: Collect active smokes for this frame
-		/*
-			// Collect active smokes for this frame
-			var smokes []SmokeFrame
-			for _, smoke := range activeSmokes {
-				if smoke.StartTick <= currentTick && (smoke.EndTick == -1 || smoke.EndTick >= currentTick) {
-					smokes = append(smokes, *smoke)
-				}
+		// Extract bomb info
+		var bombFrame *BombFrame
+		if b := gs.Bomb(); b != nil {
+			bPos := b.Position()
+			bombFrame = &BombFrame{
+				X:         bPos.X,
+				Y:         bPos.Y,
+				Z:         bPos.Z,
+				IsPlanted: bombState == "planted" || bombState == "defusing" || bombState == "defused" || bombState == "exploded",
+				State:     bombState,
+				Site:      bombSite,
 			}
-		*/
+		}
+
+		// Extract projectiles
+		var projectiles []ProjectileFrame
+		for _, proj := range gs.GrenadeProjectiles() {
+			if proj.Entity == nil || proj.WeaponInstance == nil {
+				continue
+			}
+			pos := proj.Position()
+
+			var trajectory []Point
+			for _, v := range proj.Trajectory {
+				trajectory = append(trajectory, Point{X: v.Position.X, Y: v.Position.Y, Z: v.Position.Z})
+			}
+
+			throwerName := ""
+			var throwerSteamID uint64
+			if proj.Thrower != nil {
+				throwerName = proj.Thrower.Name
+				throwerSteamID = proj.Thrower.SteamID64
+			}
+
+			projectiles = append(projectiles, ProjectileFrame{
+				Type:           proj.WeaponInstance.Type,
+				X:              pos.X,
+				Y:              pos.Y,
+				Z:              pos.Z,
+				ThrowerName:    throwerName,
+				ThrowerSteamID: throwerSteamID,
+				EntityID:       proj.Entity.ID(),
+				Trajectory:     trajectory,
+			})
+		}
+		for _, inf := range gs.Infernos() {
+			if inf.Entity == nil {
+				continue
+			}
+			pos := inf.Entity.Position()
+
+			throwerName := ""
+			var throwerSteamID uint64
+			if thrower := inf.Thrower(); thrower != nil {
+				throwerName = thrower.Name
+				throwerSteamID = thrower.SteamID64
+			}
+
+			projectiles = append(projectiles, ProjectileFrame{
+				Type:           common.EqMolotov, // Infernos are usually from molotovs/incendiaries
+				X:              pos.X,
+				Y:              pos.Y,
+				Z:              pos.Z,
+				ThrowerName:    throwerName,
+				ThrowerSteamID: throwerSteamID,
+				EntityID:       inf.Entity.ID(),
+			})
+		}
+
+		// Extract dropped equipment
+		var droppedEquipment []DroppedEquipment
+		for _, w := range gs.Weapons() {
+			if w.Entity == nil {
+				continue
+			}
+			if w.Owner == nil {
+				pos := w.Entity.Position()
+				droppedEquipment = append(droppedEquipment, DroppedEquipment{
+					Type: w.Type,
+					X:    pos.X,
+					Y:    pos.Y,
+					Z:    pos.Z,
+				})
+			}
+		}
 
 		frames = append(frames, Frame{
-			TimeMs:  p.CurrentTime().Milliseconds(),
-			Tick:    currentTick,
-			Round:   currentRound,
-			Players: players,
-			// Smokes:  smokes, // COMMENTED OUT: Projectile/Smoke data
+			TimeMs:           p.CurrentTime().Milliseconds(),
+			Tick:             currentTick,
+			Round:            currentRound,
+			Players:          players,
+			Projectiles:      projectiles,
+			DroppedEquipment: droppedEquipment,
+			Bomb:             bombFrame,
 		})
 	}
 
@@ -176,31 +265,46 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		}
 
 		for fi := range frames {
-			for pi := range frames[fi].Players {
-				pf := &frames[fi].Players[pi]
+			f := &frames[fi]
+
+			// Normalize players
+			for pi := range f.Players {
+				pf := &f.Players[pi]
 				pf.X = (pf.X - minX) / width
 				pf.Y = (pf.Y - minY) / height
 			}
 
-			// COMMENTED OUT: Normalize smoke positions and trajectories
-			/*
-				// Normalize smoke positions and trajectories
-				for si := range frames[fi].Smokes {
-					sm := &frames[fi].Smokes[si]
-					sm.X = (sm.X - minX) / width
-					sm.Y = (sm.Y - minY) / height
+			// Normalize bomb position
+			if f.Bomb != nil {
+				bf := f.Bomb
+				bf.X = (bf.X - minX) / width
+				bf.Y = (bf.Y - minY) / height
+			}
 
-					for ti := range sm.Trajectory {
-						tp := &sm.Trajectory[ti]
-						tp.X = (tp.X - minX) / width
-						tp.Y = (tp.Y - minY) / height
-					}
+			// Normalize projectiles
+			for pri := range f.Projectiles {
+				pr := &f.Projectiles[pri]
+				pr.X = (pr.X - minX) / width
+				pr.Y = (pr.Y - minY) / height
+				for tri := range pr.Trajectory {
+					tr := &pr.Trajectory[tri]
+					tr.X = (tr.X - minX) / width
+					tr.Y = (tr.Y - minY) / height
 				}
-			*/
+			}
+
+			// Normalize dropped equipment
+			for dei := range f.DroppedEquipment {
+				de := &f.DroppedEquipment[dei]
+				de.X = (de.X - minX) / width
+				de.Y = (de.Y - minY) / height
+			}
 		}
 
 		log.Println("Normalization complete.")
 	}
 
-	return &Replay{Frames: frames}, nil
+	return &Replay{
+		Frames: frames,
+	}, nil
 }
