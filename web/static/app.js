@@ -248,7 +248,8 @@
       if (frame.projectiles && frame.projectiles.length > 0) {
         const counts = {};
         frame.projectiles.forEach(p => {
-          const name = EQ_NAMES[p.type] || 'Unknown';
+          const baseName = EQ_NAMES[p.type] || 'Unknown';
+          const name = p.isExploded ? `${baseName} (Active)` : baseName;
           counts[name] = (counts[name] || 0) + 1;
         });
         projectileSummary = Object.entries(counts).map(([name, count]) => `<span class="eq-tag" style="border-color:#3fa46a">${name} x${count}</span>`).join(' ');

@@ -194,6 +194,7 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 				ThrowerSteamID: throwerSteamID,
 				EntityID:       proj.Entity.ID(),
 				Trajectory:     trajectory,
+				IsExploded:     false,
 			})
 		}
 		for _, inf := range gs.Infernos() {
@@ -217,6 +218,55 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 				ThrowerName:    throwerName,
 				ThrowerSteamID: throwerSteamID,
 				EntityID:       inf.Entity.ID(),
+				IsExploded:     true,
+			})
+		}
+		for _, smoke := range gs.SmokeGrenades() {
+			if smoke.Entity == nil {
+				continue
+			}
+			pos := smoke.Position()
+
+			throwerName := ""
+			var throwerSteamID uint64
+			if smoke.Thrower != nil {
+				throwerName = smoke.Thrower.Name
+				throwerSteamID = smoke.Thrower.SteamID64
+			}
+
+			projectiles = append(projectiles, ProjectileFrame{
+				Type:           common.EqSmoke,
+				X:              pos.X,
+				Y:              pos.Y,
+				Z:              pos.Z,
+				ThrowerName:    throwerName,
+				ThrowerSteamID: throwerSteamID,
+				EntityID:       smoke.Entity.ID(),
+				IsExploded:     true,
+			})
+		}
+		for _, decoy := range gs.Decoys() {
+			if decoy.Entity == nil {
+				continue
+			}
+			pos := decoy.Position()
+
+			throwerName := ""
+			var throwerSteamID uint64
+			if decoy.Thrower != nil {
+				throwerName = decoy.Thrower.Name
+				throwerSteamID = decoy.Thrower.SteamID64
+			}
+
+			projectiles = append(projectiles, ProjectileFrame{
+				Type:           common.EqDecoy,
+				X:              pos.X,
+				Y:              pos.Y,
+				Z:              pos.Z,
+				ThrowerName:    throwerName,
+				ThrowerSteamID: throwerSteamID,
+				EntityID:       decoy.Entity.ID(),
+				IsExploded:     true,
 			})
 		}
 

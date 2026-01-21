@@ -100,6 +100,8 @@ type ProjectileFrame struct {
 	EntityID int `json:"entityID"`
 	// 投掷物的飞行轨迹路径点
 	Trajectory []Point `json:"trajectory"`
+	// 投掷物是否已经爆炸或生效 (如烟雾已经散开、火堆正在燃烧)
+	IsExploded bool `json:"isExploded"`
 }
 
 // C4 炸弹信息
