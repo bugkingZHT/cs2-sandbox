@@ -21,9 +21,6 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 
 	var (
 		frames       []Frame
-		minX, maxX   float64
-		minY, maxY   float64
-		boundsInited bool
 		frameCount   int
 		currentRound int
 
@@ -89,25 +86,6 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		for _, pl := range gs.Participants().Playing() {
 			pos := pl.Position()
 			x, y := pos.X, pos.Y
-
-			if !boundsInited {
-				minX, maxX, minY, maxY = x, x, y, y
-				boundsInited = true
-			} else {
-				if x < minX {
-					minX = x
-				}
-				if x > maxX {
-					maxX = x
-				}
-				if y < minY {
-					minY = y
-				}
-				if y > maxY {
-					maxY = y
-				}
-			}
-
 			// Extract inventory
 			var inventory []common.EquipmentType
 			for _, w := range pl.Weapons() {
@@ -263,66 +241,12 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		}
 	}
 
-	replay := &Replay{
+	return &Replay{
+		Frames:  frames,
 		MapName: mapName,
 		TeamCT:  gs.TeamCounterTerrorists().ClanName(),
 		TeamT:   gs.TeamTerrorists().ClanName(),
 		ScoreCT: gs.TeamCounterTerrorists().Score(),
 		ScoreT:  gs.TeamTerrorists().Score(),
-		Frames:  frames,
-	}
-
-	if boundsInited {
-		width := maxX - minX
-		height := maxY - minY
-		if width == 0 {
-			width = 1
-		}
-		if height == 0 {
-			height = 1
-		}
-
-		for fi := range frames {
-			f := &frames[fi]
-
-			// Normalize players
-			for pi := range f.Players {
-				pf := &f.Players[pi]
-				pf.X = (pf.X - minX) / width
-				pf.Y = (pf.Y - minY) / height
-			}
-
-			// Normalize bomb position
-			if f.Bomb != nil {
-				bf := f.Bomb
-				bf.X = (bf.X - minX) / width
-				bf.Y = (bf.Y - minY) / height
-			}
-
-			// Normalize projectiles
-			for pri := range f.Projectiles {
-				pr := &f.Projectiles[pri]
-				pr.X = (pr.X - minX) / width
-				pr.Y = (pr.Y - minY) / height
-				for tri := range pr.Trajectory {
-					tr := &pr.Trajectory[tri]
-					tr.X = (tr.X - minX) / width
-					tr.Y = (tr.Y - minY) / height
-				}
-			}
-
-			// Normalize dropped equipment
-			for dei := range f.DroppedEquipment {
-				de := &f.DroppedEquipment[dei]
-				de.X = (de.X - minX) / width
-				de.Y = (de.Y - minY) / height
-			}
-		}
-
-		log.Println("Normalization complete.")
-	}
-
-	return &Replay{
-		Frames: frames,
 	}, nil
 }

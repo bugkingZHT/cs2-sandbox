@@ -11,11 +11,31 @@ export interface PlayerState {
   armor?: number;
   money?: number;
 }
+
+// 投掷物类型定义
+export interface Point {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface ProjectileState {
+  type: string; // EquipmentType
+  x: number;
+  y: number;
+  z: number;
+  throwerName: string;
+  throwerSteamID: number;
+  entityID: number;
+  trajectory?: Point[];
+}
+
 export interface Frame {
   timeMs: number;
   tick: number;
   round: number;
   players: PlayerState[];
+  projectiles?: ProjectileState[];
 }
 
 export interface ReplayData {

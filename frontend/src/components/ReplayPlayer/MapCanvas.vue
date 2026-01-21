@@ -18,15 +18,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js';
-import type { Frame, PlayerState, WorldBounds } from '@/types/replay';
+import type { Frame, PlayerState, ProjectileState, WorldBounds } from '@/types/replay';
 
 const mapTextureUrl = '/backGroundMap/dust2.png';
 
 const PLAYER_STYLE = {
   aliveRadius: 30,
-  deadRadius: 30,
-  dirLength: 40, // 增加镜头线长度
-  nameSize: 40,  // 增加名字大小
+  deadRadius: 15,
+  dirLength: 40,
+  nameSize: 40
 };
 
 const props = defineProps<{
@@ -40,6 +40,7 @@ const host = ref<HTMLDivElement | null>(null);
 let app: Application | null = null;
 let worldContainer: Container | null = null;
 let playerLayer: Container | null = null;
+let projectileLayer: Container | null = null;
 let mapSprite: Sprite | null = null;
 
 const state = reactive({
@@ -59,19 +60,33 @@ const tooltipStyle = computed(() => ({
   top: `${hoverScreenPos.y}px`,
 }));
 
+
 const worldToMap = (x: number, y: number) => {
-  if (!props.bounds || !mapSprite) return { x: 0, y: 0 };
-  const { minX, maxX, minY, maxY } = props.bounds;
+  if (!mapSprite) return { x: 0, y: 0 };
+  
+  
+  const X_MIN = -2260;
+  const X_MAX = 1852;
+  const Y_MIN = -1216;
+  const Y_MAX = 3168;
+  
+  
+  const xRange = X_MAX - X_MIN;
+  const yRange = Y_MAX - Y_MIN;
+  
+  
   const mapWidth = mapSprite.width;
   const mapHeight = mapSprite.height;
+  
 
-  const nx = (x - minX) / (maxX - minX || 1);
-  const ny = (y - minY) / (maxY - minY || 1);
-
-  return {
-    x: nx * mapWidth,
-    y: (1 - ny) * mapHeight,
-  };
+  const normalizedX = (x - (X_MIN + X_MAX) / 2) / xRange; 
+  const normalizedY = (y - (Y_MIN + Y_MAX) / 2) / yRange;
+  
+    const pixelX = normalizedX * mapWidth;
+  const pixelY = -normalizedY * mapHeight;
+  
+  // 现在地图精灵的中心是(0,0)，不需要额外偏移
+  return { x: pixelX, y: pixelY };
 };
 
 const ensureApp = async () => {
@@ -97,10 +112,20 @@ const ensureApp = async () => {
   mapSprite.width = 2048;
   mapSprite.height = 2048;
 
+  
+  mapSprite.position.set(0, 0);
   worldContainer.addChild(mapSprite);
+
+    const centerMarker = new Graphics();
+  centerMarker.circle(0, 0, 10).fill(0xff0000);
+  centerMarker.stroke({ width: 2, color: 0xffffff });
+  worldContainer.addChild(centerMarker);
 
   playerLayer = new Container();
   worldContainer.addChild(playerLayer);
+
+  projectileLayer = new Container();
+  worldContainer.addChild(projectileLayer);
 
   worldContainer.eventMode = 'static';
   worldContainer.cursor = 'grab';
@@ -182,92 +207,191 @@ const clearPlayers = () => {
   playerLayer.removeChildren();
 };
 
+const clearProjectiles = () => {
+  if (!projectileLayer) return;
+  projectileLayer.removeChildren();
+};
+
 const drawPlayersForFrame = () => {
   if (!playerLayer || !mapSprite || !props.frames) return;
   const frame = props.frames[props.currentFrameIndex];
-  if (!frame || !frame.players || frame.players.length === 0) {
+  if (!frame) {
     clearPlayers();
+    clearProjectiles();
     hoverPlayer.value = null;
     return;
   }
 
+
   clearPlayers();
+  clearProjectiles();
 
-  for (const p of frame.players) {
-    const g = new Graphics();
-    const color = p.team === 3 ? 0x3b82f6 : 0xf97316;
-    const radius = p.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
+    if (frame.players) {
+    for (const p of frame.players) {
+      const g = new Graphics();
+      const color = p.team === 3 ? 0x3b82f6 : 0xf97316;
+      const radius = p.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
 
-    const mapPos = worldToMap(p.x, p.y);
+      const mapPos = worldToMap(p.x, p.y);
 
-    const angleRad = (p.yaw * Math.PI) / 180;
-    const dirLen = PLAYER_STYLE.dirLength;
-    const dirX = Math.cos(angleRad) * radius;
-    const dirY = Math.sin(angleRad) * radius;
+      const angleRad = (p.yaw * Math.PI) / 180;
+      
+      if (p.alive) {
+        
+        const triLen = 15;
+        const triWidth = 10;
+        
+        const tipX = Math.cos(angleRad) * (radius + triLen);
+        const tipY = Math.sin(angleRad) * (radius + triLen);
+        
+        const baseAngle1 = angleRad + Math.PI / 2;
+        const baseAngle2 = angleRad - Math.PI / 2;
+        
+        const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * triWidth;
+        const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * triWidth;
+        
+        const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triWidth;
+        const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triWidth;
 
-    // 绘制指向三角形
-    const triLen = 15; // 三角形长度
-    const triWidth = 10; // 三角形底边半宽
-    
-    const tipX = Math.cos(angleRad) * (radius + triLen);
-    const tipY = Math.sin(angleRad) * (radius + triLen);
-    
-    const baseAngle1 = angleRad + Math.PI / 2;
-    const baseAngle2 = angleRad - Math.PI / 2;
-    
-    const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * triWidth;
-    const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * triWidth;
-    
-    const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triWidth;
-    const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triWidth;
-
-    g.moveTo(bx1, by1);
-    g.lineTo(tipX, tipY);
-    g.lineTo(bx2, by2);
-    g.closePath();
-    g.fill({ color, alpha: 0.9 });
-
-    g.circle(0, 0, radius).fill(color);
-    g.circle(0, 0, radius).stroke({ width: 3, color: 0xffffff, alpha: 0.6 });
-
-    g.x = mapPos.x - mapSprite.width / 2;
-    g.y = mapPos.y - mapSprite.height / 2;
-
-    g.eventMode = 'static';
-    g.cursor = 'pointer';
-
-    (g as any).on('pointerover', (e: any) => {
-      hoverPlayer.value = p;
-      const global = e.global;
-      hoverScreenPos.x = global.x;
-      hoverScreenPos.y = global.y;
-    });
-
-    (g as any).on('pointermove', (e: any) => {
-      if (!hoverPlayer.value || hoverPlayer.value.id !== p.id) return;
-      const global = e.global;
-      hoverScreenPos.x = global.x;
-      hoverScreenPos.y = global.y;
-    });
-
-    (g as any).on('pointerout', () => {
-      if (hoverPlayer.value && hoverPlayer.value.id === p.id) {
-        hoverPlayer.value = null;
+        g.moveTo(bx1, by1);
+        g.lineTo(tipX, tipY);
+        g.lineTo(bx2, by2);
+        g.closePath();
+        g.fill({ color, alpha: 0.9 });
       }
-    });
 
-    playerLayer.addChild(g);
+      g.circle(0, 0, radius).fill(p.alive ? color : 0x888888);
+      g.circle(0, 0, radius).stroke({ width: 3, color: 0xffffff, alpha: 0.6 });
 
-    const label = new Text(p.name, {
-      fontFamily: 'system-ui',
-      fontSize: PLAYER_STYLE.nameSize,
-      fill: 0xffffff,
-      stroke: { color: 0x000000, width: 4 }, // 增加描边提升清晰度
-    });
-    label.anchor.set(0.5, 0);
-    label.x = g.x;
-    label.y = g.y + radius + 2;
-    playerLayer.addChild(label);
+      g.x = mapPos.x;
+      g.y = mapPos.y;
+
+      g.eventMode = 'static';
+      g.cursor = 'pointer';
+
+      (g as any).on('pointerover', (e: any) => {
+        hoverPlayer.value = p;
+        const global = e.global;
+        hoverScreenPos.x = global.x;
+        hoverScreenPos.y = global.y;
+      });
+
+      (g as any).on('pointermove', (e: any) => {
+        if (!hoverPlayer.value || hoverPlayer.value.id !== p.id) return;
+        const global = e.global;
+        hoverScreenPos.x = global.x;
+        hoverScreenPos.y = global.y;
+      });
+
+      (g as any).on('pointerout', () => {
+        if (hoverPlayer.value && hoverPlayer.value.id === p.id) {
+          hoverPlayer.value = null;
+        }
+      });
+
+      playerLayer.addChild(g);
+
+      const label = new Text(p.name, {
+        fontFamily: 'system-ui',
+        fontSize: PLAYER_STYLE.nameSize,
+        fill: 0xffffff,
+        stroke: { color: 0x000000, width: 4 },
+      });
+      label.anchor.set(0.5, 0);
+      label.x = g.x;
+      label.y = g.y + radius + 2;
+      playerLayer.addChild(label);
+    }
+  }
+
+  if (frame.projectiles) {
+    drawProjectilesForFrame(frame.projectiles);
+  }
+};
+
+
+const drawProjectilesForFrame = (projectiles: ProjectileState[]) => {
+  if (!projectileLayer || !mapSprite) return;
+
+  for (const proj of projectiles) {
+    const g = new Graphics();
+    
+    
+    let color: number;
+    switch (proj.type) {
+      case 'HE':
+        color = 0xff0000;
+        break;
+      case 'Flash':
+        color = 0xffff00;
+        break;
+      case 'Smoke':
+        color = 0x964B00;
+        break;
+      case 'Molotov':
+      case 'Incendiary':
+        color = 0xffa500;
+        break;
+      case 'Decoy':
+        color = 0x800080;
+        break;
+      default:
+        color = 0x808080;
+    }
+    
+    const mapPos = worldToMap(proj.x, proj.y);
+    
+    
+    g.circle(0, 0, 8).fill({ color, alpha: 0.8 });
+    g.circle(0, 0, 8).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+    
+    g.x = mapPos.x;
+    g.y = mapPos.y;
+    
+    projectileLayer.addChild(g);
+    
+    
+    if (proj.trajectory && proj.trajectory.length > 1) {
+      const trajectoryG = new Graphics();
+      
+      
+      let trajColor: number;
+      switch (proj.type) {
+        case 'HE':
+          trajColor = 0xffcccc;
+          break;
+        case 'Flash':
+          trajColor = 0xffffcc;
+          break;
+        case 'Smoke':
+          trajColor = 0xe0cfa5;
+          break;
+        case 'Molotov':
+        case 'Incendiary':
+          trajColor = 0xffdca5;
+          break;
+        case 'Decoy':
+          trajColor = 0xe0c0e0;
+          break;
+        default:
+          trajColor = 0xcccccc;
+      }
+      
+      trajectoryG.moveTo(
+        worldToMap(proj.trajectory[0].x, proj.trajectory[0].y).x,
+        worldToMap(proj.trajectory[0].x, proj.trajectory[0].y).y
+      );
+      
+      for (let i = 1; i < proj.trajectory.length; i++) {
+        const point = proj.trajectory[i];
+        const mapPoint = worldToMap(point.x, point.y);
+        trajectoryG.lineTo(mapPoint.x, mapPoint.y);
+      }
+      
+      trajectoryG.stroke({ width: 2, color: trajColor, alpha: 0.6 });
+      
+      projectileLayer.addChild(trajectoryG);
+    }
   }
 };
 

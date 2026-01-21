@@ -106,7 +106,7 @@ import type { Frame, PlayerState } from '@/types/replay';
 
 const { loading, error, replay, frames, bounds } = useReplayData();
 
-// 从父组件或其他地方获取播放控制状态
+
 
 const currentFrameIndex = ref(0);
 const currentPlaybackTimeMs = ref(0);
@@ -148,12 +148,12 @@ const totalTimeMs = computed(() => {
   return safeFrames.value[safeFrames.value.length - 1]?.timeMs ?? 0;
 });
 
-// 当播放时间改变时，寻找对应的帧索引
+
 watch(currentPlaybackTimeMs, (newTime) => {
   const framesArr = safeFrames.value;
   if (!framesArr.length) return;
 
-  // 简单的二分查找或顺序查找（由于帧数多，二分更好）
+
   let low = 0;
   let high = framesArr.length - 1;
   let ans = 0;
@@ -171,7 +171,12 @@ watch(currentPlaybackTimeMs, (newTime) => {
 });
 
 const stepPlayback = (timestamp: number) => {
-  if (!isPlaying.value || !totalFrames.value) return;
+  if (!isPlaying.value || !totalFrames.value) {
+    if (isPlaying.value) {
+      isPlaying.value = false;
+    }
+    return;
+  }
 
   if (!lastTimestamp) {
     lastTimestamp = timestamp;
@@ -182,7 +187,9 @@ const stepPlayback = (timestamp: number) => {
 
   currentPlaybackTimeMs.value += realDelta * playbackSpeed.value;
 
+
   if (currentPlaybackTimeMs.value >= totalTimeMs.value) {
+    
     currentPlaybackTimeMs.value = totalTimeMs.value;
     isPlaying.value = false;
     cancelAnimation();
@@ -193,9 +200,12 @@ const stepPlayback = (timestamp: number) => {
 };
 
 const startAnimation = () => {
-  if (rafId != null) return;
+  if (rafId != null) {
+    return;
+  }
   lastTimestamp = 0;
   rafId = requestAnimationFrame(stepPlayback);
+
 };
 
 const cancelAnimation = () => {
@@ -206,7 +216,10 @@ const cancelAnimation = () => {
 };
 
 const togglePlay = () => {
-  if (!totalFrames.value) return;
+  const hasFrames = frames.value && frames.value.length > 0;
+  if (!hasFrames) {
+    return;
+  }
   isPlaying.value = !isPlaying.value;
   if (isPlaying.value) {
     startAnimation();
@@ -236,6 +249,7 @@ const onUpdateSpeed = (value: number) => {
   playbackSpeed.value = value;
 };
 
+
 watch(
   () => totalFrames.value,
   (count) => {
@@ -245,13 +259,29 @@ watch(
       currentFrameIndex.value = 0;
       currentPlaybackTimeMs.value = 0;
     } else {
-      // 当帧数发生变化时，重置播放状态
+      
       isPlaying.value = false;
       cancelAnimation();
       currentFrameIndex.value = 0;
       currentPlaybackTimeMs.value = 0;
     }
   },
+);
+
+
+watch(
+  () => frames.value,
+  (newFrames) => {
+    if (newFrames && newFrames.length > 0) {
+
+      isPlaying.value = false;
+      cancelAnimation();
+      currentFrameIndex.value = 0;
+      currentPlaybackTimeMs.value = 0;
+      lastTimestamp = 0;
+    }
+  },
+  { deep: true }
 );
 
 onBeforeUnmount(() => {

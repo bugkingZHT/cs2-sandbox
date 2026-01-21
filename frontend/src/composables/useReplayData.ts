@@ -86,45 +86,69 @@ export function useReplayData(): UseReplayResult {
   };
 
   const loadAllReplays = async () => {
+    console.log('[LoadAllReplays] 开始加载所有回放数据');
     const database = await initDB();
     return new Promise<void>((resolve, reject) => {
       const tx = database.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const request = store.getAll();
       request.onsuccess = () => {
+        console.log('[LoadAllReplays] 获取到所有回放数据，数量:', request.result.length);
         replayList.value = (request.result as ReplayData[]).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        console.log('[LoadAllReplays] 排序后的回放列表，数量:', replayList.value.length);
         resolve();
       };
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('[LoadAllReplays] 加载所有回放数据失败:', request.error);
+        reject(request.error);
+      };
     });
   };
 
   const loadReplayFromDB = async (id?: string): Promise<ReplayData | null> => {
+    console.log('[IndexedDB] 开始从数据库加载回放数据...', { id, storedId: localStorage.getItem(LATEST_KEY) });
     const database = await initDB();
     const targetId = id || localStorage.getItem(LATEST_KEY);
-    if (!targetId) return null;
+    console.log('[IndexedDB] 目标ID:', targetId);
+    if (!targetId) {
+      console.log('[IndexedDB] 没有找到目标ID，返回null');
+      return null;
+    }
 
     return new Promise((resolve, reject) => {
       const tx = database.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const request = store.get(targetId);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        console.log('[IndexedDB] 成功获取回放数据:', request.result ? '存在数据' : '未找到数据', { id: request.result?.id, frameCount: request.result?.frames?.length });
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        console.error('[IndexedDB] 加载回放数据失败:', request.error);
+        reject(request.error);
+      };
     });
   };
 
   const loadReplayById = async (id: string) => {
+    console.log('[LoadReplayById] 开始加载回放，ID:', id);
     try {
       loading.value = true;
       const data = await loadReplayFromDB(id);
+      console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
       if (data) {
+        console.log('[LoadReplayById] 准备设置回放数据，帧数量:', data.frames?.length);
         setReplayData(JSON.stringify(data));
         localStorage.setItem(LATEST_KEY, id);
+        console.log('[LoadReplayById] 回放数据设置完成，已更新最新ID');
+      } else {
+        console.warn('[LoadReplayById] 未找到ID为', id, '的回放数据');
       }
     } catch (e) {
       console.error('Failed to load replay', e);
     } finally {
       loading.value = false;
+      console.log('[LoadReplayById] 加载完成，loading设置为false');
     }
   };
 
@@ -172,11 +196,15 @@ export function useReplayData(): UseReplayResult {
   };
 
   const setReplayData = (jsonStr: string) => {
+    console.log('[SetReplayData] 开始设置回放数据，JSON字符串长度:', jsonStr.length);
     try {
       const data = JSON.parse(jsonStr) as ReplayData;
+      console.log('[SetReplayData] 解析后的数据:', { id: data.id, mapName: data.mapName, frameCount: data.frames?.length, teamCT: data.teamCT, teamT: data.teamT });
       replay.value = data;
       frames.value = data.frames ?? [];
+      console.log('[SetReplayData] 设置frames完成，帧数:', frames.value.length);
       bounds.value = estimateBounds(frames.value);
+      console.log('[SetReplayData] 估算边界完成:', bounds.value);
     } catch (e) {
       console.error('Failed to parse replay JSON', e);
     }
@@ -280,35 +308,44 @@ export function useReplayData(): UseReplayResult {
   };
 
   const load = async () => {
+    console.log('[Load] 开始初始化加载数据');
     try {
       loading.value = true;
       error.value = null;
 
       await loadAllReplays();
+      console.log('[Load] 已加载所有回放列表，数量:', replayList.value.length);
 
       // Try loading latest from IndexedDB first
+      console.log('[Load] 尝试从IndexedDB加载最新的回放数据');
       const stored = await loadReplayFromDB();
       if (stored) {
+        console.log('[Load] 从IndexedDB获取到数据，准备设置');
         setReplayData(JSON.stringify(stored));
+        console.log('[Load] 从IndexedDB加载完成');
         loading.value = false;
         return;
       }
+      console.log('[Load] 未从IndexedDB获取到数据，尝试加载默认数据');
 
       // Fallback to static JSON if available
       const response = await fetch('/JsonData/replay.json', {
         signal: abortController.signal,
       });
       if (response.ok) {
+        console.log('[Load] 从静态JSON文件加载数据');
         const json = (await response.json()) as ReplayData;
         replay.value = json;
         frames.value = json.frames ?? [];
         bounds.value = estimateBounds(frames.value);
+        console.log('[Load] 从静态JSON加载完成');
       }
     } catch (e: any) {
       if (e.name === 'AbortError') return;
       console.warn('Initial load failed', e);
     } finally {
       loading.value = false;
+      console.log('[Load] 初始化加载完成，loading设置为false');
     }
   };
 

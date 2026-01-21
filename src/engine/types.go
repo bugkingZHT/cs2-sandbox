@@ -155,4 +155,14 @@ type DroppedEquipment struct {
 type Replay struct {
 	// 包含的所有帧列表
 	Frames []Frame `json:"frames"`
+	// 地图名称
+	MapName string `json:"mapName"`
+	// CT队伍名称
+	TeamCT string `json:"teamCT"`
+	// T队伍名称
+	TeamT string `json:"teamT"`
+	// CT队伍得分
+	ScoreCT int `json:"scoreCT"`
+	// T队伍得分
+	ScoreT int `json:"scoreT"`
 }
