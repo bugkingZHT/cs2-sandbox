@@ -248,10 +248,27 @@ const onPlayerPointerOver = (e: any, p: PlayerState) => {
 };
 
 const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: PlayerState[]) => {
-  if (!projectileLayer || !mapSprite) return;
+  if (!projectileLayer || !mapSprite || !props.frames) return;
 
+  // 1. 绘制轨迹：向前追溯
   for (const proj of projectiles) {
-    if (proj.trajectory && proj.trajectory.length > 1) {
+    const points: { x: number; y: number }[] = [];
+    
+    // 从当前帧向后查找，直到该投掷物不存在
+    for (let i = props.currentFrameIndex; i >= 0; i--) {
+      const f = props.frames[i];
+      const p = f.projectiles?.find(item => item.entityID === proj.entityID);
+      if (p) {
+        points.push({ x: p.x, y: p.y });
+      } else {
+        break;
+      }
+    }
+
+    if (points.length > 1) {
+      // 逆序以保证时间顺序（从出生到当前）
+      points.reverse();
+      
       const thrower = players.find(p => p.steamID === proj.throwerSteamID || p.name === proj.throwerName);
       let trajColor = 0xff6b6b;
       if (thrower) {
@@ -259,21 +276,29 @@ const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: 
       }
 
       const trajectoryG = new Graphics();
-      const startPoint = proj.trajectory[0];
-      const startMapPos = worldToMap(startPoint.x, startPoint.y);
+      const startMapPos = worldToMap(points[0].x, points[0].y);
       trajectoryG.moveTo(startMapPos.x, startMapPos.y);
       
-      for (let i = 1; i < proj.trajectory.length; i++) {
-        const point = proj.trajectory[i];
-        const mapPoint = worldToMap(point.x, point.y);
+      for (let i = 1; i < points.length; i++) {
+        const mapPoint = worldToMap(points[i].x, points[i].y);
         trajectoryG.lineTo(mapPoint.x, mapPoint.y);
       }
       
-      trajectoryG.stroke({ width: 3, color: trajColor, alpha: 1.0 });
+      trajectoryG.stroke({ width: 3, color: trajColor, alpha: 0.8 });
+
+      // 1.1 绘制碰撞点（从 proj.trajectory 获取）
+      if (proj.trajectory && proj.trajectory.length > 0) {
+        for (const cp of proj.trajectory) {
+          const cpMapPos = worldToMap(cp.x, cp.y);
+          trajectoryG.circle(cpMapPos.x, cpMapPos.y, 4).fill({ color: trajColor, alpha: 1.0 });
+        }
+      }
+
       projectileLayer.addChild(trajectoryG);
     }
   }
 
+  // 2. 绘制当前位置图标
   for (const proj of projectiles) {
     const typeId = Number(proj.type);
     const fileName = EQUIPMENT_ID_MAP[typeId] || '';
@@ -290,6 +315,28 @@ const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: 
       const mapPos = worldToMap(proj.x, proj.y);
       sprite.x = mapPos.x;
       sprite.y = mapPos.y;
+      
+      // 2.1 如果已爆炸，绘制范围效果（大发光圆圈）
+      if (proj.isExploded) {
+        const explosionG = new Graphics();
+        let explosionColor = 0xffffff;
+        
+        // 根据类型设置不同的爆炸/生效颜色
+        if (typeKey === 'Smoke') explosionColor = 0xcccccc;
+        else if (typeKey === 'Molotov' || typeKey === 'Incendiary') explosionColor = 0xff6600;
+        else if (typeKey === 'HE') explosionColor = 0xff3300;
+        else if (typeKey === 'Flash') explosionColor = 0xffffcc;
+        
+        // 绘制多层透明圆圈模拟发光效果
+        explosionG.circle(mapPos.x, mapPos.y, 80).fill({ color: explosionColor, alpha: 0.1 });
+        explosionG.circle(mapPos.x, mapPos.y, 50).fill({ color: explosionColor, alpha: 0.2 });
+        explosionG.circle(mapPos.x, mapPos.y, 20).fill({ color: explosionColor, alpha: 0.4 });
+        
+        // 添加一个外边框增强可见性
+        explosionG.circle(mapPos.x, mapPos.y, 80).stroke({ width: 2, color: explosionColor, alpha: 0.3 });
+        
+        projectileLayer.addChild(explosionG);
+      }
       
       const thrower = players.find(p => p.steamID === proj.throwerSteamID || p.name === proj.throwerName);
       if (thrower) {
