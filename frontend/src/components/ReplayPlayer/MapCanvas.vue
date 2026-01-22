@@ -343,55 +343,38 @@ const drawPlayersForFrame = () => {
 const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: PlayerState[]) => {
   if (!projectileLayer || !mapSprite) return;
 
-  // 1. 同步批量绘制所有轨迹 (最高优先级，消除延迟)
-  const allGlowG = new Graphics();
-  const allTrajectoryG = new Graphics();
-  
+  // 第一步:同步绘制所有轨迹(避免延迟)
   for (const proj of projectiles) {
-    if (!proj.trajectory || proj.trajectory.length <= 1) continue;
-
-    const lastPoint = proj.trajectory[proj.trajectory.length - 1];
-    const distToLast = Math.sqrt(Math.pow(proj.x - lastPoint.x, 2) + Math.pow(proj.y - lastPoint.y, 2));
-    if (distToLast < 0.1 && proj.trajectory.length > 5) continue;
-
-    const typeId = Number(proj.type);
-    const fileName = EQUIPMENT_ID_MAP[typeId] || '';
-    const typeKey = PROJECTILE_NAME_KEY[fileName] || 'HE';
-    const thrower = players.find(p => p.steamID === proj.throwerSteamID || p.name === proj.throwerName);
-    
-    let trajColor = 0xffffff;
-    if (thrower) {
-      trajColor = thrower.team === 3 ? 0x60a5fa : 0xfb923c;
-    } else {
-      switch (typeKey) {
-        case 'HE': trajColor = 0xffcccc; break;
-        case 'Flash': trajColor = 0xffffcc; break;
-        case 'Smoke': trajColor = 0xe0cfa5; break;
-        case 'Molotov': trajColor = 0xffdca5; break;
-        case 'Incendiary': trajColor = 0xffa500; break;
-        case 'C4': trajColor = 0xff0000; break;
+    if (proj.trajectory && proj.trajectory.length > 1) {
+      // 确定投掷者阵营,用于颜色区分
+      const thrower = players.find(p => p.steamID === proj.throwerSteamID || p.name === proj.throwerName);
+      let trajColor = 0xff6b6b; // 默认红色
+      if (thrower) {
+        trajColor = thrower.team === 3 ? 0x4dabf7 : 0xff922b; // CT蓝色 / T橙色
       }
-    }
 
-    const startMapPos = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y);
-    allGlowG.moveTo(startMapPos.x, startMapPos.y);
-    allTrajectoryG.moveTo(startMapPos.x, startMapPos.y);
-    
-    for (let i = 1; i < proj.trajectory.length; i++) {
-      const point = proj.trajectory[i];
-      const mapPoint = worldToMap(point.x, point.y);
-      allGlowG.lineTo(mapPoint.x, mapPoint.y);
-      allTrajectoryG.lineTo(mapPoint.x, mapPoint.y);
+      // 绘制轨迹直线
+      const trajectoryG = new Graphics();
+      
+      // 起点
+      const startPoint = proj.trajectory[0];
+      const startMapPos = worldToMap(startPoint.x, startPoint.y);
+      trajectoryG.moveTo(startMapPos.x, startMapPos.y);
+      
+      // 依次连接所有轨迹点
+      for (let i = 1; i < proj.trajectory.length; i++) {
+        const point = proj.trajectory[i];
+        const mapPoint = worldToMap(point.x, point.y);
+        trajectoryG.lineTo(mapPoint.x, mapPoint.y);
+      }
+      
+      // 单层彩色线,清晰明显
+      trajectoryG.stroke({ width: 3, color: trajColor, alpha: 1.0 });
+      projectileLayer.addChild(trajectoryG);
     }
-    
-    allGlowG.stroke({ width: 4, color: 0x000000, alpha: 0.3 });
-    allTrajectoryG.stroke({ width: 2.5, color: trajColor, alpha: 0.9 });
   }
-  
-  projectileLayer.addChild(allGlowG);
-  projectileLayer.addChild(allTrajectoryG);
 
-  // 2. 处理图标 (异步加载)
+  // 第二步:异步加载投掷物图标
   for (const proj of projectiles) {
     const typeId = Number(proj.type);
     const fileName = EQUIPMENT_ID_MAP[typeId] || '';
@@ -401,21 +384,25 @@ const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: 
     try {
       const texture = await Assets.load(assetPath);
       const sprite = new Sprite(texture);
-      sprite.width = 18;
-      sprite.height = 18;
+      sprite.width = 20;
+      sprite.height = 20;
       sprite.anchor.set(0.5);
       
       const mapPos = worldToMap(proj.x, proj.y);
       sprite.x = mapPos.x;
       sprite.y = mapPos.y;
       
+      // 根据阵营着色
       const thrower = players.find(p => p.steamID === proj.throwerSteamID || p.name === proj.throwerName);
       if (thrower) {
-        sprite.tint = thrower.team === 3 ? 0x60a5fa : 0xfb923c;
+        sprite.tint = thrower.team === 3 ? 0x4dabf7 : 0xff922b;
+      } else {
+        sprite.tint = 0xff6b6b;
       }
+      
       projectileLayer.addChild(sprite);
     } catch (error) {
-      // 容错处理...
+      console.warn('[投掷物] 加载图标失败:', assetPath, error);
     }
   }
 };

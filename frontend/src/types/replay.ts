@@ -46,6 +46,7 @@ export interface ProjectileState {
   throwerSteamID: number;
   entityID: number;
   trajectory?: Point[];
+  isExploded?: boolean; // 投掷物是否已爆炸/生效
 }
 
 export interface Frame {
