@@ -6,10 +6,28 @@ export interface PlayerState {
   y: number;
   alive: boolean;
   yaw: number;
-  // 可选：后端如果提供血量、护甲、金钱等信息，可以直接挂在这里
-  hp?: number;
+  // 根据types.go定义的PlayerFrame结构
+  pitch?: number;
+  z?: number;
+  health?: number;
   armor?: number;
   money?: number;
+  hasHelmet?: boolean;
+  hasDefuseKit?: boolean;
+  isScoped?: boolean;
+  flashDuration?: number;
+  isBlinded?: boolean;
+  inventory?: string[];
+  activeWeapon?: string;
+  usingItem?: boolean;
+  kills?: number;
+  assists?: number;
+  deaths?: number;
+  moneySpentTotal?: number;
+  moneySpentThisRound?: number;
+  equipmentValue?: number;
+  steamID?: number;
+  isBot?: boolean;
 }
 
 // 投掷物类型定义

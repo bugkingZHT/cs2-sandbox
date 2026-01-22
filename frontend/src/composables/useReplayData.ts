@@ -20,7 +20,10 @@ const DB_NAME = 'CS2ReplayDB';
 const STORE_NAME = 'replays';
 const LATEST_KEY = 'latest_replay_id';
 
-export function useReplayData(): UseReplayResult {
+// 单例模式：确保所有组件使用同一个响应式实例
+let replayDataInstance: ReturnType<typeof createReplayData> | null = null;
+
+function createReplayData() {
   const loading = ref(true);
   const parsing = ref(false);
   const statusMsg = ref('');
@@ -69,6 +72,7 @@ export function useReplayData(): UseReplayResult {
   };
 
   const saveReplayToDB = async (replayData: ReplayData) => {
+    console.time('[SaveReplayToDB] 保存到IndexedDB耗时');
     const database = await initDB();
     return new Promise<void>((resolve, reject) => {
       const tx = database.transaction(STORE_NAME, 'readwrite');
@@ -80,7 +84,10 @@ export function useReplayData(): UseReplayResult {
       // Also update latest ID
       localStorage.setItem(LATEST_KEY, replayData.id!);
 
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        console.timeEnd('[SaveReplayToDB] 保存到IndexedDB耗时');
+        resolve();
+      };
       request.onerror = () => reject(request.error);
     });
   };
@@ -138,7 +145,7 @@ export function useReplayData(): UseReplayResult {
       console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
       if (data) {
         console.log('[LoadReplayById] 准备设置回放数据，帧数量:', data.frames?.length);
-        setReplayData(JSON.stringify(data));
+        setReplayData(data);
         localStorage.setItem(LATEST_KEY, id);
         console.log('[LoadReplayById] 回放数据设置完成，已更新最新ID');
       } else {
@@ -195,19 +202,22 @@ export function useReplayData(): UseReplayResult {
     return { minX, maxX, minY, maxY };
   };
 
-  const setReplayData = (jsonStr: string) => {
-    console.log('[SetReplayData] 开始设置回放数据，JSON字符串长度:', jsonStr.length);
-    try {
-      const data = JSON.parse(jsonStr) as ReplayData;
-      console.log('[SetReplayData] 解析后的数据:', { id: data.id, mapName: data.mapName, frameCount: data.frames?.length, teamCT: data.teamCT, teamT: data.teamT });
-      replay.value = data;
-      frames.value = data.frames ?? [];
-      console.log('[SetReplayData] 设置frames完成，帧数:', frames.value.length);
-      bounds.value = estimateBounds(frames.value);
-      console.log('[SetReplayData] 估算边界完成:', bounds.value);
-    } catch (e) {
-      console.error('Failed to parse replay JSON', e);
-    }
+  const setReplayData = (data: ReplayData) => {
+    console.log('[SetReplayData] 开始设置回放数据');
+    console.log('[SetReplayData] 数据:', { id: data.id, mapName: data.mapName, frameCount: data.frames?.length, teamCT: data.teamCT, teamT: data.teamT });
+    
+    // 强制创建新对象以确保响应式更新
+    replay.value = { ...data };
+    console.log('[SetReplayData] replay.value已更新');
+    
+    // 强制创建新数组以确保响应式更新
+    frames.value = [...data.frames ?? []];
+    console.log('[SetReplayData] 设置frames完成，帧数:', frames.value.length);
+    
+    bounds.value = estimateBounds(frames.value);
+    console.log('[SetReplayData] 估算边界完成:', bounds.value);
+    
+    console.log('[SetReplayData] 数据设置完成，当前 replay.value.mapName:', replay.value?.mapName);
   };
 
   const updateParsingStep = (index: number, message?: string) => {
@@ -290,16 +300,33 @@ export function useReplayData(): UseReplayResult {
         });
       });
 
+      console.log('[ParseDemo] WASM解析完成，JSON字符串大小:', (jsonStr.length / 1024 / 1024).toFixed(2), 'MB');
+      
+      console.time('[ParseDemo] JSON.parse 耗时');
       const replayData = JSON.parse(jsonStr) as ReplayData;
+      console.timeEnd('[ParseDemo] JSON.parse 耗时');
+      
       replayData.id = `demo_${Date.now()}`;
       replayData.timestamp = Date.now();
 
       // 最后一步：保存数据
       await saveReplayToDB(replayData);
-      setReplayData(JSON.stringify(replayData));
-      await loadAllReplays();
+      console.log('[ParseDemo] 数据已保存到IndexedDB，准备设置到状态');
+      
       statusMsg.value = `解析完成：${file.name}`;
       advanceParsingStep(`已保存到本地数据库`, 4, `已保存到本地数据库`);
+      
+      // 延迟一小段时间让用户看到完成状态，然后再设置数据和关闭弹窗
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 直接设置数据对象，避免不必要的 JSON 序列化/反序列化
+      console.time('[ParseDemo] setReplayData 执行时间');
+      setReplayData(replayData);
+      console.timeEnd('[ParseDemo] setReplayData 执行时间');
+      console.log('[ParseDemo] 数据已设置到响应式状态');
+      
+      await loadAllReplays();
+      console.log('[ParseDemo] 回放列表已更新');
     } catch (e: any) {
       error.value = '解析失败: ' + (e.message || String(e));
     } finally {
@@ -316,33 +343,21 @@ export function useReplayData(): UseReplayResult {
       await loadAllReplays();
       console.log('[Load] 已加载所有回放列表，数量:', replayList.value.length);
 
-      // Try loading latest from IndexedDB first
+      // 只从 IndexedDB 加载数据
       console.log('[Load] 尝试从IndexedDB加载最新的回放数据');
       const stored = await loadReplayFromDB();
       if (stored) {
         console.log('[Load] 从IndexedDB获取到数据，准备设置');
-        setReplayData(JSON.stringify(stored));
+        setReplayData(stored);
         console.log('[Load] 从IndexedDB加载完成');
-        loading.value = false;
-        return;
-      }
-      console.log('[Load] 未从IndexedDB获取到数据，尝试加载默认数据');
-
-      // Fallback to static JSON if available
-      const response = await fetch('/JsonData/replay.json', {
-        signal: abortController.signal,
-      });
-      if (response.ok) {
-        console.log('[Load] 从静态JSON文件加载数据');
-        const json = (await response.json()) as ReplayData;
-        replay.value = json;
-        frames.value = json.frames ?? [];
-        bounds.value = estimateBounds(frames.value);
-        console.log('[Load] 从静态JSON加载完成');
+      } else {
+        console.log('[Load] IndexedDB中未找到回放数据，等待用户上传Demo');
+        statusMsg.value = '请上传Demo文件开始回放';
       }
     } catch (e: any) {
       if (e.name === 'AbortError') return;
-      console.warn('Initial load failed', e);
+      console.error('Initial load failed', e);
+      error.value = '加载数据失败: ' + e.message;
     } finally {
       loading.value = false;
       console.log('[Load] 初始化加载完成，loading设置为false');
@@ -369,4 +384,15 @@ export function useReplayData(): UseReplayResult {
     loadReplayById,
     deleteReplayById,
   };
+}
+
+// 导出单例函数
+export function useReplayData(): UseReplayResult {
+  if (!replayDataInstance) {
+    console.log('[useReplayData] 创建新的单例');
+    replayDataInstance = createReplayData();
+  } else {
+    console.log('[useReplayData] 使用已有单例');
+  }
+  return replayDataInstance;
 }
