@@ -1,10 +1,11 @@
-.PHONY: all clean build-wasm build-server run-server test help
+.PHONY: all clean build-wasm build-server build-frontend run-server test help
 
 # Variables
 BINARY_NAME=cs-demobox-server
 WASM_NAME=main.wasm
 WASM_EXEC_JS=wasm_exec.js
 STATIC_DIR=web/static
+FRONTEND_DIR=frontend
 GO_VERSION=$(shell go version)
 
 # Colors for output
@@ -13,7 +14,7 @@ BLUE=\033[0;34m
 YELLOW=\033[1;33m
 NC=\033[0m # No Color
 
-all: clean build-wasm build-server ## Build everything (WASM + Server)
+all: clean build-wasm build-frontend build-server ## Build everything (WASM + Frontend + Server)
 
 help: ## Show this help message
 	@echo "$(BLUE)Available targets:$(NC)"
@@ -31,6 +32,11 @@ build-server: ## Build server binary
 	@echo "$(YELLOW)Building server...$(NC)"
 	go build -o bin/$(BINARY_NAME) ./cmd/server
 	@echo "$(GREEN)✓ Server built: bin/$(BINARY_NAME)$(NC)"
+
+build-frontend: ## Build Vue frontend
+	@echo "$(YELLOW)Building Vue frontend...$(NC)"
+	cd $(FRONTEND_DIR) && npm install && npm run build
+	@echo "$(GREEN)✓ Frontend built to $(STATIC_DIR)/$(NC)"
 
 run-server: build-server ## Build and run the server
 	@echo "$(BLUE)Starting server...$(NC)"

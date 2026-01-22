@@ -1,252 +1,28 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>CS2 2D Demo Replay</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #111;
-      color: #eee;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      height: 100%;
-    }
-    #toolbar {
-      background: #222;
-      padding: 6px 10px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 13px;
-    }
-    #toolbar button {
-      padding: 4px 10px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    #status {
-      opacity: 0.8;
-    }
-    #progress {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-width: 120px;
-    }
-    #progressLabel {
-      font-weight: bold;
-      font-size: 12px;
-    }
-    #progressBar {
-      position: relative;
-      flex: 1;
-      height: 6px;
-      background: #333;
-      border-radius: 3px;
-      cursor: pointer;
-      overflow: hidden;
-    }
-    #progressFill {
-      position: absolute;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      width: 0%;
-      background: #3fa46a;
-    }
-    /* Log Overlay - Centered and more prominent */
-    #logOverlay {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 400px;
-      background: #1a1a1a;
-      border: 1px solid #3fa46a;
-      border-radius: 8px;
-      box-shadow: 0 0 20px rgba(0,0,0,0.8);
-      z-index: 2000;
-      display: none;
-      flex-direction: column;
-      font-family: 'Monaco', 'Consolas', monospace;
-      font-size: 12px;
-      max-height: 300px;
-      overflow: hidden;
-    }
-    #logHeader {
-      background: #222;
-      padding: 10px 15px;
-      font-weight: bold;
-      color: #3fa46a;
-      border-bottom: 1px solid #333;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      letter-spacing: 1px;
-    }
-    #logContent {
-      padding: 12px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      line-height: 1.5;
-      color: #bbb;
-    }
-    .log-entry {
-      margin-bottom: 4px;
-      border-left: 2px solid #444;
-      padding-left: 8px;
-    }
-    .log-entry.important {
-      color: #eee;
-      border-left-color: #3fa46a;
-    }
-    #canvasContainer {
-      position: fixed;
-      top: 32px;
-      bottom: 0;
-      left: 0;
-      right: 300px; /* Sidebar width */
-    }
-    #sidebar {
-      position: fixed;
-      top: 32px;
-      bottom: 0;
-      right: 0;
-      width: 300px;
-      background: #1a1a1a;
-      border-left: 1px solid #333;
-      overflow-y: auto;
-      font-size: 11px;
-      padding: 8px;
-    }
-    .section-header {
-      font-weight: bold;
-      color: #3fa46a;
-      border-bottom: 1px solid #333;
-      margin-bottom: 6px;
-      padding-bottom: 2px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .player-card {
-      background: #222;
-      border: 1px solid #333;
-      border-radius: 3px;
-      margin-bottom: 6px;
-      padding: 6px;
-    }
-    .player-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-    .player-name {
-      font-weight: bold;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 150px;
-    }
-    .player-team-2 { color: #ff9933; } /* T */
-    .player-team-3 { color: #33aaff; } /* CT */
-    .player-stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 4px;
-      margin-bottom: 4px;
-      color: #bbb;
-    }
-    .player-stat-item b { color: #eee; margin-right: 2px; }
-    .player-equipment {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 3px;
-      margin-top: 4px;
-    }
-    .eq-tag {
-      background: #333;
-      padding: 1px 4px;
-      border-radius: 2px;
-      font-size: 10px;
-      border: 1px solid #444;
-    }
-    .active-weapon {
-      background: #3fa46a;
-      color: #000;
-      border-color: #3fa46a;
-    }
-    #bombInfo {
-      background: #331111;
-      border: 1px solid #662222;
-      padding: 6px;
-      border-radius: 3px;
-      margin-bottom: 10px;
-    }
-    #bombInfo.planted {
-      background: #662222;
-      border-color: #ff4444;
-    }
-    #canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-      background: #000;
-    }
-  </style>
-</head>
-<body>
-  <div id="toolbar">
-    <input type="file" id="demoFile" accept=".dem" />
-    <button id="loadDemo">Load Demo</button>
-    <button id="playPause">Play</button>
-    <span id="status">No replay loaded. Choose a .dem file.</span>
-    <div id="progress">
-      <span id="progressLabel">Progress</span>
-      <div id="progressBar">
-        <div id="progressFill"></div>
-      </div>
-    </div>
-  </div>
-  <div id="logOverlay">
-    <div id="logHeader">
-      <span>PARSING LOGS</span>
-    </div>
-    <div id="logContent"></div>
-  </div>
-  <div id="canvasContainer">
-    <canvas id="canvas"></canvas>
-  </div>
-  <div id="sidebar">
-    <div id="bombInfo" style="display:none">
-      <div class="section-header">Bomb Status</div>
-      <div id="bombStatusContent"></div>
-    </div>
-    <div id="frameInfo" style="margin-bottom:10px">
-      <div class="section-header">Frame Details</div>
-      <div id="frameStatusContent"></div>
-    </div>
-    <div id="playersList">
-      <div class="section-header">Players</div>
-      <div id="playersContent"></div>
-    </div>
-  </div>
-  <script src="wasm_exec.js"></script>
-  <script>
-    if (typeof Go === 'function') {
-      const go = new Go();
-      WebAssembly.instantiateStreaming(fetch('main.wasm'), go.importObject)
-        .then(result => {
-          go.run(result.instance);
-        })
-        .catch(err => {
-          console.error('Failed to load WASM:', err);
-        });
-    } else {
-      console.error('Go WASM runtime (wasm_exec.js) not loaded.');
-    }
-  </script>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>CS2 Demo Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="/wasm_exec.js"></script>
+    <script>
+      if (typeof Go === 'function') {
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch('/main.wasm'), go.importObject)
+          .then(result => {
+            go.run(result.instance);
+          })
+          .catch(err => {
+            console.error('Failed to load WASM:', err);
+          });
+      } else {
+        console.error('Go WASM runtime (wasm_exec.js) not loaded.');
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-KJlSkLbm.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-fp6vNGIz.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
 </html>

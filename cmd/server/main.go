@@ -3,13 +3,12 @@ package main
 import (
 	"log"
 	"net/http"
-
-	"github.com/bugkingzht/cs-demobox/src/community/utils"
 )
 
 func main() {
 	// Determine the static directory path
-	staticDir := utils.GetStaticDir()
+	// staticDir := utils.GetStaticDir()
+	staticDir := "D:/2DPlayer/cs-demobox/web/static"
 
 	fs := http.FileServer(http.Dir(staticDir))
 	http.Handle("/", fs)
