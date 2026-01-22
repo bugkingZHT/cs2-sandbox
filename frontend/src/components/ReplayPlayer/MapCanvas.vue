@@ -55,8 +55,48 @@ const PROJECTILE_ASSETS: Record<string, string> = {
   'Incendiary': '/utility/incendiary.svg',
   'C4': '/utility/c4.svg'
 };
+import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
+import { useMapConfig } from '@/composables/useMapConfig';
+import { EQUIPMENT_ID_MAP } from '@/config/equipment';
+
+// 根据传入的地图名称动态获取配置
+const currentMapName = computed(() => {
+  const name = props.mapName || DEFAULT_MAP;
+  console.log('[MapCanvas] 当前地图名称:', name);
+  return name;
+});
+const currentMapConfig = computed(() => {
+  const config = MAP_CONFIGS[currentMapName.value] || MAP_CONFIGS[DEFAULT_MAP];
+  console.log('[MapCanvas] 当前地图配置:', config.name);
+  return config;
+});
+const mapTextureUrl = computed(() => currentMapConfig.value.imageUrl);
+
+// 投掷物名称映射 (注意这里统一使用大写键名以便于逻辑匹配)
+const PROJECTILE_NAME_KEY: Record<string, string> = {
+  'hegrenade': 'HE',
+  'flash': 'Flash',
+  'smoke': 'Smoke',
+  'molotov': 'Molotov',
+  'incendiary': 'Incendiary',
+  'c4': 'C4'
+};
+
+// 投掷物类型到SVG文件的映射
+const PROJECTILE_ASSETS: Record<string, string> = {
+  'HE': '/utility/hegrenade.svg',
+  'Flash': '/utility/flash.svg',
+  'Smoke': '/utility/smoke.svg',
+  'Molotov': '/utility/molotov.svg',
+  'Incendiary': '/utility/incendiary.svg',
+  'C4': '/utility/c4.svg'
+};
 
 const PLAYER_STYLE = {
+  aliveRadius:15,
+  deadRadius: 7,
+  dirLength: 20,
+  nameSize: 20
   aliveRadius:15,
   deadRadius: 7,
   dirLength: 20,
@@ -67,6 +107,8 @@ const props = defineProps<{
   frames: Frame[] | undefined;
   bounds: WorldBounds | null | undefined;
   currentFrameIndex: number;
+  isPlaying?: boolean;
+  mapName?: string;
   isPlaying?: boolean;
   mapName?: string;
 }>();
@@ -106,8 +148,16 @@ const worldToMap = (x: number, y: number) => {
   const X_MAX = mapRange.value.xMax;
   const Y_MIN = mapRange.value.yMin;
   const Y_MAX = mapRange.value.yMax;
+  // 使用当前地图的配置
+  const { mapRange } = useMapConfig(currentMapName.value);
+  const X_MIN = mapRange.value.xMin;
+  const X_MAX = mapRange.value.xMax;
+  const Y_MIN = mapRange.value.yMin;
+  const Y_MAX = mapRange.value.yMax;
   
   
+  const xRange = mapRange.value.xRange;
+  const yRange = mapRange.value.yRange;
   const xRange = mapRange.value.xRange;
   const yRange = mapRange.value.yRange;
   
@@ -119,6 +169,7 @@ const worldToMap = (x: number, y: number) => {
   const normalizedX = (x - (X_MIN + X_MAX) / 2) / xRange; 
   const normalizedY = (y - (Y_MIN + Y_MAX) / 2) / yRange;
   
+  const pixelX = normalizedX * mapWidth;
   const pixelX = normalizedX * mapWidth;
   const pixelY = -normalizedY * mapHeight;
   
@@ -144,8 +195,11 @@ const ensureApp = async () => {
   app.stage.addChild(worldContainer);
 
   const texture = await Assets.load(mapTextureUrl.value);
+  const texture = await Assets.load(mapTextureUrl.value);
   mapSprite = new Sprite(texture);
   mapSprite.anchor.set(0.5);
+  mapSprite.width = currentMapConfig.value.width;
+  mapSprite.height = currentMapConfig.value.height;
   mapSprite.width = currentMapConfig.value.width;
   mapSprite.height = currentMapConfig.value.height;
 
@@ -156,9 +210,13 @@ const ensureApp = async () => {
   /* 移除中心红点 */
   /*
   const centerMarker = new Graphics();
+  /* 移除中心红点 */
+  /*
+  const centerMarker = new Graphics();
   centerMarker.circle(0, 0, 10).fill(0xff0000);
   centerMarker.stroke({ width: 2, color: 0xffffff });
   worldContainer.addChild(centerMarker);
+  */
   */
 
   playerLayer = new Container();
@@ -260,6 +318,14 @@ const onPlayerPointerOver = (e: any, p: PlayerState) => {
   hoverScreenPos.y = global.y;
 };
 
+const onPlayerPointerOver = (e: any, p: PlayerState) => {
+  if (props.isPlaying) return;
+  hoverPlayer.value = p;
+  const global = e.global;
+  hoverScreenPos.x = global.x;
+  hoverScreenPos.y = global.y;
+};
+
 const drawPlayersForFrame = () => {
   if (!playerLayer || !mapSprite || !props.frames) return;
   const frame = props.frames[props.currentFrameIndex];
@@ -273,6 +339,7 @@ const drawPlayersForFrame = () => {
   clearPlayers();
   clearProjectiles();
 
+  if (frame.players) {
   if (frame.players) {
     for (const p of frame.players) {
       const g = new Graphics();
@@ -293,10 +360,18 @@ const drawPlayersForFrame = () => {
         const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triWidth;
         const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triWidth;
         g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color, alpha: 0.9 });
+        g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color, alpha: 0.9 });
       }
 
       g.circle(0, 0, radius).fill(p.alive ? color : 0x888888);
       g.circle(0, 0, radius).stroke({ width: 3, color: 0xffffff, alpha: 0.6 });
+      
+      if (!p.alive) {
+        const crossSize = radius * 0.7;
+        g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);
+        g.moveTo(crossSize, -crossSize).lineTo(-crossSize, crossSize);
+        g.stroke({ width: 3, color: 0xffffff });
+      }
       
       if (!p.alive) {
         const crossSize = radius * 0.7;
@@ -311,12 +386,17 @@ const drawPlayersForFrame = () => {
       g.cursor = 'pointer';
 
       (g as any).on('pointerover', (e: any) => onPlayerPointerOver(e, p));
+      (g as any).on('pointerover', (e: any) => onPlayerPointerOver(e, p));
       (g as any).on('pointermove', (e: any) => {
+        if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
+        hoverScreenPos.x = e.global.x;
+        hoverScreenPos.y = e.global.y;
         if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
         hoverScreenPos.x = e.global.x;
         hoverScreenPos.y = e.global.y;
       });
       (g as any).on('pointerout', () => {
+        if (hoverPlayer.value && hoverPlayer.value.id === p.id) hoverPlayer.value = null;
         if (hoverPlayer.value && hoverPlayer.value.id === p.id) hoverPlayer.value = null;
       });
 
@@ -336,10 +416,12 @@ const drawPlayersForFrame = () => {
 
   if (frame.projectiles) {
     drawProjectilesForFrame(frame.projectiles, frame.players || []);
+    drawProjectilesForFrame(frame.projectiles, frame.players || []);
   }
 };
 
 
+const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: PlayerState[]) => {
 const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: PlayerState[]) => {
   if (!projectileLayer || !mapSprite) return;
 
@@ -410,8 +492,39 @@ const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: 
 watch(
   () => [props.currentFrameIndex, props.frames],
   async () => {
+  async () => {
     drawPlayersForFrame();
   },
+);
+
+// 监听地图名称变化，重新加载地图
+watch(
+  () => props.mapName,
+  async (newMapName, oldMapName) => {
+    console.log('[MapCanvas] 监听到 mapName 变化:', { oldMapName, newMapName });
+    if (newMapName !== oldMapName && app && worldContainer) {
+      console.log('[MapCanvas] 地图变化，重新加载:', oldMapName, '->', newMapName);
+      // 清除旧的地图精灵
+      if (mapSprite) {
+        worldContainer.removeChild(mapSprite);
+      }
+      // 加载新地图
+      const texture = await Assets.load(mapTextureUrl.value);
+      mapSprite = new Sprite(texture);
+      mapSprite.anchor.set(0.5);
+      mapSprite.width = currentMapConfig.value.width;
+      mapSprite.height = currentMapConfig.value.height;
+      mapSprite.position.set(0, 0);
+      // 将地图精灵插入到最底层
+      worldContainer.addChildAt(mapSprite, 0);
+      // 重新居中
+      centerWorld();
+      // 重绘玩家
+      drawPlayersForFrame();
+      console.log('[MapCanvas] 地图重新加载完成');
+    }
+  },
+  { immediate: false }
 );
 
 // 监听地图名称变化，重新加载地图
