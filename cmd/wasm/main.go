@@ -9,7 +9,7 @@ import (
 	"log"
 	"syscall/js"
 
-	"github.com/bugkingzht/cs-demobox/src/engine"
+	"github.com/bugkingzht/cs-demobox/pkg/engine"
 )
 
 func main() {
