@@ -1,5 +1,6 @@
 # Binaries for programs and plugins
-web/static/
+web/static/*
+!web/static/.gitkeep
 node_modules/
 *.exe
 *.exe~
@@ -58,4 +59,4 @@ __debug_bin
 
 # Test files
 test/manifests/*
-!test/manifests/.placeholder
+!test/manifests/.gitkeep

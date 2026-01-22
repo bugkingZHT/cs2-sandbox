@@ -33,10 +33,23 @@ build-server: ## Build server binary
 	go build -o bin/$(BINARY_NAME) ./cmd/server
 	@echo "$(GREEN)✓ Server built: bin/$(BINARY_NAME)$(NC)"
 
-build-frontend: ## Build Vue frontend
+build-frontend: frontend-install ## Build Vue frontend
 	@echo "$(YELLOW)Building Vue frontend...$(NC)"
-	cd $(FRONTEND_DIR) && npm install && npm run build
+	cd $(FRONTEND_DIR) && npm run build
 	@echo "$(GREEN)✓ Frontend built to $(STATIC_DIR)/$(NC)"
+
+frontend-install: ## Install frontend dependencies
+	@echo "$(YELLOW)Installing frontend dependencies...$(NC)"
+	cd $(FRONTEND_DIR) && npm install
+
+frontend-dev: ## Run frontend in development mode
+	@echo "$(BLUE)Starting frontend dev server...$(NC)"
+	cd $(FRONTEND_DIR) && npm run dev
+
+dev: build-wasm-dev ## Run everything in development mode
+	@echo "$(BLUE)Starting development environment...$(NC)"
+	@echo "$(YELLOW)Note: This runs the Go server. You should run 'make frontend-dev' in another terminal for HMR.$(NC)"
+	go run ./cmd/server
 
 run-server: build-server ## Build and run the server
 	@echo "$(BLUE)Starting server...$(NC)"
