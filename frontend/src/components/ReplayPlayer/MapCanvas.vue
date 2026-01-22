@@ -11,6 +11,7 @@
     <div class="meta">
       <span>X: {{ hoverPlayer.x.toFixed(1) }}</span>
       <span>Y: {{ hoverPlayer.y.toFixed(1) }}</span>
+      <span>Yaw: {{ hoverPlayer.yaw.toFixed(1) }}°</span>
     </div>
   </div>
 </template>
@@ -323,7 +324,7 @@ const drawPlayersForFrame = () => {
       const color = p.team === 3 ? 0x3b82f6 : 0xf97316;
       const radius = p.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
       const mapPos = worldToMap(p.x, p.y);
-      const angleRad = (p.yaw * Math.PI) / 180;
+      const angleRad = (p.yaw * Math.PI) / -180;
       
       if (p.alive) {
         const triLen = 15;
