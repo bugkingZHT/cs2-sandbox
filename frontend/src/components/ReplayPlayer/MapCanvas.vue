@@ -366,7 +366,9 @@ const drawPlayersForFrame = () => {
   clearProjectiles();
 
   if (frame.players) {
-    for (const p of frame.players) {
+    // 按 player id 排序叠放，确保重叠时顺序一致，避免频闪
+    const sortedPlayers = [...frame.players].sort((a, b) => a.id - b.id);
+    for (const p of sortedPlayers) {
       const g = new Graphics();
       const color = p.team === 3 ? 0x3b82f6 : 0xf97316;
       const radius = p.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;

@@ -27,7 +27,7 @@
       </div>
 
       <div class="timeline-range">
-        <div class="custom-timeline" @click="onTimelineClick">
+        <div class="custom-timeline" @mousedown="onTimelineMouseDown">
           <div class="timeline-track">
             <!-- Round markers -->
             <div
@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onBeforeUnmount } from 'vue';
 import { VideoPlay, VideoPause } from '@element-plus/icons-vue';
 
 const props = defineProps<{
@@ -134,7 +134,37 @@ const onSliderInput = (val: number | number[]) => {
   emit('seek-seconds', val as number);
 };
 
-// 新增时间轴点击事件处理
+const isDragging = ref(false);
+
+const handleTimelineInteraction = (clientX: number, timelineElement: HTMLElement) => {
+  if (!timelineElement) return;
+  const rect = timelineElement.getBoundingClientRect();
+  const position = Math.max(0, Math.min(rect.width, clientX - rect.left));
+  const clickedTimeMs = (position / rect.width) * props.totalTimeMs;
+  emit('seek-seconds', clickedTimeMs / 1000);
+};
+
+const onTimelineMouseDown = (event: MouseEvent) => {
+  const timelineElement = event.currentTarget as HTMLElement;
+  isDragging.value = true;
+  handleTimelineInteraction(event.clientX, timelineElement);
+  
+  const onMouseMove = (moveEvent: MouseEvent) => {
+    if (isDragging.value) {
+      handleTimelineInteraction(moveEvent.clientX, timelineElement);
+    }
+  };
+  
+  const onMouseUp = () => {
+    isDragging.value = false;
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  };
+  
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+};
+
 // 简化版时间轴点击事件处理
 const onTimelineClick = (event: MouseEvent) => {
   const timelineElement = event.currentTarget as HTMLElement;
@@ -290,7 +320,6 @@ const formatMs = (msOrSec: number) => {
   height: 100%;
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
   border-radius: 2px;
-  transition: width 0.1s ease;
 }
 
 .timeline-meta {
