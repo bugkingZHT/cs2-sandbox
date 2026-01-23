@@ -151,6 +151,11 @@
         :total-time-ms="totalTimeMs"
         :playback-speed="playbackSpeed"
         :frames="safeFrames"
+        :round-frames="currentRoundFrames"
+        :round-start-time-ms="roundStartTimeMs"
+        :round-duration-ms="roundDurationMs"
+        :score-c-t="replay?.scoreCT || 0"
+        :score-t="replay?.scoreT || 0"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -214,6 +219,29 @@ const teamTPlayers = computed<PlayerState[]>(() => {
     .slice()
     .sort((a, b) => a.id - b.id);
 });
+
+// --- 新增：当前回合数据计算 ---
+const currentRound = computed(() => {
+  if (!safeFrames.value.length) return 0;
+  return safeFrames.value[currentFrameIndex.value]?.round || 0;
+});
+
+const currentRoundFrames = computed(() => {
+  if (!safeFrames.value.length || currentRound.value === 0) return [];
+  return safeFrames.value.filter(f => f.round === currentRound.value);
+});
+
+const roundStartTimeMs = computed(() => {
+  if (!currentRoundFrames.value.length) return 0;
+  return currentRoundFrames.value[0].timeMs;
+});
+
+const roundDurationMs = computed(() => {
+  if (!currentRoundFrames.value.length) return 0;
+  const lastFrame = currentRoundFrames.value[currentRoundFrames.value.length - 1];
+  return lastFrame.timeMs - roundStartTimeMs.value;
+});
+// ----------------------------
 
 const replayTitle = computed(() => replay.value?.mapName ?? '未知地图');
 
@@ -412,8 +440,10 @@ onBeforeUnmount(() => {
 .viewer-layout {
   display: flex;
   flex-direction: column;
+  flex: 1;
   height: 100%;
   width: 100%;
+  min-height: 0;
 }
 
 .map-panel {
@@ -572,7 +602,7 @@ onBeforeUnmount(() => {
 }
 
 .timeline-panel {
-  height: 100px;
+  height: 160px;
   flex-shrink: 0;
   padding: 12px;
   border-top: 1px solid #333;
@@ -636,7 +666,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.05), transparent);
+  background: #000000;
 }
 
 .empty-state-content {

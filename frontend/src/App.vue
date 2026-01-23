@@ -24,10 +24,6 @@
     </header>
 
     <main class="app-main">
-      <div class="toolbar">
-        <div>拖拽地图进行平移，滚轮缩放；底部时间轴控制回放进度。</div>
-      </div>
-
       <ReplayPlayer />
     </main>
 
@@ -88,7 +84,7 @@ const onFileChange = async (e: Event) => {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background-color: #111;
+  background-color: #000000;
   color: #eee;
 }
 

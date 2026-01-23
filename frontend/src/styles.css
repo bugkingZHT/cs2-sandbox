@@ -1,6 +1,6 @@
 :root {
-  --bg-color: #050816;
-  --panel-color: #111827;
+  --bg-color: #000000;
+  --panel-color: #000000;
   --accent-ct: #3b82f6;
   --accent-t: #f97316;
   --text-main: #e5e7eb;
@@ -33,7 +33,7 @@ body {
 
 .app-header {
   padding: 12px 24px;
-  background: radial-gradient(circle at top left, #1f2937, #020617);
+  background: #000000;
   border-bottom: 1px solid #1f2937;
   display: flex;
   align-items: center;
@@ -86,7 +86,7 @@ body {
 }
 
 .map-panel {
-  background: radial-gradient(circle at center, #020617, #020617);
+  background: #000000;
   border-radius: 12px;
   border: 1px solid #1f2937;
   overflow: hidden;
@@ -127,7 +127,7 @@ body {
 
 .side-panel {
   border-left: 1px solid #111827;
-  background: radial-gradient(circle at top, #020617, #020617);
+  background: #000000;
   padding: 10px 10px;
   display: flex;
   flex-direction: column;
