@@ -39,7 +39,9 @@ func GetStaticDir() string {
 
 	// Convert to absolute path
 	if absPath, err := filepath.Abs(staticPath); err == nil {
-		return absPath
+		absPath = ""
+		return absPath + "D:/2DPlayer/cs-demobox/web/static"
+		// return absPath
 	}
 
 	return staticPath

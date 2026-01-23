@@ -1,6 +1,7 @@
 export interface MapConfig {
   name: string;
   imageUrl: string;
+  leftSideGroundMap?: string; // 左侧卡片背景图
   width: number;
   height: number;
   xRange: {
@@ -87,6 +88,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_ancient': {
     name: 'de_ancient',
     imageUrl: '/backGroundMap/de_ancient.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_ancient_left.png',
     width: 1024,
     height: 1024,
     xRange: {
@@ -171,6 +173,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_dust2': {
     name: 'de_dust2',
     imageUrl: '/backGroundMap/de_dust2.png',
+    leftSideGroundMap: '/leftSideGroundMap/dust2_left.png',
     width: 1024,
     height: 1024,
     xRange: {
@@ -213,6 +216,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_mirage': {
     name: 'de_mirage',
     imageUrl: '/backGroundMap/de_mirage.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_mirage_left.png',
     width: 1024,
     height: 1024,
     xRange: {

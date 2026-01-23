@@ -68,10 +68,10 @@ const PROJECTILE_ASSETS: Record<string, string> = {
 };
 
 const PLAYER_STYLE = {
-  aliveRadius: 15,
-  deadRadius: 7,
-  dirLength: 20,
-  nameSize: 20
+  aliveRadius: 13,
+  deadRadius: 5,
+  dirLength: 15,
+  nameSize: 15
 };
 
 const host = ref<HTMLDivElement | null>(null);
@@ -376,6 +376,7 @@ const drawPlayersForFrame = () => {
       const angleRad = (p.yaw * Math.PI) / -180;
       
       if (p.alive) {
+        // 绘制方向三角形
         const triLen = 15;
         const triWidth = 10;
         const tipX = Math.cos(angleRad) * (radius + triLen);
@@ -386,17 +387,23 @@ const drawPlayersForFrame = () => {
         const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * triWidth;
         const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triWidth;
         const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triWidth;
-        g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color, alpha: 0.9 });
+        
+        // 三角形填充
+        g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color, alpha: 0.95 });
       }
 
+      // 绘制人物圆圈主体
       g.circle(0, 0, radius).fill(p.alive ? color : 0x888888);
-      g.circle(0, 0, radius).stroke({ width: 3, color: 0xffffff, alpha: 0.6 });
+      
+      // 深色边框增强对比度
+      g.circle(0, 0, radius)
+        .stroke({ width: 1.5, color: 0x000000, alpha: 0.5 });
       
       if (!p.alive) {
         const crossSize = radius * 0.7;
         g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);
         g.moveTo(crossSize, -crossSize).lineTo(-crossSize, crossSize);
-        g.stroke({ width: 3, color: 0xffffff });
+        g.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
       }
 
       g.x = mapPos.x;
@@ -434,9 +441,30 @@ const drawPlayersForFrame = () => {
 };
 
 watch(
-  () => [props.currentFrameIndex, props.frames],
+  () => props.currentFrameIndex,
   () => {
-    drawPlayersForFrame();
+    // 只在帧索引变化时重绘，不监听frames变化
+    if (props.frames && props.frames.length > 0) {
+      drawPlayersForFrame();
+    }
+  },
+);
+
+// 单独监听frames变化，但使用防抖
+let framesChangeTimer: number | null = null;
+watch(
+  () => props.frames,
+  (newFrames) => {
+    if (framesChangeTimer) {
+      clearTimeout(framesChangeTimer);
+    }
+    // 防抖：延迟10ms执行，避免频繁重绘
+    framesChangeTimer = setTimeout(() => {
+      if (newFrames && newFrames.length > 0) {
+        drawPlayersForFrame();
+      }
+      framesChangeTimer = null;
+    }, 10) as unknown as number;
   },
 );
 
@@ -444,9 +472,13 @@ watch(
   () => props.mapName,
   async (newMapName, oldMapName) => {
     if (newMapName !== oldMapName && app && worldContainer) {
+      console.log('[MapCanvas] 地图切换:', oldMapName, '->', newMapName);
+      
       if (mapSprite) {
         worldContainer.removeChild(mapSprite);
       }
+      
+      // 使用缓存加载纹理，Assets.load 会自动缓存
       const texture = await Assets.load(mapTextureUrl.value);
       mapSprite = new Sprite(texture);
       mapSprite.anchor.set(0.5);
@@ -454,8 +486,12 @@ watch(
       mapSprite.height = currentMapConfig.value.height;
       mapSprite.position.set(0, 0);
       worldContainer.addChildAt(mapSprite, 0);
-      centerWorld();
-      drawPlayersForFrame();
+      
+      // 使用 requestAnimationFrame 延迟重绘，让地图先显示
+      requestAnimationFrame(() => {
+        centerWorld();
+        drawPlayersForFrame();
+      });
     }
   },
   { immediate: false }
@@ -470,6 +506,13 @@ onBeforeUnmount(() => {
   if (host.value) {
     host.value.removeEventListener('wheel', onWheel);
   }
+  
+  // 清理定时器
+  if (framesChangeTimer) {
+    clearTimeout(framesChangeTimer);
+    framesChangeTimer = null;
+  }
+  
   if (app) {
     app.destroy(true, { children: true });
     app = null;

@@ -140,7 +140,7 @@ function createReplayData() {
   const loadReplayById = async (id: string) => {
     console.log('[LoadReplayById] 开始加载回放，ID:', id);
     try {
-      loading.value = true;
+      // 不设置 loading 状态，避免触发 UI 重渲染
       const data = await loadReplayFromDB(id);
       console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
       if (data) {
@@ -153,9 +153,6 @@ function createReplayData() {
       }
     } catch (e) {
       console.error('Failed to load replay', e);
-    } finally {
-      loading.value = false;
-      console.log('[LoadReplayById] 加载完成，loading设置为false');
     }
   };
 
@@ -206,18 +203,16 @@ function createReplayData() {
     console.log('[SetReplayData] 开始设置回放数据');
     console.log('[SetReplayData] 数据:', { id: data.id, mapName: data.mapName, frameCount: data.frames?.length, teamCT: data.teamCT, teamT: data.teamT });
     
-    // 强制创建新对象以确保响应式更新
-    replay.value = { ...data };
-    console.log('[SetReplayData] replay.value已更新');
+    // 直接同步赋值，不使用 requestAnimationFrame，避免延迟
+    replay.value = data;
+    frames.value = data.frames ?? [];
+    console.log('[SetReplayData] 数据设置完成，帧数:', frames.value.length);
     
-    // 强制创建新数组以确保响应式更新
-    frames.value = [...data.frames ?? []];
-    console.log('[SetReplayData] 设置frames完成，帧数:', frames.value.length);
-    
-    bounds.value = estimateBounds(frames.value);
-    console.log('[SetReplayData] 估算边界完成:', bounds.value);
-    
-    console.log('[SetReplayData] 数据设置完成，当前 replay.value.mapName:', replay.value?.mapName);
+    // bounds 计算延后到空闲时间
+    requestIdleCallback(() => {
+      bounds.value = estimateBounds(frames.value);
+      console.log('[SetReplayData] 估算边界完成:', bounds.value);
+    }, { timeout: 100 });
   };
 
   const updateParsingStep = (index: number, message?: string) => {

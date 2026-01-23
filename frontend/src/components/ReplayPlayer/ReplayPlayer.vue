@@ -17,6 +17,15 @@
       </header>
 
      <div class="map-main">
+        <!-- Demo抽屉导航 -->
+        <DemoDrawer 
+          ref="demoDrawerRef"
+          :demo-list="replayList || []"
+          :current-demo-id="currentDemoId"
+          @select-demo="onSelectDemo"
+          @delete-demo="onDeleteDemo"
+        />
+        
         <!-- 空状态提示 -->
         <div v-if="!replay || !frames || frames.length === 0" class="empty-state">
           <div class="empty-state-content">
@@ -51,14 +60,26 @@
                     ${{ p.money }}
                   </span>
                 </div>
-                <!-- 血条 -->
-                <div v-if="p.health != null" class="hp-bar">
-                  <div
-                    class="hp-bar-fill ct"
-                    :style="{ width: hpPercentage(p.health) + '%' }"
-                  ></div>
+                <!-- 血条和血量显示 -->
+                <div v-if="p.health != null && p.health > 0" class="hp-bar-container">
+                  <div class="hp-bar">
+                    <div
+                      class="hp-bar-fill ct"
+                      :style="{ width: hpPercentage(p.health) + '%' }"
+                    ></div>
+                  </div>
+                  <span class="hp-text">{{ Math.round(p.health) }}</span>
                 </div>
-                <div v-else class="hp-bar hp-bar-empty">无血量数据</div>
+                <div v-else-if="p.health === 0 || !p.alive" class="hp-bar-container dead">
+                  <div class="hp-bar hp-bar-empty">
+                    <span class="dead-text">阵亡</span>
+                  </div>
+                </div>
+                <div v-else class="hp-bar-container">
+                  <div class="hp-bar hp-bar-empty">
+                    <span class="no-data-text">-</span>
+                  </div>
+                </div>
                 <!-- 武器和道具 -->
                 <div class="player-equipment">
                   <div v-if="p.activeWeapon" class="weapon-icon main-weapon">
@@ -102,14 +123,26 @@
                     ${{ p.money }}
                   </span>
                 </div>
-                <!-- 血条 -->
-                <div v-if="p.health != null" class="hp-bar">
-                  <div
-                    class="hp-bar-fill t"
-                    :style="{ width: hpPercentage(p.health) + '%' }"
-                  ></div>
+                <!-- 血条和血量显示 -->
+                <div v-if="p.health != null && p.health > 0" class="hp-bar-container">
+                  <div class="hp-bar">
+                    <div
+                      class="hp-bar-fill t"
+                      :style="{ width: hpPercentage(p.health) + '%' }"
+                    ></div>
+                  </div>
+                  <span class="hp-text">{{ Math.round(p.health) }}</span>
                 </div>
-                <div v-else class="hp-bar hp-bar-empty">无血量数据</div>
+                <div v-else-if="p.health === 0 || !p.alive" class="hp-bar-container dead">
+                  <div class="hp-bar hp-bar-empty">
+                    <span class="dead-text">阵亡</span>
+                  </div>
+                </div>
+                <div v-else class="hp-bar-container">
+                  <div class="hp-bar hp-bar-empty">
+                    <span class="no-data-text">-</span>
+                  </div>
+                </div>
                 <!-- 武器和道具 -->
                 <div class="player-equipment">
                   <div v-if="p.activeWeapon" class="weapon-icon main-weapon">
@@ -159,6 +192,7 @@
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
+        @open-demo-drawer="openDemoDrawer"
       />
     </section>
   </div>
@@ -168,11 +202,39 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
+import DemoDrawer from './DemoDrawer.vue';
 import { useReplayData } from '@/composables/useReplayData';
-import type { Frame, PlayerState } from '@/types/replay';
+import type { Frame, PlayerState, ReplayData } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 
-const { loading, error, replay, frames, bounds } = useReplayData();
+const { loading, error, replay, frames, bounds, replayList, loadReplayById, deleteReplayById } = useReplayData();
+
+// DemoDrawer ref
+const demoDrawerRef = ref<InstanceType<typeof DemoDrawer> | null>(null);
+
+// 打开Demo列表
+const openDemoDrawer = () => {
+  demoDrawerRef.value?.openDrawer();
+};
+
+// 当前Demo ID
+const currentDemoId = computed(() => replay.value?.id);
+
+// 选择Demo
+const onSelectDemo = async (demo: ReplayData) => {
+  console.log('[ReplayPlayer] 选择Demo:', demo.id, demo.mapName);
+  if (demo.id && demo.id !== currentDemoId.value) {
+    await loadReplayById(demo.id);
+  }
+};
+
+// 删除Demo
+const onDeleteDemo = async (demo: ReplayData) => {
+  console.log('[ReplayPlayer] 删除Demo:', demo.id, demo.mapName);
+  if (demo.id) {
+    await deleteReplayById(demo.id);
+  }
+};
 
 // 监听 replay 和 frames 的变化
 watch(
@@ -344,8 +406,8 @@ const onSeekSeconds = (sec: number) => {
   lastTimestamp = 0;
 };
 
-const hpPercentage = (health: number) => {
-  if (Number.isNaN(health)) return 0;
+const hpPercentage = (health: number | null | undefined) => {
+  if (health == null || Number.isNaN(health)) return 0;
   return Math.max(0, Math.min(100, health));
 };
 
@@ -465,7 +527,7 @@ onBeforeUnmount(() => {
 }
 
 .side-panel {
-  width: 240px;
+  width: 260px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -487,9 +549,9 @@ onBeforeUnmount(() => {
 }
 
 .team-panel-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: bold;
-  padding: 4px;
+  padding: 5px;
   background: rgba(255, 255, 255, 0.05);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   text-align: center;
@@ -513,8 +575,8 @@ onBeforeUnmount(() => {
 }
 
 .player-row {
-  height: 46px;
-  padding: 4px 6px;
+  height: 50px;
+  padding: 5px 7px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.03);
   margin-bottom: 2px;
@@ -522,15 +584,16 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 2px;
 }
 
 .player-row-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
-  margin-bottom: 2px;
-  line-height: 1.2;
+  font-size: 12px;
+  margin-bottom: 1px;
+  line-height: 1.3;
 }
 
 .player-name {
@@ -538,26 +601,38 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
+  max-width: 110px;
+  font-size: 12px;
 }
 
 .player-money {
   color: #4ade80;
   font-weight: bold;
-  font-size: 10px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* 血条容器 */
+.hp-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 1px;
 }
 
 .hp-bar {
-  height: 3px;
+  flex: 1;
+  height: 4px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 2px;
+  position: relative;
 }
 
 .hp-bar-fill {
   height: 100%;
   transition: width 0.3s ease-out;
+  min-width: 2px;
 }
 
 .hp-bar-fill.ct {
@@ -568,6 +643,41 @@ onBeforeUnmount(() => {
 .hp-bar-fill.t {
   background: linear-gradient(90deg, #f97316, #fb923c);
   box-shadow: 0 0 5px rgba(249, 115, 22, 0.3);
+}
+
+/* 血量数值 */
+.hp-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  min-width: 26px;
+  text-align: right;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  flex-shrink: 0;
+}
+
+/* 阵亡和无数据状态 */
+.hp-bar-container.dead .hp-bar {
+  background: rgba(255, 0, 0, 0.15);
+}
+
+.hp-bar-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.dead-text {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.no-data-text {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
 }
 
 .player-equipment {

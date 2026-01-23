@@ -3,7 +3,7 @@
     <!-- 一、上方：回合选择进度条 -->
     <div class="round-selection-module">
       <!-- 左侧按钮设计 -->
-      <button class="layer-control-btn">
+      <button class="layer-control-btn" @click="$emit('open-demo-drawer')" title="打开Demo列表">
         <svg class="icon-layer" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -111,6 +111,7 @@ const emit = defineEmits<{
   (e: 'seek-seconds', value: number): void;
   (e: 'toggle-play'): void;
   (e: 'update-speed', value: number): void;
+  (e: 'open-demo-drawer'): void;
 }>();
 
 const isDragging = ref(false);
