@@ -3,6 +3,8 @@ package engine
 import (
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
+
+	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 )
 
 func (b *replayBuilder) registerEventHandlers() {
@@ -11,11 +13,11 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.currentRound++
 		b.bombState = "carried"
 		b.bombSite = ""
-		b.activeSmokes = make(map[int]ProjectileFrame)
-		b.activeDecoys = make(map[int]ProjectileFrame)
-		b.activeFires = make(map[int]ProjectileFrame)
-		b.activeExplosions = make(map[int]ProjectileFrame)
-		b.currentKillEvents = make(map[int]KillEvent)
+		b.activeSmokes = make(map[int]entity.ProjectileFrame)
+		b.activeDecoys = make(map[int]entity.ProjectileFrame)
+		b.activeFires = make(map[int]entity.ProjectileFrame)
+		b.activeExplosions = make(map[int]entity.ProjectileFrame)
+		b.currentKillEvents = make(map[int]entity.KillEvent)
 	})
 
 	// Smoke event handlers
@@ -26,8 +28,8 @@ func (b *replayBuilder) registerEventHandlers() {
 			throwerName = e.Thrower.Name
 			throwerSteamID = e.Thrower.SteamID64
 		}
-		b.activeSmokes[e.GrenadeEntityID] = ProjectileFrame{
-			Type:           common.EqSmoke,
+		b.activeSmokes[e.GrenadeEntityID] = entity.ProjectileFrame{
+			Type:           common.EqSmoke, // Explicitly set equipment type
 			X:              e.Position.X,
 			Y:              e.Position.Y,
 			Z:              e.Position.Z,
@@ -35,6 +37,7 @@ func (b *replayBuilder) registerEventHandlers() {
 			ThrowerSteamID: throwerSteamID,
 			EntityID:       e.GrenadeEntityID,
 			IsExploded:     true,
+			TTL:            entity.GetProjectileConfigByType(common.EqSmoke).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.SmokeExpired) {
@@ -49,8 +52,8 @@ func (b *replayBuilder) registerEventHandlers() {
 			throwerName = e.Thrower.Name
 			throwerSteamID = e.Thrower.SteamID64
 		}
-		b.activeDecoys[e.GrenadeEntityID] = ProjectileFrame{
-			Type:           common.EqDecoy,
+		b.activeDecoys[e.GrenadeEntityID] = entity.ProjectileFrame{
+			Type:           common.EqDecoy, // Explicitly set equipment type
 			X:              e.Position.X,
 			Y:              e.Position.Y,
 			Z:              e.Position.Z,
@@ -58,6 +61,7 @@ func (b *replayBuilder) registerEventHandlers() {
 			ThrowerSteamID: throwerSteamID,
 			EntityID:       e.GrenadeEntityID,
 			IsExploded:     true,
+			TTL:            entity.GetProjectileConfigByType(common.EqDecoy).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.DecoyExpired) {
@@ -72,8 +76,8 @@ func (b *replayBuilder) registerEventHandlers() {
 			throwerName = thrower.Name
 			throwerSteamID = thrower.SteamID64
 		}
-		b.activeFires[e.Inferno.Entity.ID()] = ProjectileFrame{
-			Type:           common.EqMolotov,
+		b.activeFires[e.Inferno.Entity.ID()] = entity.ProjectileFrame{
+			Type:           common.EqMolotov, // Explicitly set equipment type
 			X:              e.Inferno.Entity.Position().X,
 			Y:              e.Inferno.Entity.Position().Y,
 			Z:              e.Inferno.Entity.Position().Z,
@@ -81,6 +85,7 @@ func (b *replayBuilder) registerEventHandlers() {
 			ThrowerSteamID: throwerSteamID,
 			EntityID:       e.Inferno.Entity.ID(),
 			IsExploded:     true,
+			TTL:            entity.GetProjectileConfigByType(common.EqMolotov).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.InfernoExpired) {
@@ -95,8 +100,8 @@ func (b *replayBuilder) registerEventHandlers() {
 			throwerName = e.Thrower.Name
 			throwerSteamID = e.Thrower.SteamID64
 		}
-		b.activeExplosions[e.GrenadeEntityID] = ProjectileFrame{
-			Type:           common.EqHE,
+		b.activeExplosions[e.GrenadeEntityID] = entity.ProjectileFrame{
+			Type:           common.EqHE, // Explicitly set equipment type
 			X:              e.Position.X,
 			Y:              e.Position.Y,
 			Z:              e.Position.Z,
@@ -104,6 +109,7 @@ func (b *replayBuilder) registerEventHandlers() {
 			ThrowerSteamID: throwerSteamID,
 			EntityID:       e.GrenadeEntityID,
 			IsExploded:     true,
+			TTL:            entity.GetProjectileConfigByType(common.EqHE).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.FlashExplode) {
@@ -113,8 +119,8 @@ func (b *replayBuilder) registerEventHandlers() {
 			throwerName = e.Thrower.Name
 			throwerSteamID = e.Thrower.SteamID64
 		}
-		b.activeExplosions[e.GrenadeEntityID] = ProjectileFrame{
-			Type:           common.EqFlash,
+		b.activeExplosions[e.GrenadeEntityID] = entity.ProjectileFrame{
+			Type:           common.EqFlash, // Explicitly set equipment type
 			X:              e.Position.X,
 			Y:              e.Position.Y,
 			Z:              e.Position.Z,
@@ -122,6 +128,7 @@ func (b *replayBuilder) registerEventHandlers() {
 			ThrowerSteamID: throwerSteamID,
 			EntityID:       e.GrenadeEntityID,
 			IsExploded:     true,
+			TTL:            entity.GetProjectileConfigByType(common.EqFlash).DurationInMs,
 		}
 	})
 
@@ -145,12 +152,12 @@ func (b *replayBuilder) registerEventHandlers() {
 			assistantID = e.Assister.UserID
 		}
 		weaponID := common.EqUnknown
-		if e.Weapon != nil {
+		if e.Weapon != nil && e.Weapon.Type != common.EqUnknown {
 			weaponID = e.Weapon.Type
 		}
 
 		if e.Victim != nil {
-			b.currentKillEvents[e.Victim.UserID] = KillEvent{
+			b.currentKillEvents[e.Victim.UserID] = entity.KillEvent{
 				KillerID:    killerID,
 				AssistantID: assistantID,
 				WeaponID:    weaponID,

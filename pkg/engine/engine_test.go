@@ -28,7 +28,7 @@ func TestParseDemoFile(t *testing.T) {
 	}
 
 	// Parse the demo
-	replay, err := BuildReplay(file, onStatus)
+	replay, err := NewDemoEngine(EngineConfig{ResolveFreezeTime: true}).BuildReplay(file, onStatus)
 	if err != nil {
 		t.Fatalf("Failed to parse demo: %v", err)
 	}

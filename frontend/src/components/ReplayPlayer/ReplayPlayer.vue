@@ -2,12 +2,6 @@
   <div class="viewer-layout">
     <section class="map-panel">
       <header class="map-header">
-        <div class="header-left">
-          <span>
-            地图：<strong>{{ replayTitle }}</strong>
-          </span>
-        </div>
-
         <div class="top-players-container">
           <!-- CT 阵营 -->
           <div class="team-horizontal-group ct">

@@ -47,6 +47,7 @@ func parseDemo(this js.Value, args []js.Value) interface{} {
 			}
 		}
 
+		engine := engine.NewDemoEngine(engine.EngineConfig{ResolveFreezeTime: true})
 		replay, err := engine.BuildReplay(bytes.NewReader(buf), onStatus)
 		if err != nil {
 			log.Printf("Parse error: %v\n", err)

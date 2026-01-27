@@ -1,4 +1,4 @@
-package engine
+package entity
 
 import (
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
@@ -108,6 +108,8 @@ type ProjectileFrame struct {
 	Trajectory []Point `json:"trajectory"`
 	// 投掷物是否已经爆炸或生效 (如烟雾已经散开、火堆正在燃烧)
 	IsExploded bool `json:"isExploded"`
+	// Time To Live: 剩余生存时间 (毫秒)，当投掷物爆炸后表示距离消失的毫秒数
+	TTL int64 `json:"ttl,omitempty"`
 }
 
 // 击杀事件信息
@@ -174,6 +176,8 @@ type DroppedEquipment struct {
 type Replay struct {
 	// 包含的所有帧列表
 	Frames []Frame `json:"frames"`
+	// 投掷物渲染配置
+	ProjectileRender map[common.EquipmentType]ProjectileRenderConfig `json:"projectileRenderConfig"`
 	// 地图名称
 	MapName string `json:"mapName"`
 	// CT队伍名称

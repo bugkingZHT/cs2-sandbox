@@ -9,10 +9,25 @@ import (
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 
+	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 	"github.com/bugkingzht/cs-demobox/pkg/engine/reflector"
 )
 
-func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
+type Engine interface {
+	BuildReplay(r io.Reader, onStatus func(string)) (*entity.Replay, error)
+}
+
+type DemoEngine struct {
+	resolveFreezeTime bool
+}
+
+func NewDemoEngine(config EngineConfig) *DemoEngine {
+	return &DemoEngine{
+		resolveFreezeTime: config.ResolveFreezeTime,
+	}
+}
+
+func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Replay, error) {
 	if onStatus != nil {
 		onStatus("Creating demo parser...")
 	}
@@ -23,11 +38,11 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 	b := &replayBuilder{
 		parser:            p,
 		bombState:         "carried",
-		activeSmokes:      make(map[int]ProjectileFrame),
-		activeDecoys:      make(map[int]ProjectileFrame),
-		activeFires:       make(map[int]ProjectileFrame),
-		activeExplosions:  make(map[int]ProjectileFrame),
-		currentKillEvents: make(map[int]KillEvent),
+		activeSmokes:      make(map[int]entity.ProjectileFrame),
+		activeDecoys:      make(map[int]entity.ProjectileFrame),
+		activeFires:       make(map[int]entity.ProjectileFrame),
+		activeExplosions:  make(map[int]entity.ProjectileFrame),
+		currentKillEvents: make(map[int]entity.KillEvent),
 	}
 
 	b.registerEventHandlers()
@@ -37,7 +52,7 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 	}
 	log.Println("Parsing frames...")
 
-	var frames []Frame
+	var frames []entity.Frame
 	frameCount := 0
 	for {
 		more, err := p.ParseNextFrame()
@@ -72,6 +87,9 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 			time.Sleep(time.Millisecond)
 		}
 
+		if len(frames) > 0 {
+			b.prevFrame = &frames[len(frames)-1]
+		}
 		frames = append(frames, b.frameOne())
 	}
 
@@ -93,13 +111,14 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 		}
 	}
 
-	return &Replay{
-		Frames:  frames,
-		MapName: mapName,
-		TeamCT:  gs.TeamCounterTerrorists().ClanName(),
-		TeamT:   gs.TeamTerrorists().ClanName(),
-		ScoreCT: gs.TeamCounterTerrorists().Score(),
-		ScoreT:  gs.TeamTerrorists().Score(),
+	return &entity.Replay{
+		Frames:           frames,
+		ProjectileRender: entity.GetProjectileConfig(),
+		MapName:          mapName,
+		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
+		TeamT:            gs.TeamTerrorists().ClanName(),
+		ScoreCT:          gs.TeamCounterTerrorists().Score(),
+		ScoreT:           gs.TeamTerrorists().Score(),
 	}, nil
 }
 
@@ -108,40 +127,45 @@ type replayBuilder struct {
 	currentRound      int
 	bombState         string
 	bombSite          string
-	activeSmokes      map[int]ProjectileFrame
-	activeDecoys      map[int]ProjectileFrame
-	activeFires       map[int]ProjectileFrame
-	activeExplosions  map[int]ProjectileFrame
-	currentKillEvents map[int]KillEvent
+	activeSmokes      map[int]entity.ProjectileFrame
+	activeDecoys      map[int]entity.ProjectileFrame
+	activeFires       map[int]entity.ProjectileFrame
+	activeExplosions  map[int]entity.ProjectileFrame
+	currentKillEvents map[int]entity.KillEvent
+	prevFrame         *entity.Frame
 }
 
-func (b *replayBuilder) frameOne() Frame {
+func (b *replayBuilder) frameOne() entity.Frame {
+	timeMs := b.parser.CurrentTime().Milliseconds()
+
 	gs := b.parser.GameState()
 	currentTick := gs.IngameTick()
 
-	var players []PlayerFrame
+	var players []entity.PlayerFrame
 	for _, pl := range gs.Participants().Playing() {
 		pos := pl.Position()
 		x, y := pos.X, pos.Y
-		// Extract inventory
+		// Extract inventory - only add valid equipment types
 		var inventory []common.EquipmentType
 		for _, w := range pl.Weapons() {
-			inventory = append(inventory, w.Type)
+			if w.Type != common.EqUnknown {
+				inventory = append(inventory, w.Type)
+			}
 		}
 
 		activeWeapon := common.EqUnknown
-		if aw := pl.ActiveWeapon(); aw != nil {
+		if aw := pl.ActiveWeapon(); aw != nil && aw.Type != common.EqUnknown {
 			activeWeapon = aw.Type
 		}
 
 		buttons := []uint64{}
-		for _, button := range ButtonWatching {
+		for _, button := range entity.ButtonWatching {
 			if pl.IsPressingButton(button) {
 				buttons = append(buttons, uint64(button))
 			}
 		}
 
-		players = append(players, PlayerFrame{
+		players = append(players, entity.PlayerFrame{
 			ID:                  pl.UserID,
 			Name:                pl.Name,
 			Team:                int(pl.Team),
@@ -174,10 +198,10 @@ func (b *replayBuilder) frameOne() Frame {
 	}
 
 	// Extract bomb info
-	var bombFrame *BombFrame
+	var bombFrame *entity.BombFrame
 	if b_ent := gs.Bomb(); b_ent != nil {
 		bPos := b_ent.Position()
-		bombFrame = &BombFrame{
+		bombFrame = &entity.BombFrame{
 			X:         bPos.X,
 			Y:         bPos.Y,
 			Z:         bPos.Z,
@@ -188,16 +212,23 @@ func (b *replayBuilder) frameOne() Frame {
 	}
 
 	// Extract projectiles
-	var projectiles []ProjectileFrame
+	// 轨迹中的投掷物
+	var projectiles []entity.ProjectileFrame
 	for _, proj := range gs.GrenadeProjectiles() {
+		// Add nil checks before accessing entity properties to prevent panics
 		if proj.Entity == nil || proj.WeaponInstance == nil {
 			continue
 		}
 		pos := proj.Position()
 
-		var trajectory []Point
+		var trajectory []entity.Point
 		for _, v := range proj.Trajectory {
-			trajectory = append(trajectory, Point{X: v.Position.X, Y: v.Position.Y, Z: v.Position.Z})
+			// Add safety check for trajectory positions
+			if v.Position.X == 0 && v.Position.Y == 0 && v.Position.Z == 0 {
+				// Skip invalid trajectory points
+				continue
+			}
+			trajectory = append(trajectory, entity.Point{X: v.Position.X, Y: v.Position.Y, Z: v.Position.Z})
 		}
 
 		throwerName := ""
@@ -207,8 +238,15 @@ func (b *replayBuilder) frameOne() Frame {
 			throwerSteamID = proj.Thrower.SteamID64
 		}
 
-		projectiles = append(projectiles, ProjectileFrame{
-			Type:           proj.WeaponInstance.Type,
+		// Ensure we have a valid equipment type
+		equipType := proj.WeaponInstance.Type
+		if equipType == common.EqUnknown {
+			// Skip projectiles with unknown equipment type
+			continue
+		}
+
+		projectiles = append(projectiles, entity.ProjectileFrame{
+			Type:           equipType, // Use the validated equipment type
 			X:              pos.X,
 			Y:              pos.Y,
 			Z:              pos.Z,
@@ -219,47 +257,110 @@ func (b *replayBuilder) frameOne() Frame {
 			IsExploded:     false,
 		})
 	}
+
+	// helper: find projectile in previous frame by entity ID
+	findPrevProjectile := func(id int) (entity.ProjectileFrame, bool) {
+		if b.prevFrame == nil {
+			return entity.ProjectileFrame{}, false
+		}
+		for _, p := range b.prevFrame.Projectiles {
+			if p.EntityID == id {
+				return p, true
+			}
+		}
+		return entity.ProjectileFrame{}, false
+	}
+
+	// Add active projectiles that have exploded to the current frame
+	// 已生效的投掷物
 	for _, smoke := range b.activeSmokes {
-		projectiles = append(projectiles, smoke)
+		prevSmoke, ok := findPrevProjectile(smoke.EntityID)
+		if !ok {
+			continue
+		}
+		var ttl int64 = -1
+		if prevSmoke.IsExploded {
+			ttl = prevSmoke.TTL - int64(timeMs-b.prevFrame.TimeMs)
+		}
+		if ttl > 0 {
+			smoke.TTL = ttl
+			projectiles = append(projectiles, smoke)
+		}
 	}
 	for _, decoy := range b.activeDecoys {
-		projectiles = append(projectiles, decoy)
+		prevDecoy, ok := findPrevProjectile(decoy.EntityID)
+		if !ok {
+			continue
+		}
+		var ttl int64 = -1
+		if prevDecoy.IsExploded {
+			ttl = prevDecoy.TTL - int64(timeMs-b.prevFrame.TimeMs)
+		}
+		if ttl > 0 {
+			decoy.TTL = ttl
+			projectiles = append(projectiles, decoy)
+		}
 	}
 	for _, fire := range b.activeFires {
-		projectiles = append(projectiles, fire)
+		prevFire, ok := findPrevProjectile(fire.EntityID)
+		if !ok {
+			continue
+		}
+		var ttl int64 = -1
+		if prevFire.IsExploded {
+			ttl = prevFire.TTL - int64(timeMs-b.prevFrame.TimeMs)
+		}
+		if ttl > 0 {
+			fire.TTL = ttl
+			projectiles = append(projectiles, fire)
+		}
 	}
 	for _, explosion := range b.activeExplosions {
-		projectiles = append(projectiles, explosion)
+		prevExplosion, ok := findPrevProjectile(explosion.EntityID)
+		if !ok {
+			continue
+		}
+		var ttl int64 = -1
+		if prevExplosion.IsExploded {
+			ttl = prevExplosion.TTL - int64(timeMs-b.prevFrame.TimeMs)
+		}
+		if ttl > 0 {
+			explosion.TTL = ttl
+			projectiles = append(projectiles, explosion)
+		}
 	}
 
 	// Clear instantaneous explosions after recording them in the current frame
-	b.activeExplosions = make(map[int]ProjectileFrame)
+	b.activeExplosions = make(map[int]entity.ProjectileFrame)
 
-	// Extract dropped equipment
-	var droppedEquipment []DroppedEquipment
+	// Extract dropped equipment - only add valid equipment types
+	var droppedEquipment []entity.DroppedEquipment
 	for _, w := range gs.Weapons() {
 		if w.Entity == nil {
 			continue
 		}
-		if w.Owner == nil {
+		if w.Owner == nil && w.Type != common.EqUnknown {
 			pos := w.Entity.Position()
-			droppedEquipment = append(droppedEquipment, DroppedEquipment{
-				Type: w.Type,
-				X:    pos.X,
-				Y:    pos.Y,
-				Z:    pos.Z,
-			})
+			// Filter out invalid position coordinates
+			if pos.X != 0 || pos.Y != 0 || pos.Z != 0 {
+				droppedEquipment = append(droppedEquipment, entity.DroppedEquipment{
+					Type: w.Type,
+					X:    pos.X,
+					Y:    pos.Y,
+					Z:    pos.Z,
+				})
+			}
 		}
 	}
 
 	// Copy current kill events to the frame
-	killEvents := make(map[int]KillEvent)
+	killEvents := make(map[int]entity.KillEvent)
 	for k, v := range b.currentKillEvents {
 		killEvents[k] = v
 	}
 
-	return Frame{
-		TimeMs:           b.parser.CurrentTime().Milliseconds(),
+	return entity.Frame{
+		TimeMs:           timeMs,
 		Tick:             currentTick,
 		Round:            b.currentRound,
 		Players:          players,
