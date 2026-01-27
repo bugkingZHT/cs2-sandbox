@@ -1,28 +1,5 @@
 <template>
   <div class="app">
-    <header class="app-header">
-      <div class="app-title">
-        CS2 Demo Viewer
-        <span>2D 战术回放预览</span>
-      </div>
-      <div class="toolbar-right">
-        <input
-          type="file"
-          accept=".dem"
-          style="display: none"
-          ref="fileInput"
-          @change="onFileChange"
-        />
-        <button
-          @click="triggerUpload"
-          :disabled="parsing"
-          :title="parsing ? statusMsg : '上传 .dem 文件进行解析'"
-        >
-          {{ parsing ? '解析中...' : '上传 Demo' }}
-        </button>
-      </div>
-    </header>
-
     <main class="app-main">
       <ReplayPlayer />
     </main>
@@ -59,22 +36,7 @@ import { ref } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import { useReplayData } from '@/composables/useReplayData';
 
-const { parsing, statusMsg, parsingSteps, parseDemo } = useReplayData();
-const fileInput = ref<HTMLInputElement | null>(null);
-
-const triggerUpload = () => {
-  fileInput.value?.click();
-};
-
-const onFileChange = async (e: Event) => {
-  const target = e.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (file) {
-    await parseDemo(file);
-    // 重置 input 以允许再次选择相同文件
-    target.value = '';
-  }
-};
+const { parsing, statusMsg, parsingSteps } = useReplayData();
 </script>
 
 <style scoped>
@@ -86,32 +48,6 @@ const onFileChange = async (e: Event) => {
   overflow: hidden;
   background-color: #000000;
   color: #eee;
-}
-
-.app-header {
-  padding: 12px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #333;
-  flex-shrink: 0;
-}
-
-.app-title {
-  font-size: 1.5rem;
-  font-weight: bold;
-}
-
-.app-title span {
-  font-size: 0.9rem;
-  color: #999;
-  margin-left: 10px;
-}
-
-.toolbar-right {
-  display: flex;
-  gap: 12px;
-  align-items: center;
 }
 
 .app-main {

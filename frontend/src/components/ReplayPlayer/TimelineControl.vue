@@ -67,7 +67,7 @@
               class="mark-icon"
               :style="{ left: `${m.offset}%` }"
             >
-              <img :src="getProjectileIcon(m.type)" class="projectile-svg-icon" />
+              <img :src="getProjectileIcon(m.type)" class="projectile-svg-icon" @error="onIconError" />
             </div>
           </template>
         </div>
@@ -208,6 +208,11 @@ const formatMs = (ms: number) => {
   const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
   const s = (totalSeconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
+};
+
+const onIconError = (event: Event) => {
+  const img = event.target as HTMLImageElement;
+  img.src = '/weapons/default.svg';
 };
 
 const getProjectileIcon = (type: string) => {

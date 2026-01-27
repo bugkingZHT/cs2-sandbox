@@ -48,12 +48,34 @@
       <div v-if="isOpen" class="drawer-panel">
         <div class="drawer-header">
           <h3>Demo 列表</h3>
-          <button class="close-btn" @click="closeDrawer">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+          <div class="header-actions">
+            <input
+              type="file"
+              accept=".dem"
+              style="display: none"
+              ref="fileInput"
+              @change="onFileChange"
+            />
+            <button
+              class="upload-btn"
+              @click="triggerUpload"
+              :disabled="parsing"
+              :title="parsing ? '正在解析中...' : '上传 .dem 文件进行解析'"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>{{ parsing ? '解析中...' : '上传 Demo' }}</span>
+            </button>
+            <button class="close-btn" @click="closeDrawer">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div class="drawer-body">
@@ -129,6 +151,7 @@
 import { ref, computed } from 'vue';
 import type { ReplayData } from '@/types/replay';
 import { MAP_CONFIGS } from '@/config/map-config';
+import { useReplayData } from '@/composables/useReplayData';
 
 interface Props {
   demoList: ReplayData[];
@@ -140,6 +163,22 @@ const emit = defineEmits<{
   selectDemo: [demo: ReplayData];
   deleteDemo: [demo: ReplayData];
 }>();
+
+const { parsing, parseDemo } = useReplayData();
+const fileInput = ref<HTMLInputElement | null>(null);
+
+const triggerUpload = () => {
+  fileInput.value?.click();
+};
+
+const onFileChange = async (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (file) {
+    await parseDemo(file);
+    target.value = '';
+  }
+};
 
 const isOpen = ref(false);
 const isLoading = ref(false);
@@ -307,6 +346,42 @@ const formatTimestamp = (timestamp: number): string => {
   font-size: 20px;
   font-weight: 600;
   color: #fff;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upload-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.upload-btn:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.upload-btn:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.upload-btn span {
+  white-space: nowrap;
 }
 
 .close-btn {

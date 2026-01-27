@@ -21,12 +21,13 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 	defer p.Close()
 
 	b := &replayBuilder{
-		parser:           p,
-		bombState:        "carried",
-		activeSmokes:     make(map[int]ProjectileFrame),
-		activeDecoys:     make(map[int]ProjectileFrame),
-		activeFires:      make(map[int]ProjectileFrame),
-		activeExplosions: make(map[int]ProjectileFrame),
+		parser:            p,
+		bombState:         "carried",
+		activeSmokes:      make(map[int]ProjectileFrame),
+		activeDecoys:      make(map[int]ProjectileFrame),
+		activeFires:       make(map[int]ProjectileFrame),
+		activeExplosions:  make(map[int]ProjectileFrame),
+		currentKillEvents: make(map[int]KillEvent),
 	}
 
 	b.registerEventHandlers()
@@ -103,14 +104,15 @@ func BuildReplay(r io.Reader, onStatus func(string)) (*Replay, error) {
 }
 
 type replayBuilder struct {
-	parser           demoinfocs.Parser
-	currentRound     int
-	bombState        string
-	bombSite         string
-	activeSmokes     map[int]ProjectileFrame
-	activeDecoys     map[int]ProjectileFrame
-	activeFires      map[int]ProjectileFrame
-	activeExplosions map[int]ProjectileFrame
+	parser            demoinfocs.Parser
+	currentRound      int
+	bombState         string
+	bombSite          string
+	activeSmokes      map[int]ProjectileFrame
+	activeDecoys      map[int]ProjectileFrame
+	activeFires       map[int]ProjectileFrame
+	activeExplosions  map[int]ProjectileFrame
+	currentKillEvents map[int]KillEvent
 }
 
 func (b *replayBuilder) frameOne() Frame {
@@ -250,11 +252,18 @@ func (b *replayBuilder) frameOne() Frame {
 		}
 	}
 
+	// Copy current kill events to the frame
+	killEvents := make(map[int]KillEvent)
+	for k, v := range b.currentKillEvents {
+		killEvents[k] = v
+	}
+
 	return Frame{
 		TimeMs:           b.parser.CurrentTime().Milliseconds(),
 		Tick:             currentTick,
 		Round:            b.currentRound,
 		Players:          players,
+		KillEvents:       killEvents,
 		Projectiles:      projectiles,
 		DroppedEquipment: droppedEquipment,
 		Bomb:             bombFrame,

@@ -15,6 +15,7 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.activeDecoys = make(map[int]ProjectileFrame)
 		b.activeFires = make(map[int]ProjectileFrame)
 		b.activeExplosions = make(map[int]ProjectileFrame)
+		b.currentKillEvents = make(map[int]KillEvent)
 	})
 
 	// Smoke event handlers
@@ -132,4 +133,28 @@ func (b *replayBuilder) registerEventHandlers() {
 	b.parser.RegisterEventHandler(func(e events.BombExplode) { b.bombState = "exploded" })
 	b.parser.RegisterEventHandler(func(e events.BombDropped) { b.bombState = "dropped" })
 	b.parser.RegisterEventHandler(func(e events.BombPickup) { b.bombState = "carried" })
+
+	// Kill event handler
+	b.parser.RegisterEventHandler(func(e events.Kill) {
+		killerID := 0
+		if e.Killer != nil {
+			killerID = e.Killer.UserID
+		}
+		assistantID := 0
+		if e.Assister != nil {
+			assistantID = e.Assister.UserID
+		}
+		weaponID := common.EqUnknown
+		if e.Weapon != nil {
+			weaponID = e.Weapon.Type
+		}
+
+		if e.Victim != nil {
+			b.currentKillEvents[e.Victim.UserID] = KillEvent{
+				KillerID:    killerID,
+				AssistantID: assistantID,
+				WeaponID:    weaponID,
+			}
+		}
+	})
 }

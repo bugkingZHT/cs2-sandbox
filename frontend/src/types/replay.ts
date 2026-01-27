@@ -50,12 +50,19 @@ export interface ProjectileState {
   isExploded?: boolean; // 投掷物是否已爆炸/生效
 }
 
+export interface KillEvent {
+  killerId: number;
+  assistantId: number;
+  weaponId: string;
+}
+
 export interface Frame {
   timeMs: number;
   tick: number;
   round: number;
   players: PlayerState[];
   projectiles?: ProjectileState[];
+  killEvents?: Record<number, KillEvent>;
 }
 
 export interface ReplayData {

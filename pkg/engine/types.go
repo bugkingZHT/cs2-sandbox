@@ -110,6 +110,16 @@ type ProjectileFrame struct {
 	IsExploded bool `json:"isExploded"`
 }
 
+// 击杀事件信息
+type KillEvent struct {
+	// 击杀者 ID
+	KillerID int `json:"killerId"`
+	// 助攻者 ID
+	AssistantID int `json:"assistantId"`
+	// 使用的武器 ID
+	WeaponID common.EquipmentType `json:"weaponId"`
+}
+
 // C4 炸弹信息
 type BombFrame struct {
 	// C4 的 X 坐标
@@ -135,7 +145,8 @@ type Frame struct {
 	// 当前回合数
 	Round int `json:"round"`
 	// 当前帧所有玩家的状态信息
-	Players []PlayerFrame `json:"players"`
+	Players    []PlayerFrame     `json:"players"`
+	KillEvents map[int]KillEvent `json:"killEvents"`
 
 	// 道具信息（烟、火、闪、雷）
 	Projectiles []ProjectileFrame `json:"projectiles"`

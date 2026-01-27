@@ -31,6 +31,7 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
 
   // Equipment
   404: 'c4',         // EqBomb (在 utility 目录下)
+  405: 'knife',      // EqKnife (在 utility 目录下)
 
   // Grenades (在 utility 目录下)
   501: 'smoke',      // EqDecoy (暂时映射到 smoke)
@@ -42,8 +43,8 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
 };
 
 /**
- * 判断是否属于投掷物或 C4（这些素材在 utility 目录下）
+ * 判断是否属于投掷物、C4或刀（这些素材在 utility 目录下，且攻击时不显示红线）
  */
 export const isUtilityItem = (id: number): boolean => {
-  return (id >= 501 && id <= 506) || id === 404;
+  return (id >= 501 && id <= 506) || id === 404 || id === 405;
 };

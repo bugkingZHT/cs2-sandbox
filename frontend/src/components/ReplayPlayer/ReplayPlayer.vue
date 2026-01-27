@@ -2,21 +2,77 @@
   <div class="viewer-layout">
     <section class="map-panel">
       <header class="map-header">
-        <span>
-          地图：<strong>{{ replayTitle }}</strong>
-        </span>
-        <div>
-          <span class="team-pill ct">
-            <span class="dot" />CT
+        <div class="header-left">
+          <span>
+            地图：<strong>{{ replayTitle }}</strong>
           </span>
-          <span style="margin: 0 4px" />
-          <span class="team-pill t">
-            <span class="dot" />T
-          </span>
+        </div>
+
+        <div class="top-players-container">
+          <!-- CT 阵营 -->
+          <div class="team-horizontal-group ct">
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-mini" :class="{ 'is-dead': !p.alive }">
+              <div class="player-main-info">
+                <div class="p-identity">
+                  <span class="p-name">{{ p.name }}</span>
+                  <span class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</span>
+                </div>
+                <span class="p-money">${{ p.money }}</span>
+              </div>
+              <div class="p-status-row">
+                <div class="p-hp-bar">
+                  <div class="hp-fill ct" :style="{ width: hpPercentage(p.health) + '%' }"></div>
+                  <span class="hp-val">{{ Math.round(p.health || 0) }}</span>
+                </div>
+                <div class="p-equipment-icons">
+                  <img 
+                    v-if="p.activeWeapon"
+                    :src="getWeaponIconPath(p.activeWeapon)" 
+                    class="weapon-mini"
+                    @error="onWeaponIconError"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 分数/分界 -->
+          <div class="match-score-pill">
+            <span class="score-val ct">{{ replay?.scoreCT || 0 }}</span>
+            <span class="score-divider">:</span>
+            <span class="score-val t">{{ replay?.scoreT || 0 }}</span>
+          </div>
+
+          <!-- T 阵营 -->
+          <div class="team-horizontal-group t">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-mini" :class="{ 'is-dead': !p.alive }">
+              <div class="player-main-info">
+                <div class="p-identity">
+                  <span class="p-name">{{ p.name }}</span>
+                  <span class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</span>
+                </div>
+                <span class="p-money">${{ p.money }}</span>
+              </div>
+              <div class="p-status-row">
+                <div class="p-hp-bar">
+                  <div class="hp-fill t" :style="{ width: hpPercentage(p.health) + '%' }"></div>
+                  <span class="hp-val">{{ Math.round(p.health || 0) }}</span>
+                </div>
+                <div class="p-equipment-icons">
+                  <img 
+                    v-if="p.activeWeapon"
+                    :src="getWeaponIconPath(p.activeWeapon)" 
+                    class="weapon-mini"
+                    @error="onWeaponIconError"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
-     <div class="map-main">
+      <div class="map-main">
         <!-- Demo抽屉导航 -->
         <DemoDrawer 
           ref="demoDrawerRef"
@@ -31,7 +87,7 @@
           <div class="empty-state-content">
             <div class="empty-icon">📁</div>
             <h3>暂无回放数据</h3>
-            <p>请点击右上角"上传 Demo"按钮解析 demo 文件</p>
+            <p>请打开左上角 Demo 列表并上传 demo 文件</p>
           </div>
         </div>
         
@@ -44,134 +100,26 @@
             :is-playing="isPlaying"
             :map-name="replay?.mapName"
           />
-        </div>
-        <aside class="side-panel">
-          <div class="team-panel ct">
-            <div class="team-panel-title">CT 阵营</div>
-            <div v-if="teamCTPlayers.length" class="team-panel-body">
-              <div
-                v-for="p in teamCTPlayers"
-                :key="p.id"
-                class="player-row"
-              >
-                <div class="player-row-header">
-                  <span class="player-name">{{ p.name }}</span>
-                  <span v-if="p.money != null" class="player-money">
-                    ${{ p.money }}
-                  </span>
-                </div>
-                <!-- 血条和血量显示 -->
-                <div v-if="p.health != null && p.health > 0" class="hp-bar-container">
-                  <div class="hp-bar">
-                    <div
-                      class="hp-bar-fill ct"
-                      :style="{ width: hpPercentage(p.health) + '%' }"
-                    ></div>
-                  </div>
-                  <span class="hp-text">{{ Math.round(p.health) }}</span>
-                </div>
-                <div v-else-if="p.health === 0 || !p.alive" class="hp-bar-container dead">
-                  <div class="hp-bar hp-bar-empty">
-                    <span class="dead-text">阵亡</span>
-                  </div>
-                </div>
-                <div v-else class="hp-bar-container">
-                  <div class="hp-bar hp-bar-empty">
-                    <span class="no-data-text">-</span>
-                  </div>
-                </div>
-                <!-- 武器和道具 -->
-                <div class="player-equipment">
-                  <div v-if="p.activeWeapon" class="weapon-icon main-weapon">
-                    <img 
-                      :src="getWeaponIconPath(p.activeWeapon)" 
-                      :alt="p.activeWeapon"
-                      @error="onWeaponIconError"
-                    />
-                  </div>
-                  <div v-if="p.inventory && p.inventory.length > 0" class="inventory">
-                    <span
-                      v-for="item in sortInventory(p.inventory)"
-                      :key="item"
-                      class="item-icon"
-                    >
-                      <img 
-                        v-if="EQUIPMENT_ID_MAP[Number(item)]"
-                        :src="getWeaponIconPath(item)" 
-                        :alt="item"
-                        @error="onWeaponIconError"
-                      />
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="team-panel-body empty">暂无数据</div>
-          </div>
 
-          <div class="team-panel t">
-            <div class="team-panel-title">T 阵营</div>
-            <div v-if="teamTPlayers.length" class="team-panel-body">
-              <div
-                v-for="p in teamTPlayers"
-                :key="p.id"
-                class="player-row"
-              >
-                <div class="player-row-header">
-                  <span class="player-name">{{ p.name }}</span>
-                  <span v-if="p.money != null" class="player-money">
-                    ${{ p.money }}
+          <!-- 击杀回传 (Kill Feed) -->
+          <div class="kill-feed-container">
+            <TransitionGroup name="list">
+              <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
+                <div class="kill-card">
+                  <span class="k-killer" :class="getTeamClass(k.killerId)">{{ playerNameMap[k.killerId] || 'Unknown' }}</span>
+                  <span v-if="k.assistantId" class="k-assist">
+                    <span class="plus">+</span>
+                    {{ playerNameMap[k.assistantId] }}
                   </span>
-                </div>
-                <!-- 血条和血量显示 -->
-                <div v-if="p.health != null && p.health > 0" class="hp-bar-container">
-                  <div class="hp-bar">
-                    <div
-                      class="hp-bar-fill t"
-                      :style="{ width: hpPercentage(p.health) + '%' }"
-                    ></div>
+                  <div class="k-weapon-box">
+                    <img :src="getWeaponIconPath(k.weaponId)" class="k-weapon-icon" @error="onWeaponIconError" />
                   </div>
-                  <span class="hp-text">{{ Math.round(p.health) }}</span>
-                </div>
-                <div v-else-if="p.health === 0 || !p.alive" class="hp-bar-container dead">
-                  <div class="hp-bar hp-bar-empty">
-                    <span class="dead-text">阵亡</span>
-                  </div>
-                </div>
-                <div v-else class="hp-bar-container">
-                  <div class="hp-bar hp-bar-empty">
-                    <span class="no-data-text">-</span>
-                  </div>
-                </div>
-                <!-- 武器和道具 -->
-                <div class="player-equipment">
-                  <div v-if="p.activeWeapon" class="weapon-icon main-weapon">
-                    <img 
-                      :src="getWeaponIconPath(p.activeWeapon)" 
-                      :alt="p.activeWeapon"
-                      @error="onWeaponIconError"
-                    />
-                  </div>
-                  <div v-if="p.inventory && p.inventory.length > 0" class="inventory">
-                    <span
-                      v-for="item in sortInventory(p.inventory)"
-                      :key="item"
-                      class="item-icon"
-                    >
-                      <img 
-                        v-if="EQUIPMENT_ID_MAP[Number(item)]"
-                        :src="getWeaponIconPath(item)" 
-                        :alt="item"
-                        @error="onWeaponIconError"
-                      />
-                    </span>
-                  </div>
+                  <span class="k-victim" :class="getTeamClass(k.victimId)">{{ playerNameMap[k.victimId] || 'Unknown' }}</span>
                 </div>
               </div>
-            </div>
-            <div v-else class="team-panel-body empty">暂无数据</div>
+            </TransitionGroup>
           </div>
-        </aside>
+        </div>
       </div>
     </section>
 
@@ -282,6 +230,17 @@ const teamTPlayers = computed<PlayerState[]>(() => {
     .sort((a, b) => a.id - b.id);
 });
 
+// 计算所有玩家 ID 到名称的映射，用于击杀信息显示
+const playerNameMap = computed(() => {
+  const map: Record<number, string> = {};
+  safeFrames.value.forEach(f => {
+    f.players?.forEach(p => {
+      if (!map[p.id]) map[p.id] = p.name;
+    });
+  });
+  return map;
+});
+
 // --- 新增：当前回合数据计算 ---
 const currentRound = computed(() => {
   if (!safeFrames.value.length) return 0;
@@ -292,6 +251,48 @@ const currentRoundFrames = computed(() => {
   if (!safeFrames.value.length || currentRound.value === 0) return [];
   return safeFrames.value.filter(f => f.round === currentRound.value);
 });
+
+// 计算当前回合按时间顺序排列的击杀列表
+const currentRoundKills = computed(() => {
+  if (!currentFrame.value?.killEvents) return [];
+  
+  const killsInOrder: any[] = [];
+  const seenVictims = new Set<number>();
+  const currentEvents = currentFrame.value.killEvents;
+  
+  // 遍历当前回合的所有帧，直到当前帧，按出现顺序记录击杀
+  for (const f of currentRoundFrames.value) {
+    if (f.timeMs > (currentFrame.value?.timeMs || 0)) break;
+    if (f.killEvents) {
+      for (const victimIdStr in f.killEvents) {
+        const victimId = parseInt(victimIdStr);
+        // 只有当前帧中存在的击杀才显示
+        if (!seenVictims.has(victimId) && currentEvents[victimId]) {
+          seenVictims.add(victimId);
+          killsInOrder.push({
+            victimId,
+            ...f.killEvents[victimId]
+          });
+        }
+      }
+    }
+  }
+  return killsInOrder;
+});
+
+// 获取玩家阵营对应的 CSS 类
+const getTeamClass = (playerId: number) => {
+  // 尝试从当前帧找，找不到就从所有帧找（处理离线/结束情况）
+  let player = currentFrame.value?.players.find(p => p.id === playerId);
+  if (!player) {
+    for (const f of safeFrames.value) {
+      player = f.players.find(p => p.id === playerId);
+      if (player) break;
+    }
+  }
+  if (!player) return '';
+  return player.team === 3 ? 'ct' : 't';
+};
 
 const roundStartTimeMs = computed(() => {
   if (!currentRoundFrames.value.length) return 0;
@@ -419,7 +420,9 @@ const getWeaponIconPath = (weaponId: any) => {
   
   if (!fileName) return '/weapons/default.svg';
 
-  const folder = isUtilityItem(id) ? 'utility' : 'weapons';
+  // 只有手雷和C4在 utility 目录下，刀和其他武器都在 weapons 目录下
+  const isUtilityFolder = (id >= 501 && id <= 506) || id === 404;
+  const folder = isUtilityFolder ? 'utility' : 'weapons';
   return `/${folder}/${fileName}.svg`;
 };
 
@@ -515,6 +518,220 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+.map-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  height: 60px;
+  backdrop-filter: blur(10px);
+}
+
+.header-left {
+  font-size: 13px;
+  color: #aaa;
+  width: 120px;
+}
+
+.top-players-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.team-horizontal-group {
+  display: flex;
+  gap: 8px;
+}
+
+.player-card-mini {
+  width: 110px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative; /* 为盖章定位 */
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.player-card-mini.is-dead {
+  opacity: 0.6;
+  filter: grayscale(0.8);
+}
+
+.player-main-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 11px;
+}
+
+.p-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 70px;
+}
+
+.p-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.p-kda {
+  font-size: 9px;
+  color: #888;
+  font-weight: 500;
+}
+
+.p-money {
+  color: #4ade80;
+  font-weight: bold;
+}
+
+.p-status-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.p-hp-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.hp-fill.ct { background: #3b82f6; }
+.hp-fill.t { background: #f97316; }
+
+.hp-val {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 8px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 2px #000;
+}
+
+.p-equipment-icons {
+  display: flex;
+  align-items: center;
+}
+
+.weapon-mini {
+  width: 18px;
+  height: 9px;
+  object-fit: contain;
+}
+
+/* 击杀回传 (Kill Feed) 样式 */
+.kill-feed-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.kill-card {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 12px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.k-killer.ct, .k-victim.ct { color: #60a5fa; }
+.k-killer.t, .k-victim.t { color: #fb923c; }
+
+.k-assist {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+}
+
+.k-assist .plus {
+  margin-right: 2px;
+  color: #aaa;
+  font-size: 9px;
+}
+
+.k-weapon-box {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.k-weapon-icon {
+  width: 28px;
+  height: 14px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+/* 动画：从下方入队 */
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.match-score-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.score-val.ct { color: #60a5fa; }
+.score-val.t { color: #fb923c; }
+.score-divider { color: #555; }
+
 .map-main {
   flex: 1;
   display: flex;
@@ -526,248 +743,12 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-.side-panel {
-  width: 260px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  background: rgba(0, 0, 0, 0.4);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-}
-
-.team-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.team-panel-title {
-  font-size: 12px;
-  font-weight: bold;
-  padding: 5px;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  text-align: center;
-  letter-spacing: 1px;
-}
-
-.team-panel.ct .team-panel-title {
-  color: #60a5fa;
-  text-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
-}
-
-.team-panel.t .team-panel-title {
-  color: #fb923c;
-  text-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
-}
-
-.team-panel-body {
-  flex: 1;
-  overflow: hidden;
-  padding: 2px;
-}
-
-.player-row {
-  height: 50px;
-  padding: 5px 7px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
-  margin-bottom: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.02);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-}
-
-.player-row-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  margin-bottom: 1px;
-  line-height: 1.3;
-}
-
-.player-name {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 110px;
-  font-size: 12px;
-}
-
-.player-money {
-  color: #4ade80;
-  font-weight: bold;
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-/* 血条容器 */
-.hp-bar-container {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 1px;
-}
-
-.hp-bar {
-  flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-  position: relative;
-}
-
-.hp-bar-fill {
-  height: 100%;
-  transition: width 0.3s ease-out;
-  min-width: 2px;
-}
-
-.hp-bar-fill.ct {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
-  box-shadow: 0 0 5px rgba(59, 130, 246, 0.3);
-}
-
-.hp-bar-fill.t {
-  background: linear-gradient(90deg, #f97316, #fb923c);
-  box-shadow: 0 0 5px rgba(249, 115, 22, 0.3);
-}
-
-/* 血量数值 */
-.hp-text {
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  min-width: 26px;
-  text-align: right;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-  flex-shrink: 0;
-}
-
-/* 阵亡和无数据状态 */
-.hp-bar-container.dead .hp-bar {
-  background: rgba(255, 0, 0, 0.15);
-}
-
-.hp-bar-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.dead-text {
-  color: #ef4444;
-  font-weight: 600;
-  font-size: 10px;
-}
-
-.no-data-text {
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 11px;
-}
-
-.player-equipment {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 16px;
-  margin-top: 1px;
-}
-
-.weapon-icon.main-weapon img {
-  width: 30px;
-  height: 15px;
-  object-fit: contain;
-}
-
-.inventory {
-  display: flex;
-  gap: 2px;
-  justify-content: flex-end;
-}
-
-.item-icon img {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-  opacity: 0.8;
-}
-
-.item-icon:hover img {
-  opacity: 1;
-}
-
 .timeline-panel {
   height: 160px;
   flex-shrink: 0;
   padding: 12px;
   border-top: 1px solid #333;
   background: rgba(0, 0, 0, 0.3);
-}
-
-.map-header {
-  padding: 12px;
-  border-bottom: 1px solid #333;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.team-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-}
-
-.team-pill.ct {
-  background: rgba(59, 130, 246, 0.2);
-  color: #93c5fd;
-}
-
-.team-pill.t {
-  background: rgba(249, 115, 22, 0.2);
-  color: #fdba74;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.dot::before {
-  content: '';
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.team-pill.ct .dot {
-  color: #93c5fd;
-}
-
-.team-pill.t .dot {
-  color: #fdba74;
 }
 
 .empty-state {
