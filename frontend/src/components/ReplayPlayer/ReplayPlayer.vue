@@ -414,8 +414,8 @@ const getWeaponIconPath = (weaponId: any) => {
   
   if (!fileName) return '/weapons/default.svg';
 
-  // 只有手雷和C4在 utility 目录下，刀和其他武器都在 weapons 目录下
-  const isUtilityFolder = (id >= 501 && id <= 506) || id === 404;
+  // 只有手雷、C4和刀在 utility 目录下，其他武器都在 weapons 目录下
+  const isUtilityFolder = (id >= 501 && id <= 506) || id === 404 || id === 405;
   const folder = isUtilityFolder ? 'utility' : 'weapons';
   return `/${folder}/${fileName}.svg`;
 };
@@ -577,6 +577,7 @@ onBeforeUnmount(() => {
 
 .p-name {
   font-weight: 600;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
