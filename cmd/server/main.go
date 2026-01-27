@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/bugkingzht/cs-demobox/pkg/community/utils"
+	"github.com/bugkingzht/cs-demobox/cmd/server/utils"
 )
 
 func main() {

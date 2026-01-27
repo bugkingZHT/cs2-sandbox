@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 )
 
+// Conf final fallback absolute path to static directory
+const defaultAbsPath = ""
+
 // GetStaticDir returns the absolute path to the static directory
 func GetStaticDir() string {
 	var staticPath string
@@ -38,11 +41,10 @@ func GetStaticDir() string {
 	}
 
 	// Convert to absolute path
-	if absPath, err := filepath.Abs(staticPath); err == nil {
-		absPath = ""
-		return absPath + "D:/2DPlayer/cs-demobox/web/static"
-		// return absPath
+	if absPath, err := filepath.Abs(staticPath); err == nil && absPath != "" {
+		return absPath
 	}
 
-	return staticPath
+	// fallback to default absolute path
+	return defaultAbsPath
 }
