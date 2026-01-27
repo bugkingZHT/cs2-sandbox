@@ -28,6 +28,7 @@ export interface PlayerState {
   equipmentValue?: number;
   steamID?: number;
   isBot?: boolean;
+  buttons?: number[];
 }
 
 // 投掷物类型定义

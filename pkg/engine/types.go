@@ -4,6 +4,11 @@ import (
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 )
 
+var ButtonWatching = []common.ButtonBitMask{
+	common.ButtonAttack,
+	common.ButtonAttack2,
+}
+
 type PlayerFrame struct {
 	// 玩家在服务器中的唯一 ID
 	ID int `json:"id"`
@@ -49,8 +54,9 @@ type PlayerFrame struct {
 	Inventory []common.EquipmentType `json:"inventory"`
 	// 玩家当前手持的武器类型
 	ActiveWeapon common.EquipmentType `json:"activeWeapon"`
-	// 玩家是否正在按下攻击键 (使用物品/射击)
-	UsingItem bool `json:"usingItem"`
+
+	// 玩家按键状态
+	Buttons []uint64 `json:"buttons"`
 
 	// 玩家本局比赛的总击杀数
 	Kills int `json:"kills"`

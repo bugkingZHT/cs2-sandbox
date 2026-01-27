@@ -22,7 +22,7 @@ import { Application, Assets, Container, Graphics, Sprite, Texture, Text } from 
 import type { Frame, PlayerState, ProjectileState, WorldBounds } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
 import { useMapConfig } from '@/composables/useMapConfig';
-import { EQUIPMENT_ID_MAP } from '@/config/equipment';
+import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 
 const props = defineProps<{
   frames: Frame[] | undefined;
@@ -377,6 +377,9 @@ const drawPlayersForFrame = () => {
       
       if (p.alive) {
         // 绘制方向三角形
+        const isAttacking = p.buttons?.includes(1); // 1 = common.ButtonAttack
+        const triColor = isAttacking ? 0xff0000 : color;
+        
         const triLen = 15;
         const triWidth = 10;
         const tipX = Math.cos(angleRad) * (radius + triLen);
@@ -389,7 +392,17 @@ const drawPlayersForFrame = () => {
         const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triWidth;
         
         // 三角形填充
-        g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color, alpha: 0.95 });
+        g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
+
+        // 如果正在开火，画一条细红线延伸出去
+        const activeWeaponId = p.activeWeapon ? Number(p.activeWeapon) : 0;
+        const isUtility = isUtilityItem(activeWeaponId);
+        if (isAttacking && !isUtility) {
+          const lineLen = triWidth * 6;
+          const endX = tipX + Math.cos(angleRad) * lineLen;
+          const endY = tipY + Math.sin(angleRad) * lineLen;
+          g.moveTo(tipX, tipY).lineTo(endX, endY).stroke({ width: 1, color: 0xff0000, alpha: 0.8 });
+        }
       }
 
       // 绘制人物圆圈主体

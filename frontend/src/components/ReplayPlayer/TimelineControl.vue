@@ -14,10 +14,6 @@
 
       <!-- 核心进度条主体 -->
       <div class="round-nav-wrapper">
-        <div class="nav-arrow-icon">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8L10 4" stroke="white" stroke-width="2"/></svg>
-        </div>
-        
         <div class="round-buttons-grid">
           <template v-for="r in totalRoundsCount" :key="r">
             <div class="round-btn-cell" :class="{ 'active': currentRound === r }">
@@ -27,10 +23,6 @@
             <!-- 12和13号之间的纵向虚线 -->
             <div v-if="r === 12" class="v-dashed-divider"></div>
           </template>
-        </div>
-
-        <div class="nav-arrow-icon">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 12L10 8L6 4" stroke="white" stroke-width="2"/></svg>
         </div>
       </div>
     </div>
@@ -60,9 +52,6 @@
 
       <!-- 右侧时间轴主体 -->
       <div class="timeline-track-main" @mousedown="onTimelineMouseDown">
-        <!-- 均匀的白色虚线刻度背景 -->
-        <div class="dashed-grid-bg"></div>
-        
         <!-- 进度填充（平面化） -->
         <div class="flat-progress-fill" :style="{ width: `${(roundRelativeTimeMs / roundDurationMs) * 100}%` }"></div>
 
@@ -75,10 +64,11 @@
               :style="{ left: `${m.offset}%` }"
             ></div>
             <div 
-              class="mark-triangle" 
-              :class="{ 'ct': m.team === 3, 't': m.team === 2 }"
+              class="mark-icon"
               :style="{ left: `${m.offset}%` }"
-            ></div>
+            >
+              <img :src="getProjectileIcon(m.type)" class="projectile-svg-icon" />
+            </div>
           </template>
         </div>
 
@@ -91,6 +81,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 
 const props = defineProps<{
   currentFrameIndex: number;
@@ -218,6 +209,12 @@ const formatMs = (ms: number) => {
   const s = (totalSeconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 };
+
+const getProjectileIcon = (type: string) => {
+  const typeId = Number(type);
+  const fileName = EQUIPMENT_ID_MAP[typeId] || 'hegrenade';
+  return `/utility/${fileName}.svg`;
+};
 </script>
 
 <style scoped>
@@ -240,7 +237,7 @@ const formatMs = (ms: number) => {
 .layer-control-btn {
   width: 122px;
   height: 40px;
-  background: rgba(100, 100, 100, 0.3);
+  background: transparent;
   border: 1px solid rgba(173, 216, 230, 0.4);
   border-radius: 4px;
   display: flex;
@@ -268,10 +265,10 @@ const formatMs = (ms: number) => {
 .round-nav-wrapper {
   flex: 1;
   height: 54px;
-  background: #1f1f1f;
+  background: transparent;
   display: flex;
   align-items: center;
-  padding: 0 5px;
+  padding: 0;
   border-radius: 2px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -283,14 +280,6 @@ const formatMs = (ms: number) => {
 }
 .round-nav-wrapper::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
-}
-
-.nav-arrow-icon {
-  width: 20px;
-  display: flex;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
 }
 
 .round-buttons-grid {
@@ -312,7 +301,7 @@ const formatMs = (ms: number) => {
 .round-square-btn {
   width: 36px; /* 稍微缩小一点 */
   height: 36px;
-  background: rgba(200, 200, 200, 0.05);
+  background: transparent;
   border: none;
   color: white;
   font-size: 12px;
@@ -461,30 +450,18 @@ const formatMs = (ms: number) => {
   opacity: 0.8;
 }
 
-.mark-triangle {
-  position: absolute;
-  bottom: 2px;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 6px solid white;
-  transform: translateX(-50%);
-}
-
-.mark-triangle.ct {
-  border-bottom-color: #3b82f6;
-}
-
-.mark-triangle.t {
-  border-bottom-color: #f97316;
-}
-
 .mark-icon {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
   display: flex;
+  pointer-events: none;
+}
+
+.projectile-svg-icon {
+  width: 14px;
+  height: 14px;
+  filter: brightness(0) invert(1); /* 统一白色 */
 }
 
 .playhead-line {

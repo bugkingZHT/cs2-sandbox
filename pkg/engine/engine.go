@@ -132,6 +132,13 @@ func (b *replayBuilder) frameOne() Frame {
 			activeWeapon = aw.Type
 		}
 
+		buttons := []uint64{}
+		for _, button := range ButtonWatching {
+			if pl.IsPressingButton(button) {
+				buttons = append(buttons, uint64(button))
+			}
+		}
+
 		players = append(players, PlayerFrame{
 			ID:                  pl.UserID,
 			Name:                pl.Name,
@@ -152,7 +159,7 @@ func (b *replayBuilder) frameOne() Frame {
 			IsBlinded:           pl.IsBlinded(),
 			Inventory:           inventory,
 			ActiveWeapon:        activeWeapon,
-			UsingItem:           pl.IsPressingButton(common.ButtonAttack) || pl.IsPressingButton(common.ButtonAttack2),
+			Buttons:             buttons,
 			Kills:               pl.Kills(),
 			Assists:             pl.Assists(),
 			Deaths:              pl.Deaths(),
