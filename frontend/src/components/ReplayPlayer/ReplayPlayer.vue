@@ -67,21 +67,12 @@
       </header>
 
       <div class="map-main">
-        <!-- Demo抽屉导航 -->
-        <DemoDrawer 
-          ref="demoDrawerRef"
-          :demo-list="replayList || []"
-          :current-demo-id="currentDemoId"
-          @select-demo="onSelectDemo"
-          @delete-demo="onDeleteDemo"
-        />
-        
         <!-- 空状态提示 -->
         <div v-if="!replay || !frames || frames.length === 0" class="empty-state">
           <div class="empty-state-content">
-            <div class="empty-icon">📁</div>
+            <div class="empty-icon">·</div>
             <h3>暂无回放数据</h3>
-            <p>请打开左上角 Demo 列表并上传 demo 文件</p>
+            <p>请从 Demo 库选择文件</p>
           </div>
         </div>
         
@@ -135,7 +126,7 @@
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
-        @open-demo-drawer="openDemoDrawer"
+        @exit-replay="emit('exit-replay')"
       />
     </section>
   </div>
@@ -145,44 +136,15 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
-import DemoDrawer from './DemoDrawer.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import type { Frame, PlayerState, ReplayData } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 
-const { loading, error, replay, frames, bounds, replayList, loadReplayById, deleteReplayById } = useReplayData();
+const emit = defineEmits<{
+  (e: 'exit-replay'): void;
+}>();
 
-// DemoDrawer ref
-const demoDrawerRef = ref<InstanceType<typeof DemoDrawer> | null>(null);
-
-// 打开Demo列表
-const openDemoDrawer = () => {
-  // 如果正在播放，则暂停
-  if (isPlaying.value) {
-    isPlaying.value = false;
-    cancelAnimation();
-  }
-  demoDrawerRef.value?.openDrawer();
-};
-
-// 当前Demo ID
-const currentDemoId = computed(() => replay.value?.id);
-
-// 选择Demo
-const onSelectDemo = async (demo: ReplayData) => {
-  console.log('[ReplayPlayer] 选择Demo:', demo.id, demo.mapName);
-  if (demo.id && demo.id !== currentDemoId.value) {
-    await loadReplayById(demo.id);
-  }
-};
-
-// 删除Demo
-const onDeleteDemo = async (demo: ReplayData) => {
-  console.log('[ReplayPlayer] 删除Demo:', demo.id, demo.mapName);
-  if (demo.id) {
-    await deleteReplayById(demo.id);
-  }
-};
+const { loading, error, replay, frames, bounds } = useReplayData();
 
 // 监听 replay 和 frames 的变化
 watch(
@@ -430,6 +392,12 @@ const onWeaponIconError = (event: Event) => {
   const img = event.target as HTMLImageElement;
   // 如果加载失败，使用默认图标
   img.src = '/weapons/default.svg'; // 使用默认图标
+};
+
+const onLogoError = (event: Event) => {
+  const img = event.target as HTMLImageElement;
+  // 如果 logo 加载失败，隐藏图标
+  img.style.display = 'none';
 };
 
 const onUpdateSpeed = (value: number) => {

@@ -2,15 +2,31 @@
   <div class="timeline-widget-container">
     <!-- 一、上方：回合选择进度条 -->
     <div class="round-selection-module">
-      <!-- 左侧按钮设计 -->
-      <button class="layer-control-btn" @click="$emit('open-demo-drawer')" title="打开Demo列表">
-        <svg class="icon-layer" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M2 17L12 22L22 17" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span class="btn-text-small">REPLAY</span>
-      </button>
+      <!-- 左侧电源菜单按钮 -->
+      <div class="power-menu-wrapper">
+        <button 
+          class="power-menu-btn" 
+          @click="togglePowerMenu"
+          title="控制菜单"
+        >
+          <svg class="icon-power" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+            <line x1="12" y1="2" x2="12" y2="12"/>
+          </svg>
+        </button>
+        
+        <!-- 下拉菜单 -->
+        <div v-if="showPowerMenu" class="power-menu-dropdown" @click.stop>
+          <button class="menu-item" @click="exitReplay">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            <span>退出回放</span>
+          </button>
+        </div>
+      </div>
 
       <!-- 核心进度条主体 -->
       <div class="round-nav-wrapper">
@@ -25,6 +41,19 @@
           </template>
         </div>
       </div>
+
+      <!-- Debug 按钮 -->
+      <button 
+        v-if="DEBUG_CONFIG.enableFrameDataViewer"
+        class="debug-frame-btn-fixed"
+        @click="showCurrentFrameData"
+        title="View current frame data"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        <span>Frame {{ currentFrameIndex }}</span>
+      </button>
     </div>
 
     <!-- 二、下方：时间轴进度条 -->
@@ -63,12 +92,6 @@
               :class="{ 'ct': m.team === 3, 't': m.team === 2 }"
               :style="{ left: `${m.offset}%` }"
             ></div>
-            <div 
-              class="mark-icon"
-              :style="{ left: `${m.offset}%` }"
-            >
-              <img :src="getProjectileIcon(m.type)" class="projectile-svg-icon" @error="onIconError" />
-            </div>
           </template>
         </div>
 
@@ -82,6 +105,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
+import { DEBUG_CONFIG } from '@/config/debug';
 
 const props = defineProps<{
   currentFrameIndex: number;
@@ -102,10 +126,105 @@ const emit = defineEmits<{
   (e: 'seek-seconds', value: number): void;
   (e: 'toggle-play'): void;
   (e: 'update-speed', value: number): void;
-  (e: 'open-demo-drawer'): void;
+  (e: 'exit-replay'): void;
 }>();
 
 const isDragging = ref(false);
+const showPowerMenu = ref(false);
+
+// Toggle power menu
+const togglePowerMenu = () => {
+  showPowerMenu.value = !showPowerMenu.value;
+};
+
+// Exit replay and return to library
+const exitReplay = () => {
+  showPowerMenu.value = false;
+  emit('exit-replay');
+};
+
+// Close power menu when clicking outside
+const handleClickOutside = () => {
+  showPowerMenu.value = false;
+};
+
+// Add click listener to close menu when clicking outside
+if (typeof window !== 'undefined') {
+  document.addEventListener('click', handleClickOutside);
+}
+
+// Debug: show current frame data
+const showCurrentFrameData = () => {
+  if (!DEBUG_CONFIG.enableFrameDataViewer) return;
+  
+  const currentFrame = props.frames[props.currentFrameIndex];
+  if (!currentFrame) {
+    alert('No frame data available');
+    return;
+  }
+  
+  // Open frame data in new tab
+  const dataWindow = window.open('', '_blank');
+  if (dataWindow) {
+    const frameData = JSON.stringify(currentFrame, null, 2);
+    dataWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Frame Data - Index ${props.currentFrameIndex}</title>
+          <style>
+            body {
+              background: #1a1a1a;
+              color: #e0e0e0;
+              font-family: 'Courier New', monospace;
+              padding: 20px;
+              margin: 0;
+            }
+            pre {
+              background: #2a2a2a;
+              padding: 20px;
+              border-radius: 8px;
+              overflow: auto;
+              font-size: 14px;
+              line-height: 1.5;
+            }
+            h1 {
+              color: #4dabf7;
+              font-size: 24px;
+              margin-bottom: 20px;
+            }
+            .meta {
+              background: #2a2a2a;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              font-size: 14px;
+            }
+            .meta span {
+              display: inline-block;
+              margin-right: 20px;
+            }
+            .label {
+              color: #868e96;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>🔍 Frame Data Viewer</h1>
+          <div class="meta">
+            <span><span class="label">Frame Index:</span> ${props.currentFrameIndex}</span>
+            <span><span class="label">Time:</span> ${currentFrame.timeMs}ms</span>
+            <span><span class="label">Tick:</span> ${currentFrame.tick}</span>
+            <span><span class="label">Round:</span> ${currentFrame.round}</span>
+          </div>
+          <pre>${frameData}</pre>
+        </body>
+      </html>
+    `);
+    dataWindow.document.close();
+  }
+};
 
 // 计算当前回合相对于该局开始的时间
 const roundRelativeTimeMs = computed(() => {
@@ -227,8 +346,8 @@ const getProjectileIcon = (type: string) => {
 .timeline-widget-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 15px;
+  gap: 4px;
+  padding: 6px 9px;
   background: transparent;
   user-select: none;
 }
@@ -238,6 +357,74 @@ const getProjectileIcon = (type: string) => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.power-menu-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.power-menu-btn {
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+}
+
+.power-menu-btn:hover {
+  background: rgba(120, 120, 120, 0.4);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.power-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #1f1f1f;
+  border: 1px solid #444;
+  border-radius: 4px;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.menu-item {
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: #eee;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-align: left;
+}
+
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.menu-item svg {
+  flex-shrink: 0;
+  color: #888;
+}
+
+.menu-item:hover svg {
+  color: #fff;
 }
 
 .layer-control-btn {
@@ -266,6 +453,39 @@ const getProjectileIcon = (type: string) => {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.debug-frame-btn-fixed {
+  height: 40px;
+  background: rgba(74, 171, 247, 0.15);
+  border: 1px solid rgba(74, 171, 247, 0.4);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  color: #4dabf7;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.debug-frame-btn-fixed:hover {
+  background: rgba(74, 171, 247, 0.25);
+  border-color: rgba(74, 171, 247, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(74, 171, 247, 0.3);
+}
+
+.debug-frame-btn-fixed:active {
+  transform: translateY(0);
+}
+
+.debug-frame-btn-fixed svg {
+  flex-shrink: 0;
 }
 
 .round-nav-wrapper {
@@ -342,7 +562,7 @@ const getProjectileIcon = (type: string) => {
 /* 下方模块 */
 .playback-control-module {
   display: flex;
-  height: 46px; /* 稍微缩小高度 */
+  height: 38px; /* 减小进度条高度 */
   gap: 10px;
 }
 
@@ -458,15 +678,16 @@ const getProjectileIcon = (type: string) => {
 
 .mark-icon {
   position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  bottom: 100%; /* 放在进度条之外上方 */
+  transform: translateX(-50%);
   display: flex;
   pointer-events: none;
+  margin-bottom: 2px; /* 与进度条顶部保持2px间距 */
 }
 
 .projectile-svg-icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   filter: brightness(0) invert(1); /* 统一白色 */
 }
 
