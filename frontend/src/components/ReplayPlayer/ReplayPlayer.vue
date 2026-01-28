@@ -157,6 +157,11 @@ const demoDrawerRef = ref<InstanceType<typeof DemoDrawer> | null>(null);
 
 // 打开Demo列表
 const openDemoDrawer = () => {
+  // 如果正在播放，则暂停
+  if (isPlaying.value) {
+    isPlaying.value = false;
+    cancelAnimation();
+  }
   demoDrawerRef.value?.openDrawer();
 };
 

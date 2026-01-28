@@ -53,10 +53,12 @@ const currentMapConfig = computed(() => {
 const mapTextureUrl = computed(() => currentMapConfig.value.imageUrl);
 
 const PLAYER_STYLE = {
-  aliveRadius: 13,
+  aliveRadius: 10,
   deadRadius: 5,
-  dirLength: 15,
-  nameSize: 15
+  nameSize: 15,
+  triLen: 8,
+  triWidth: 6,
+  attackLen: 60
 };
 
 const host = ref<HTMLDivElement | null>(null);
@@ -73,6 +75,7 @@ const state = reactive({
   containerStartX: 0,
   containerStartY: 0,
   scale: 0.3,
+  defaultScale: 0.3, // Track the default scale for zoom limits
 });
 
 const hoverPlayer = ref<PlayerState | null>(null);
@@ -158,6 +161,7 @@ const centerWorld = () => {
   if (!app || !worldContainer || !mapSprite) return;
   const { width, height } = app.renderer.screen;
   const fitScale = Math.min(width / mapSprite.width, height / mapSprite.height);
+  state.defaultScale = fitScale; // Store the default scale
   state.scale = fitScale;
   worldContainer.scale.set(state.scale);
   worldContainer.position.set(width / 2, height / 2);
@@ -191,7 +195,8 @@ const onWheel = (event: WheelEvent) => {
   event.preventDefault();
 
   const delta = event.deltaY > 0 ? -0.1 : 0.1;
-  const newScale = Math.min(1.5, Math.max(0.15, state.scale + delta));
+  // Prevent zooming below 100% (default scale)
+  const newScale = Math.min(1.5, Math.max(state.defaultScale, state.scale + delta));
 
   const rect = app.canvas.getBoundingClientRect();
   const pivotX = event.clientX - rect.left;
@@ -272,16 +277,14 @@ const drawPlayersForFrame = () => {
         const isAttacking = p.buttons?.includes(1); // 1 = common.ButtonAttack
         const triColor = isAttacking ? 0xff0000 : color;
         
-        const triLen = 15;
-        const triWidth = 10;
-        const tipX = Math.cos(angleRad) * (radius + triLen);
-        const tipY = Math.sin(angleRad) * (radius + triLen);
+        const tipX = Math.cos(angleRad) * (radius + PLAYER_STYLE.triLen);
+        const tipY = Math.sin(angleRad) * (radius + PLAYER_STYLE.triLen);
         const baseAngle1 = angleRad + Math.PI / 2;
         const baseAngle2 = angleRad - Math.PI / 2;
-        const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * triWidth;
-        const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * triWidth;
-        const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triWidth;
-        const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triWidth;
+        const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * PLAYER_STYLE.triWidth;
+        const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * PLAYER_STYLE.triWidth;
+        const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * PLAYER_STYLE.triWidth;
+        const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * PLAYER_STYLE.triWidth;
         
         // 三角形填充
         g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
@@ -290,7 +293,7 @@ const drawPlayersForFrame = () => {
         const activeWeaponId = p.activeWeapon ? Number(p.activeWeapon) : 0;
         const isUtility = isUtilityItem(activeWeaponId);
         if (isAttacking && !isUtility) {
-          const lineLen = triWidth * 6;
+          const lineLen = PLAYER_STYLE.attackLen * 6;
           const endX = tipX + Math.cos(angleRad) * lineLen;
           const endY = tipY + Math.sin(angleRad) * lineLen;
           g.moveTo(tipX, tipY).lineTo(endX, endY).stroke({ width: 1, color: 0xff0000, alpha: 0.8 });

@@ -41,7 +41,7 @@ var projectileRenderConfig = map[common.EquipmentType]ProjectileRenderConfig{
 	},
 	common.EqFlash: {
 		ExplosionRadius: 640,
-		DurationInMs:    1000, // 闪光弹效果时间
+		DurationInMs:    500, // 闪光弹效果时间
 	},
 }
 

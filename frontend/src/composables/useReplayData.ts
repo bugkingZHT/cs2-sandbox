@@ -338,17 +338,10 @@ function createReplayData() {
       await loadAllReplays();
       console.log('[Load] 已加载所有回放列表，数量:', replayList.value.length);
 
-      // 只从 IndexedDB 加载数据
-      console.log('[Load] 尝试从IndexedDB加载最新的回放数据');
-      const stored = await loadReplayFromDB();
-      if (stored) {
-        console.log('[Load] 从IndexedDB获取到数据，准备设置');
-        setReplayData(stored);
-        console.log('[Load] 从IndexedDB加载完成');
-      } else {
-        console.log('[Load] IndexedDB中未找到回放数据，等待用户上传Demo');
-        statusMsg.value = '请上传Demo文件开始回放';
-      }
+      // Don't automatically load any demo on first page load
+      // User must manually select a demo from the list
+      console.log('[Load] 不自动加载任何Demo，等待用户手动选择');
+      statusMsg.value = '请打开左上角 Demo 列表并上传 demo 文件';
     } catch (e: any) {
       if (e.name === 'AbortError') return;
       console.error('Initial load failed', e);

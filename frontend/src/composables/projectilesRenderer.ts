@@ -34,32 +34,32 @@ const PROJECTILE_UI_CONFIG = {
   Molotov: {
     color: 0xff6600,
     alpha: 0.5,
-    iconScale: 1.0,
+    iconScale: 0.7,
   },
   Incendiary: {
     color: 0xff6600,
     alpha: 0.5,
-    iconScale: 1.0,
+    iconScale: 0.7,
   },
   HE: {
     color: 0xff3300,
     alpha: 0.5,
-    iconScale: 1.0,
+    iconScale: 0.7,
   },
   Flash: {
     color: 0xffffcc,
     alpha: 0.5,
-    iconScale: 1.0,
+    iconScale: 0.7,
   },
   Decoy: {
     color: 0xffffff,
     alpha: 0.5,
-    iconScale: 1.0,
+    iconScale: 0.7,
   },
   C4: {
     color: 0xff0000,
     alpha: 1.0,
-    iconScale: 1.0,
+    iconScale: 0.7,
   },
 };
 

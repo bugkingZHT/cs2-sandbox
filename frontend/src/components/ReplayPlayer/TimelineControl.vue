@@ -244,7 +244,7 @@ const getProjectileIcon = (type: string) => {
   width: 122px;
   height: 40px;
   background: transparent;
-  border: 1px solid rgba(173, 216, 230, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   display: flex;
   align-items: center;

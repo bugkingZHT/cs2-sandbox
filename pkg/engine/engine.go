@@ -38,10 +38,7 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 	b := &replayBuilder{
 		parser:            p,
 		bombState:         "carried",
-		activeSmokes:      make(map[int]entity.ProjectileFrame),
-		activeDecoys:      make(map[int]entity.ProjectileFrame),
-		activeFires:       make(map[int]entity.ProjectileFrame),
-		activeExplosions:  make(map[int]entity.ProjectileFrame),
+		activeProjectiles: make(map[int]entity.ProjectileFrame),
 		currentKillEvents: make(map[int]entity.KillEvent),
 	}
 
@@ -127,10 +124,7 @@ type replayBuilder struct {
 	currentRound      int
 	bombState         string
 	bombSite          string
-	activeSmokes      map[int]entity.ProjectileFrame
-	activeDecoys      map[int]entity.ProjectileFrame
-	activeFires       map[int]entity.ProjectileFrame
-	activeExplosions  map[int]entity.ProjectileFrame
+	activeProjectiles map[int]entity.ProjectileFrame
 	currentKillEvents map[int]entity.KillEvent
 	prevFrame         *entity.Frame
 }
@@ -212,8 +206,21 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	}
 
 	// Extract projectiles
-	// 轨迹中的投掷物
-	projectiles := make(map[int]entity.ProjectileFrame)
+	// Create three maps as requested:
+	// 1. Flying projectiles (from grenade projectiles in current game state)
+	// 2. Active projectiles (from b.activeProjectiles map)
+	// 3. Previous frame projectiles (from b.prevFrame.Projectiles)
+
+	// Create maps for the three sources
+	flyingProjectiles := make(map[int]entity.ProjectileFrame)
+	activeProjectiles := b.activeProjectiles
+	prevFrameProjectiles := make(map[int]entity.ProjectileFrame)
+
+	if b.prevFrame != nil {
+		prevFrameProjectiles = b.prevFrame.Projectiles
+	}
+
+	// Process flying projectiles (in flight)
 	for _, proj := range gs.GrenadeProjectiles() {
 		// Add nil checks before accessing entity properties to prevent panics
 		if proj.Entity == nil || proj.WeaponInstance == nil {
@@ -245,7 +252,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			continue
 		}
 
-		projectiles[proj.Entity.ID()] = entity.ProjectileFrame{
+		flyingProjectiles[proj.Entity.ID()] = entity.ProjectileFrame{
 			Type:           equipType, // Use the validated equipment type
 			X:              pos.X,
 			Y:              pos.Y,
@@ -254,50 +261,92 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			ThrowerSteamID: throwerSteamID,
 			EntityID:       proj.Entity.ID(),
 			Trajectory:     trajectory,
-			IsExploded:     false,
+			IsExploded:     false, // Flying projectiles are not exploded yet
 		}
 	}
 
-	// helper: find projectile in previous frame by entity ID
-	findPrevProjectile := func(id int) (entity.ProjectileFrame, bool) {
-		if b.prevFrame == nil {
-			return entity.ProjectileFrame{}, false
-		}
-		if p, ok := b.prevFrame.Projectiles[id]; ok {
-			return p, true
-		}
-		return entity.ProjectileFrame{}, false
+	// First, combine all three maps into a new combined map
+	combinedProjectiles := make(map[int]entity.ProjectileFrame)
+
+	// Add all projectiles from previous frame to the combined map first
+	for id, proj := range prevFrameProjectiles {
+		combinedProjectiles[id] = proj
 	}
 
-	// Helper to process active projectiles
-	processActiveProjectiles := func(activeMap map[int]entity.ProjectileFrame) {
-		for _, proj := range activeMap {
-			if prevProj, ok := findPrevProjectile(proj.EntityID); ok {
-				var ttl int64 = entity.GetProjectileConfigByType(proj.Type).DurationInMs
-				if prevProj.IsExploded {
-					ttl = prevProj.TTL - int64(timeMs-b.prevFrame.TimeMs)
-				}
-				if ttl > 0 {
-					proj.TTL = ttl
-					projectiles[proj.EntityID] = proj
-				} else {
-					delete(projectiles, proj.EntityID)
-				}
+	// Add all flying projectiles to the combined map (may overwrite previous frame projectiles)
+	for id, proj := range flyingProjectiles {
+		combinedProjectiles[id] = proj
+	}
+
+	// Add all active projectiles to the combined map (highest priority, may overwrite others)
+	for id, proj := range activeProjectiles {
+		// For active projectiles, they are considered exploded
+		updatedProj := proj
+		updatedProj.IsExploded = true
+		combinedProjectiles[id] = updatedProj
+	}
+
+	// Now iterate through the combined map to calculate explode and TTL values
+	projectiles := make(map[int]entity.ProjectileFrame)
+
+	for id, proj := range combinedProjectiles {
+		// Determine if this projectile comes from active projectiles
+		isFromActive := false
+		if _, exists := activeProjectiles[id]; exists {
+			isFromActive = true
+		}
+
+		// Get the previous frame projectile if it exists
+		prevProj, prevExists := prevFrameProjectiles[id]
+
+		// Calculate IsExploded: if in active map, IsExploded = true; otherwise, inherit from previous frame
+		isExploded := false
+		if isFromActive {
+			isExploded = true
+		} else if prevExists {
+			isExploded = prevProj.IsExploded
+		}
+
+		// Calculate TTL according to the rules
+		var ttl int64 = 0
+		if prevExists {
+			if !prevProj.IsExploded && isExploded {
+				// If in previous frame was not exploded, but now is exploded, assign initial TTL
+				ttl = entity.GetProjectileConfigByType(proj.Type).DurationInMs
+			} else if prevProj.IsExploded && isExploded {
+				// If in both frames exploded, calculate TTL based on time difference
+				ttl = prevProj.TTL - int64(timeMs-b.prevFrame.TimeMs)
 			} else {
-				projectiles[proj.EntityID] = proj
+				// Otherwise, inherit TTL from previous frame if it exists
+				ttl = prevProj.TTL
 			}
+		} else if isExploded {
+			// New projectile that's exploded, assign initial TTL
+			ttl = entity.GetProjectileConfigByType(proj.Type).DurationInMs
+		}
+
+		// Only add to current frame if TTL is positive (not expired)
+		if ttl > 0 || !isExploded {
+			// Create the final projectile for the current frame
+			finalProj := proj
+			finalProj.IsExploded = isExploded
+			finalProj.TTL = ttl
+			projectiles[id] = finalProj
+		} else {
+			// clear expired projectiles
+			delete(projectiles, id)
 		}
 	}
 
-	// Add active projectiles that have exploded to the current frame
-	// 已生效的投掷物
-	processActiveProjectiles(b.activeSmokes)
-	processActiveProjectiles(b.activeDecoys)
-	processActiveProjectiles(b.activeFires)
-	processActiveProjectiles(b.activeExplosions)
-
-	// Clear instantaneous explosions after recording them in the current frame
-	b.activeExplosions = make(map[int]entity.ProjectileFrame)
+	// Clear activeProjectiles and rebuild it based on current frame
+	// Active projectiles are those that are exploded and have positive TTL
+	newActiveProjectiles := make(map[int]entity.ProjectileFrame)
+	for id, proj := range projectiles {
+		if proj.IsExploded && proj.TTL > 0 {
+			newActiveProjectiles[id] = proj
+		}
+	}
+	b.activeProjectiles = newActiveProjectiles
 
 	// Extract dropped equipment - only add valid equipment types
 	var droppedEquipment []entity.DroppedEquipment
