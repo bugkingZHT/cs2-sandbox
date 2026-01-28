@@ -326,16 +326,19 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		}
 
 		// Only add to current frame if TTL is positive (not expired)
-		if ttl > 0 || !isExploded {
-			// Create the final projectile for the current frame
-			finalProj := proj
-			finalProj.IsExploded = isExploded
-			finalProj.TTL = ttl
-			projectiles[id] = finalProj
-		} else {
-			// clear expired projectiles
+		_, inActive := activeProjectiles[id]
+		_, inFlying := flyingProjectiles[id]
+		if ttl <= 0 && !inActive && !inFlying {
+			// clear expired projectiles and continue
 			delete(projectiles, id)
+			continue
 		}
+
+		// Create the final projectile for the current frame
+		finalProj := proj
+		finalProj.IsExploded = isExploded
+		finalProj.TTL = ttl
+		projectiles[id] = finalProj
 	}
 
 	// Clear activeProjectiles and rebuild it based on current frame

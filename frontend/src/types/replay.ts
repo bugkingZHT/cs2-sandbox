@@ -48,6 +48,7 @@ export interface ProjectileState {
   entityID: number;
   trajectory?: Point[];
   isExploded?: boolean; // 投掷物是否已爆炸/生效
+  ttl?: number; // Time to live in milliseconds
 }
 
 export interface ProjectileRenderConfig {

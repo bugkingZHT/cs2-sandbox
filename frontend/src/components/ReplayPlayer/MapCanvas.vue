@@ -58,7 +58,7 @@ const PLAYER_STYLE = {
   nameSize: 15,
   triLen: 8,
   triWidth: 6,
-  attackLen: 60
+  attackLen: 40
 };
 
 const host = ref<HTMLDivElement | null>(null);

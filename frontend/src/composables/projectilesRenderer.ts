@@ -374,6 +374,12 @@ export const drawProjectilesForFrame = async (options: {
 
   for (const key in projectiles) {
     const proj = projectiles[key];
+    
+    // Filter out projectiles with negative TTL - don't display any information
+    if (proj.ttl !== undefined && proj.ttl < 0) {
+      continue;
+    }
+    
     const typeId = Number(proj.type);
     const typeKey = getProjectileTypeKey(typeId);
 
