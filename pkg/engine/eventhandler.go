@@ -15,6 +15,12 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.bombSite = ""
 		b.activeProjectiles = make(map[int]entity.ProjectileFrame)
 		b.currentKillEvents = make(map[int]entity.KillEvent)
+		b.inFreezeTime = true // Enter freeze time at round start
+	})
+
+	// Register freeze time end handler
+	b.parser.RegisterEventHandler(func(e events.RoundFreezetimeEnd) {
+		b.inFreezeTime = false // Exit freeze time
 	})
 
 	// Smoke event handlers

@@ -83,6 +83,7 @@
             :bounds="bounds" 
             :current-frame-index="currentFrameIndex"
             :is-playing="isPlaying"
+            :is-dragging="isDraggingTimeline"
             :map-name="replay?.mapName"
             :projectile-configs="replay?.projectileRenderConfig"
           />
@@ -127,6 +128,7 @@
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
         @exit-replay="emit('exit-replay')"
+        @dragging-change="isDraggingTimeline = $event"
       />
     </section>
   </div>
@@ -146,6 +148,32 @@ const emit = defineEmits<{
 
 const { loading, error, replay, frames, bounds } = useReplayData();
 
+const currentFrameIndex = ref(0);
+const currentPlaybackTimeMs = ref(0);
+const isPlaying = ref(false);
+const playbackSpeed = ref(1);
+const isDraggingTimeline = ref(false);
+const wasPlayingBeforeDrag = ref(false);
+
+let lastTimestamp = 0;
+let rafId: number | null = null;
+
+// Animation control functions (declared early for use in watchers)
+const startAnimation = () => {
+  if (rafId != null) {
+    return;
+  }
+  lastTimestamp = 0;
+  rafId = requestAnimationFrame(stepPlayback);
+};
+
+const cancelAnimation = () => {
+  if (rafId != null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+};
+
 // 监听 replay 和 frames 的变化
 watch(
   () => ({ replay: replay.value, frames: frames.value }),
@@ -155,19 +183,37 @@ watch(
       mapName: data.replay?.mapName,
       frameCount: data.frames?.length || 0
     });
+    
+    // Reset playback state when new replay is loaded
+    if (data.replay && data.frames && data.frames.length > 0) {
+      currentFrameIndex.value = 0;
+      currentPlaybackTimeMs.value = data.frames[0]?.timeMs ?? 0;
+      isPlaying.value = false;
+      cancelAnimation();
+      lastTimestamp = 0;
+    }
   },
   { immediate: true }
 );
 
-
-
-const currentFrameIndex = ref(0);
-const currentPlaybackTimeMs = ref(0);
-const isPlaying = ref(false);
-const playbackSpeed = ref(1);
-
-let lastTimestamp = 0;
-let rafId: number | null = null;
+// Auto-pause when dragging starts, auto-resume when dragging ends
+watch(isDraggingTimeline, (isDragging) => {
+  if (isDragging) {
+    // Started dragging - pause if playing
+    wasPlayingBeforeDrag.value = isPlaying.value;
+    if (isPlaying.value) {
+      isPlaying.value = false;
+      cancelAnimation();
+    }
+  } else {
+    // Stopped dragging - resume if was playing before
+    if (wasPlayingBeforeDrag.value) {
+      isPlaying.value = true;
+      startAnimation();
+      wasPlayingBeforeDrag.value = false;
+    }
+  }
+});
 
 const safeFrames = computed<Frame[]>(() => frames.value || []);
 
@@ -282,7 +328,38 @@ watch(currentPlaybackTimeMs, (newTime) => {
   const framesArr = safeFrames.value;
   if (!framesArr.length) return;
 
+  // During dragging, use incremental frame selection for smoother transitions
+  if (isDraggingTimeline.value) {
+    const currentTime = framesArr[currentFrameIndex.value]?.timeMs ?? 0;
+    const timeDiff = newTime - currentTime;
+    
+    // If time difference is small, search nearby frames instead of binary search
+    if (Math.abs(timeDiff) < 5000) { // Within 5 seconds
+      if (timeDiff > 0) {
+        // Moving forward - search incrementally
+        for (let i = currentFrameIndex.value; i < framesArr.length; i++) {
+          if (framesArr[i].timeMs > newTime) {
+            currentFrameIndex.value = Math.max(0, i - 1);
+            return;
+          }
+        }
+        currentFrameIndex.value = framesArr.length - 1;
+        return;
+      } else if (timeDiff < 0) {
+        // Moving backward - search incrementally
+        for (let i = currentFrameIndex.value; i >= 0; i--) {
+          if (framesArr[i].timeMs <= newTime) {
+            currentFrameIndex.value = i;
+            return;
+          }
+        }
+        currentFrameIndex.value = 0;
+        return;
+      }
+    }
+  }
 
+  // Use binary search for normal playback or large jumps
   let low = 0;
   let high = framesArr.length - 1;
   let ans = 0;
@@ -326,22 +403,6 @@ const stepPlayback = (timestamp: number) => {
   }
 
   rafId = requestAnimationFrame(stepPlayback);
-};
-
-const startAnimation = () => {
-  if (rafId != null) {
-    return;
-  }
-  lastTimestamp = 0;
-  rafId = requestAnimationFrame(stepPlayback);
-
-};
-
-const cancelAnimation = () => {
-  if (rafId != null) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
 };
 
 const togglePlay = () => {

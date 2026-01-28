@@ -154,8 +154,9 @@ type Frame struct {
 	// 投掷物实体的唯一 ID -> 投掷物信息
 	Projectiles map[int]ProjectileFrame `json:"projectiles"`
 	// 渲染顺序(TODO)
-	// 诱 -> 雷 -> 闪 -> 烟 -> 火
-	ProjectilesSortedRender []int `json:"projectilesSortedRender"`
+	// 类型优先：诱 -> 雷 -> 闪 -> 烟 -> 火
+	// 时间其次：从新到旧
+	SortedProjs []int `json:"sortedProjs"`
 
 	// 掉落在地上的物品信息（类型、位置）
 	DroppedEquipment []DroppedEquipment `json:"droppedEquipment"`

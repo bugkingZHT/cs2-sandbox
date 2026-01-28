@@ -127,6 +127,7 @@ const emit = defineEmits<{
   (e: 'toggle-play'): void;
   (e: 'update-speed', value: number): void;
   (e: 'exit-replay'): void;
+  (e: 'dragging-change', value: boolean): void;
 }>();
 
 const isDragging = ref(false);
@@ -311,11 +312,13 @@ const handleInteraction = (clientX: number, el: HTMLElement) => {
 const onTimelineMouseDown = (e: MouseEvent) => {
   const el = e.currentTarget as HTMLElement;
   isDragging.value = true;
+  emit('dragging-change', true);
   handleInteraction(e.clientX, el);
   
   const onMove = (me: MouseEvent) => handleInteraction(me.clientX, el);
   const onUp = () => {
     isDragging.value = false;
+    emit('dragging-change', false);
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
   };

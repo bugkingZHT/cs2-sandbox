@@ -40,6 +40,8 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 		bombState:         "carried",
 		activeProjectiles: make(map[int]entity.ProjectileFrame),
 		currentKillEvents: make(map[int]entity.KillEvent),
+		resolveFreezeTime: e.resolveFreezeTime,
+		inFreezeTime:      true, // Start in freeze time
 	}
 
 	b.registerEventHandlers()
@@ -67,6 +69,11 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 		// Currently for testing purposes only
 		if b.currentRound > 2 {
 			break
+		}
+
+		// Skip frames during freeze time if resolveFreezeTime is false
+		if !b.resolveFreezeTime && b.inFreezeTime {
+			continue
 		}
 
 		frameCount++
@@ -127,6 +134,8 @@ type replayBuilder struct {
 	activeProjectiles map[int]entity.ProjectileFrame
 	currentKillEvents map[int]entity.KillEvent
 	prevFrame         *entity.Frame
+	resolveFreezeTime bool
+	inFreezeTime      bool
 }
 
 func (b *replayBuilder) frameOne() entity.Frame {

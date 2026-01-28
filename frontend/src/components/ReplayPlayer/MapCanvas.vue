@@ -28,11 +28,31 @@ import {
   drawProjectilesForFrame as drawProjectilesForFrameExternal,
 } from '../../composables/projectilesRenderer';
 
+// Player sprite management for smooth transitions
+interface PlayerSprite {
+  graphics: Graphics;
+  label: Text;
+  targetX: number;
+  targetY: number;
+  currentX: number;
+  currentY: number;
+  targetYaw: number;
+  currentYaw: number;
+  lastUpdateFrame: number;
+}
+
+const playerSpriteMap = new Map<number, PlayerSprite>();
+const LERP_FACTOR = 0.3; // Smoothing factor (0-1, higher = faster transition)
+const HARD_CUT_THRESHOLD = 5; // If frame jump > this, use hard cut instead of smooth
+let animationFrameId: number | null = null;
+let lastFrameIndex = 0; // Track previous frame for jump detection
+
 const props = defineProps<{
   frames: Frame[] | undefined;
   bounds: WorldBounds | null | undefined;
   currentFrameIndex: number;
   isPlaying?: boolean;
+  isDragging?: boolean;
   mapName?: string;
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
 }>();
@@ -222,6 +242,71 @@ const onWheel = (event: WheelEvent) => {
 const clearPlayers = () => {
   if (!playerLayer) return;
   playerLayer.removeChildren();
+  playerSpriteMap.clear();
+};
+
+// Linear interpolation helper
+const lerp = (start: number, end: number, factor: number): number => {
+  return start + (end - start) * factor;
+};
+
+// Angle interpolation (handles wrapping around 360°)
+const lerpAngle = (start: number, end: number, factor: number): number => {
+  let diff = end - start;
+  // Normalize to [-180, 180]
+  while (diff > 180) diff -= 360;
+  while (diff < -180) diff += 360;
+  return start + diff * factor;
+};
+
+// Start smooth animation loop
+const startSmoothAnimation = () => {
+  if (animationFrameId !== null) return;
+  
+  const animate = () => {
+    if (!playerLayer || !props.isPlaying) {
+      animationFrameId = null;
+      return;
+    }
+    
+    let needsUpdate = false;
+    
+    // Interpolate all player sprites
+    playerSpriteMap.forEach((sprite) => {
+      const dx = Math.abs(sprite.targetX - sprite.currentX);
+      const dy = Math.abs(sprite.targetY - sprite.currentY);
+      const dYaw = Math.abs(sprite.targetYaw - sprite.currentYaw);
+      
+      if (dx > 0.5 || dy > 0.5 || dYaw > 0.5) {
+        sprite.currentX = lerp(sprite.currentX, sprite.targetX, LERP_FACTOR);
+        sprite.currentY = lerp(sprite.currentY, sprite.targetY, LERP_FACTOR);
+        sprite.currentYaw = lerpAngle(sprite.currentYaw, sprite.targetYaw, LERP_FACTOR);
+        
+        sprite.graphics.x = sprite.currentX;
+        sprite.graphics.y = sprite.currentY;
+        sprite.label.x = sprite.currentX;
+        sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius + 2;
+        
+        needsUpdate = true;
+      }
+    });
+    
+    if (needsUpdate || props.isPlaying) {
+      animationFrameId = requestAnimationFrame(animate);
+    } else {
+      animationFrameId = null;
+    }
+  };
+  
+  animationFrameId = requestAnimationFrame(animate);
+};
+
+// Stop smooth animation
+const stopSmoothAnimation = () => {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
 };
 
 const clearProjectiles = () => {
@@ -259,18 +344,91 @@ const drawPlayersForFrame = () => {
     return;
   }
 
-  clearPlayers();
+  // Detect if this is a seek (large frame jump) or smooth playback
+  const frameJump = Math.abs(props.currentFrameIndex - lastFrameIndex);
+  const isSeek = frameJump > HARD_CUT_THRESHOLD && !props.isDragging; // Don't treat as seek if dragging
+  lastFrameIndex = props.currentFrameIndex;
+
+  // Track which players exist in current frame
+  const currentPlayers = new Set<number>();
+  
+  // Clear projectiles (they don't need smooth transitions)
   clearProjectiles();
 
   if (frame.players) {
     // 按 player id 排序叠放，确保重叠时顺序一致，避免频闪
     const sortedPlayers = [...frame.players].sort((a, b) => a.id - b.id);
+    
     for (const p of sortedPlayers) {
-      const g = new Graphics();
+      currentPlayers.add(p.id);
+      const mapPos = worldToMap(p.x, p.y);
+      
+      // Check if player sprite already exists
+      let playerSprite = playerSpriteMap.get(p.id);
+      
+      if (!playerSprite) {
+        // Create new player sprite
+        const g = new Graphics();
+        const label = new Text(p.name, {
+          fontFamily: 'system-ui',
+          fontSize: PLAYER_STYLE.nameSize,
+          fill: 0xffffff,
+          stroke: { color: 0x000000, width: 4 },
+        });
+        label.anchor.set(0.5, 0);
+        
+        playerSprite = {
+          graphics: g,
+          label: label,
+          targetX: mapPos.x,
+          targetY: mapPos.y,
+          currentX: mapPos.x,
+          currentY: mapPos.y,
+          targetYaw: p.yaw,
+          currentYaw: p.yaw,
+          lastUpdateFrame: props.currentFrameIndex,
+        };
+        
+        playerSpriteMap.set(p.id, playerSprite);
+        playerLayer.addChild(g);
+        playerLayer.addChild(label);
+        
+        g.eventMode = 'static';
+        g.cursor = 'pointer';
+        (g as any).on('pointerover', (e: any) => onPlayerPointerOver(e, p));
+        (g as any).on('pointermove', (e: any) => {
+          if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
+          hoverScreenPos.x = e.global.x;
+          hoverScreenPos.y = e.global.y;
+        });
+        (g as any).on('pointerout', () => {
+          if (hoverPlayer.value && hoverPlayer.value.id === p.id) hoverPlayer.value = null;
+        });
+      } else {
+        // Update existing player sprite targets
+        playerSprite.targetX = mapPos.x;
+        playerSprite.targetY = mapPos.y;
+        playerSprite.targetYaw = p.yaw;
+        playerSprite.lastUpdateFrame = props.currentFrameIndex;
+        
+        // Hard cut: snap to position immediately if seeking or not playing
+        if (isSeek || !props.isPlaying) {
+          playerSprite.currentX = mapPos.x;
+          playerSprite.currentY = mapPos.y;
+          playerSprite.currentYaw = p.yaw;
+        }
+      }
+      
+      // Redraw player graphics
+      const g = playerSprite.graphics;
+      g.clear();
+      
       const color = p.team === 3 ? 0x3b82f6 : 0xf97316;
       const radius = p.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
-      const mapPos = worldToMap(p.x, p.y);
-      const angleRad = (p.yaw * Math.PI) / -180;
+      const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
+      
+      // Store radius for label positioning
+      (g as any)._radius = radius;
       
       if (p.alive) {
         // 绘制方向三角形
@@ -314,37 +472,37 @@ const drawPlayersForFrame = () => {
         g.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
       }
 
-      g.x = mapPos.x;
-      g.y = mapPos.y;
-      g.eventMode = 'static';
-      g.cursor = 'pointer';
-
-      (g as any).on('pointerover', (e: any) => onPlayerPointerOver(e, p));
-      (g as any).on('pointermove', (e: any) => {
-        if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
-        hoverScreenPos.x = e.global.x;
-        hoverScreenPos.y = e.global.y;
-      });
-      (g as any).on('pointerout', () => {
-        if (hoverPlayer.value && hoverPlayer.value.id === p.id) hoverPlayer.value = null;
-      });
-
-      playerLayer.addChild(g);
-      const label = new Text(p.name, {
-        fontFamily: 'system-ui',
-        fontSize: PLAYER_STYLE.nameSize,
-        fill: 0xffffff,
-        stroke: { color: 0x000000, width: 4 },
-      });
-      label.anchor.set(0.5, 0);
-      label.x = g.x;
-      label.y = g.y + radius + 2;
-      playerLayer.addChild(label);
+      // Set position (either current interpolated or target)
+      g.x = playerSprite.currentX;
+      g.y = playerSprite.currentY;
+      playerSprite.label.x = playerSprite.currentX;
+      playerSprite.label.y = playerSprite.currentY + radius + 2;
     }
+  }
+  
+  // Remove players that are no longer in the frame
+  if (playerLayer) {
+    const toRemove: number[] = [];
+    const layer = playerLayer; // Capture for type narrowing
+    playerSpriteMap.forEach((sprite, playerId) => {
+      if (!currentPlayers.has(playerId)) {
+        layer.removeChild(sprite.graphics);
+        layer.removeChild(sprite.label);
+        sprite.graphics.destroy();
+        sprite.label.destroy();
+        toRemove.push(playerId);
+      }
+    });
+    toRemove.forEach(id => playerSpriteMap.delete(id));
   }
 
   if (frame.projectiles) {
     drawProjectilesForFrame(frame.projectiles, frame.players || []);
+  }
+  
+  // Start animation loop only if playing AND not seeking
+  if (props.isPlaying && !isSeek) {
+    startSmoothAnimation();
   }
 };
 
@@ -356,6 +514,16 @@ watch(
       drawPlayersForFrame();
     }
   },
+);
+
+// Watch isPlaying prop to stop animation when paused
+watch(
+  () => props.isPlaying,
+  (playing) => {
+    if (!playing) {
+      stopSmoothAnimation();
+    }
+  }
 );
 
 // 单独监听frames变化，但使用防抖
@@ -420,6 +588,12 @@ onBeforeUnmount(() => {
     clearTimeout(framesChangeTimer);
     framesChangeTimer = null;
   }
+  
+  // Stop smooth animation
+  stopSmoothAnimation();
+  
+  // Clear player sprites
+  playerSpriteMap.clear();
   
   if (app) {
     app.destroy(true, { children: true });
