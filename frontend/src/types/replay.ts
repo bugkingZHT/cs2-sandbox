@@ -50,6 +50,13 @@ export interface ProjectileState {
   isExploded?: boolean; // 投掷物是否已爆炸/生效
 }
 
+export interface ProjectileRenderConfig {
+  explosionRadius: number;
+  durationInMs: number;
+  canClearSmoke?: boolean;
+  canExtinguishFire?: boolean;
+}
+
 export interface KillEvent {
   killerId: number;
   assistantId: number;
@@ -61,7 +68,7 @@ export interface Frame {
   tick: number;
   round: number;
   players: PlayerState[];
-  projectiles?: ProjectileState[];
+  projectiles?: Record<number, ProjectileState>;
   killEvents?: Record<number, KillEvent>;
 }
 
@@ -72,6 +79,7 @@ export interface ReplayData {
   scoreCT: number;
   scoreT: number;
   frames: Frame[];
+  projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   // 额外字段用于列表展示
   id?: string;
   timestamp?: number;

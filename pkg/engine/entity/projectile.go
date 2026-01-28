@@ -18,7 +18,7 @@ type ProjectileRenderConfig struct {
 
 var projectileRenderConfig = map[common.EquipmentType]ProjectileRenderConfig{
 	common.EqDecoy: {
-		ExplosionRadius: 160, // 诱饵雷爆炸范围 160 游戏坐标
+		ExplosionRadius: 50,
 		DurationInMs:    15000,
 	},
 	common.EqSmoke: {
@@ -40,7 +40,7 @@ var projectileRenderConfig = map[common.EquipmentType]ProjectileRenderConfig{
 		CanClearSmoke:   true,
 	},
 	common.EqFlash: {
-		ExplosionRadius: 160,  // 闪光弹爆炸范围 160 游戏坐标
+		ExplosionRadius: 640,
 		DurationInMs:    1000, // 闪光弹效果时间
 	},
 }

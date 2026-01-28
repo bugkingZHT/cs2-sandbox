@@ -119,8 +119,9 @@ const throwMarkers = computed(() => {
   const seenIds = new Set<number>();
 
   props.roundFrames.forEach(f => {
-    if (f.projectiles && f.projectiles.length > 0) {
-      f.projectiles.forEach((p: any) => {
+    if (f.projectiles && Object.keys(f.projectiles).length > 0) {
+      // projectiles is now a Record<number, ProjectileState>, iterate through values
+      Object.values(f.projectiles).forEach((p: any) => {
         if (!seenIds.has(p.entityID)) {
           seenIds.add(p.entityID);
           const relTime = f.timeMs - props.roundStartTimeMs;

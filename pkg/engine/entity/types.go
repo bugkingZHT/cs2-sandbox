@@ -146,12 +146,16 @@ type Frame struct {
 	Tick int `json:"tick"`
 	// 当前回合数
 	Round int `json:"round"`
-	// 当前帧所有玩家的状态信息
+	// 当前帧所有玩家的状态信息（TODO: use map and sortedRender)
 	Players    []PlayerFrame     `json:"players"`
 	KillEvents map[int]KillEvent `json:"killEvents"`
 
 	// 道具信息（烟、火、闪、雷）
-	Projectiles []ProjectileFrame `json:"projectiles"`
+	// 投掷物实体的唯一 ID -> 投掷物信息
+	Projectiles map[int]ProjectileFrame `json:"projectiles"`
+	// 渲染顺序(TODO)
+	// 诱 -> 雷 -> 闪 -> 烟 -> 火
+	ProjectilesSortedRender []int `json:"projectilesSortedRender"`
 
 	// 掉落在地上的物品信息（类型、位置）
 	DroppedEquipment []DroppedEquipment `json:"droppedEquipment"`

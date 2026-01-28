@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js';
-import type { Frame, PlayerState, ProjectileState, WorldBounds } from '@/types/replay';
+import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
 import { useMapConfig } from '@/composables/useMapConfig';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
@@ -34,6 +34,7 @@ const props = defineProps<{
   currentFrameIndex: number;
   isPlaying?: boolean;
   mapName?: string;
+  projectileConfigs?: Record<number, ProjectileRenderConfig>;
 }>();
 
 // 根据传入的地图名称动态获取配置
@@ -50,26 +51,6 @@ const currentMapConfig = computed(() => {
 });
 
 const mapTextureUrl = computed(() => currentMapConfig.value.imageUrl);
-
-// 投掷物名称映射
-const PROJECTILE_NAME_KEY: Record<string, string> = {
-  'hegrenade': 'HE',
-  'flash': 'Flash',
-  'smoke': 'Smoke',
-  'molotov': 'Molotov',
-  'incendiary': 'Incendiary',
-  'c4': 'C4'
-};
-
-// 投掷物类型到SVG文件的映射
-const PROJECTILE_ASSETS: Record<string, string> = {
-  'HE': '/utility/hegrenade.svg',
-  'Flash': '/utility/flash.svg',
-  'Smoke': '/utility/smoke.svg',
-  'Molotov': '/utility/molotov.svg',
-  'Incendiary': '/utility/incendiary.svg',
-  'C4': '/utility/c4.svg'
-};
 
 const PLAYER_STYLE = {
   aliveRadius: 13,
@@ -250,7 +231,7 @@ const onPlayerPointerOver = (e: any, p: PlayerState) => {
   hoverScreenPos.y = global.y;
 };
 
-const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: PlayerState[]) => {
+const drawProjectilesForFrame = async (projectiles: Record<number, ProjectileState> | undefined, players: PlayerState[]) => {
   await drawProjectilesForFrameExternal({
     projectiles,
     players,
@@ -259,6 +240,7 @@ const drawProjectilesForFrame = async (projectiles: ProjectileState[], players: 
     frames: props.frames,
     currentFrameIndex: props.currentFrameIndex,
     worldToMap,
+    projectileConfigs: props.projectileConfigs,
   });
 };
 

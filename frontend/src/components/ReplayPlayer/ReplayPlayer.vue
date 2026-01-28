@@ -93,6 +93,7 @@
             :current-frame-index="currentFrameIndex"
             :is-playing="isPlaying"
             :map-name="replay?.mapName"
+            :projectile-configs="replay?.projectileRenderConfig"
           />
 
           <!-- 击杀回传 (Kill Feed) -->

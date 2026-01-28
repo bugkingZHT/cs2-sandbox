@@ -213,7 +213,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 
 	// Extract projectiles
 	// 轨迹中的投掷物
-	var projectiles []entity.ProjectileFrame
+	projectiles := make(map[int]entity.ProjectileFrame)
 	for _, proj := range gs.GrenadeProjectiles() {
 		// Add nil checks before accessing entity properties to prevent panics
 		if proj.Entity == nil || proj.WeaponInstance == nil {
@@ -245,7 +245,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			continue
 		}
 
-		projectiles = append(projectiles, entity.ProjectileFrame{
+		projectiles[proj.Entity.ID()] = entity.ProjectileFrame{
 			Type:           equipType, // Use the validated equipment type
 			X:              pos.X,
 			Y:              pos.Y,
@@ -255,7 +255,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			EntityID:       proj.Entity.ID(),
 			Trajectory:     trajectory,
 			IsExploded:     false,
-		})
+		}
 	}
 
 	// helper: find projectile in previous frame by entity ID
@@ -263,72 +263,38 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		if b.prevFrame == nil {
 			return entity.ProjectileFrame{}, false
 		}
-		for _, p := range b.prevFrame.Projectiles {
-			if p.EntityID == id {
-				return p, true
-			}
+		if p, ok := b.prevFrame.Projectiles[id]; ok {
+			return p, true
 		}
 		return entity.ProjectileFrame{}, false
 	}
 
+	// Helper to process active projectiles
+	processActiveProjectiles := func(activeMap map[int]entity.ProjectileFrame) {
+		for _, proj := range activeMap {
+			if prevProj, ok := findPrevProjectile(proj.EntityID); ok {
+				var ttl int64 = entity.GetProjectileConfigByType(proj.Type).DurationInMs
+				if prevProj.IsExploded {
+					ttl = prevProj.TTL - int64(timeMs-b.prevFrame.TimeMs)
+				}
+				if ttl > 0 {
+					proj.TTL = ttl
+					projectiles[proj.EntityID] = proj
+				} else {
+					delete(projectiles, proj.EntityID)
+				}
+			} else {
+				projectiles[proj.EntityID] = proj
+			}
+		}
+	}
+
 	// Add active projectiles that have exploded to the current frame
 	// 已生效的投掷物
-	for _, smoke := range b.activeSmokes {
-		prevSmoke, ok := findPrevProjectile(smoke.EntityID)
-		if !ok {
-			continue
-		}
-		var ttl int64 = -1
-		if prevSmoke.IsExploded {
-			ttl = prevSmoke.TTL - int64(timeMs-b.prevFrame.TimeMs)
-		}
-		if ttl > 0 {
-			smoke.TTL = ttl
-			projectiles = append(projectiles, smoke)
-		}
-	}
-	for _, decoy := range b.activeDecoys {
-		prevDecoy, ok := findPrevProjectile(decoy.EntityID)
-		if !ok {
-			continue
-		}
-		var ttl int64 = -1
-		if prevDecoy.IsExploded {
-			ttl = prevDecoy.TTL - int64(timeMs-b.prevFrame.TimeMs)
-		}
-		if ttl > 0 {
-			decoy.TTL = ttl
-			projectiles = append(projectiles, decoy)
-		}
-	}
-	for _, fire := range b.activeFires {
-		prevFire, ok := findPrevProjectile(fire.EntityID)
-		if !ok {
-			continue
-		}
-		var ttl int64 = -1
-		if prevFire.IsExploded {
-			ttl = prevFire.TTL - int64(timeMs-b.prevFrame.TimeMs)
-		}
-		if ttl > 0 {
-			fire.TTL = ttl
-			projectiles = append(projectiles, fire)
-		}
-	}
-	for _, explosion := range b.activeExplosions {
-		prevExplosion, ok := findPrevProjectile(explosion.EntityID)
-		if !ok {
-			continue
-		}
-		var ttl int64 = -1
-		if prevExplosion.IsExploded {
-			ttl = prevExplosion.TTL - int64(timeMs-b.prevFrame.TimeMs)
-		}
-		if ttl > 0 {
-			explosion.TTL = ttl
-			projectiles = append(projectiles, explosion)
-		}
-	}
+	processActiveProjectiles(b.activeSmokes)
+	processActiveProjectiles(b.activeDecoys)
+	processActiveProjectiles(b.activeFires)
+	processActiveProjectiles(b.activeExplosions)
 
 	// Clear instantaneous explosions after recording them in the current frame
 	b.activeExplosions = make(map[int]entity.ProjectileFrame)
