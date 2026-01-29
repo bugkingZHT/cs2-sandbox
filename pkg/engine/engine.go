@@ -136,6 +136,11 @@ type replayBuilder struct {
 	prevFrame         *entity.Frame
 	resolveFreezeTime bool
 	inFreezeTime      bool
+	// Round time tracking
+	roundStartTick  int // Tick when the round started (freeze time begins)
+	freezeEndTick   int // Tick when freeze time ended
+	bombPlantedTick int // Tick when bomb was planted
+	roundEndTick    int // Tick when round ended
 }
 
 func (b *replayBuilder) frameOne() entity.Frame {
@@ -206,6 +211,9 @@ func (b *replayBuilder) frameOne() entity.Frame {
 
 	// Generate sorted player IDs for rendering
 	sortedPlayers := entity.SortPlayersByID(playersMap)
+
+	// Calculate round time info
+	roundTimeInfo := b.calculateRoundTime(gs, currentTick)
 
 	// Extract bomb info
 	var bombFrame *entity.BombFrame
@@ -422,6 +430,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		TimeMs:           timeMs,
 		Tick:             currentTick,
 		Round:            b.currentRound,
+		RoundTime:        roundTimeInfo,
 		Players:          playersMap,
 		SortedPlayers:    sortedPlayers,
 		KillEvents:       killEvents,
@@ -448,4 +457,91 @@ func distance(x1, y1, z1, x2, y2, z2 float64) float64 {
 	dy := y2 - y1
 	dz := z2 - z1
 	return dx*dx + dy*dy + dz*dz // Return squared distance for performance (no sqrt needed for comparison)
+}
+
+// calculateRoundTime determines the current round phase and remaining time
+func (b *replayBuilder) calculateRoundTime(gs demoinfocs.GameState, currentTick int) entity.RoundTimeInfo {
+	// Get server tick rate from header
+	tickRate := b.parser.TickRate()
+	if tickRate == 0 {
+		tickRate = 128 // Default to 128 tick if not available
+	}
+
+	// Get ConVars for time limits from game rules
+	convars := gs.Rules().ConVars()
+
+	// Extract time configuration from ConVars
+	var freezeTime float64
+	var roundTime float64
+	var c4Timer float64
+
+	if convars != nil {
+		if ft, ok := convars["mp_freezetime"]; ok {
+			freezeTime = parseFloat(ft)
+		}
+		if rt, ok := convars["mp_roundtime"]; ok {
+			roundTime = parseFloat(rt) * 60 // ConVar is in minutes, convert to seconds
+		}
+		if c4, ok := convars["mp_c4timer"]; ok {
+			c4Timer = parseFloat(c4)
+		}
+	}
+
+	// Apply defaults if ConVars are not available or zero
+	freezeTime = GetFreezeTimeOrDefault(freezeTime)
+	roundTime = GetRoundTimeOrDefault(roundTime)
+	c4Timer = GetC4TimerOrDefault(c4Timer)
+
+	// Determine phase and calculate remaining time
+	var phase entity.RoundPhase
+	var timeRemaining float64
+
+	// Check if round has ended
+	if b.roundEndTick > 0 && currentTick >= b.roundEndTick {
+		phase = entity.RoundPhaseEnd
+		timeRemaining = 0
+	} else if b.bombPlantedTick > 0 && currentTick >= b.bombPlantedTick {
+		// Bomb is planted - countdown to explosion
+		phase = entity.RoundPhaseBombPlanted
+		elapsedTicks := currentTick - b.bombPlantedTick
+		elapsedSeconds := float64(elapsedTicks) / tickRate
+		timeRemaining = c4Timer - elapsedSeconds
+		if timeRemaining < 0 {
+			timeRemaining = 0
+		}
+	} else if b.inFreezeTime {
+		// In freeze time
+		phase = entity.RoundPhaseFreezeTime
+		elapsedTicks := currentTick - b.roundStartTick
+		elapsedSeconds := float64(elapsedTicks) / tickRate
+		timeRemaining = freezeTime - elapsedSeconds
+		if timeRemaining < 0 {
+			timeRemaining = 0
+		}
+	} else if b.freezeEndTick > 0 {
+		// Normal round time (after freeze time)
+		phase = entity.RoundPhaseNormal
+		elapsedTicks := currentTick - b.freezeEndTick
+		elapsedSeconds := float64(elapsedTicks) / tickRate
+		timeRemaining = roundTime - elapsedSeconds
+		if timeRemaining < 0 {
+			timeRemaining = 0
+		}
+	} else {
+		// Fallback: treat as freeze time
+		phase = entity.RoundPhaseFreezeTime
+		timeRemaining = freezeTime
+	}
+
+	return entity.RoundTimeInfo{
+		Phase:         phase,
+		TimeRemaining: timeRemaining,
+	}
+}
+
+// parseFloat is a helper to parse string to float64
+func parseFloat(s string) float64 {
+	var f float64
+	fmt.Sscanf(s, "%f", &f)
+	return f
 }

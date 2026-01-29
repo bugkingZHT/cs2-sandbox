@@ -124,6 +124,32 @@ type KillEvent struct {
 	WeaponID common.EquipmentType `json:"weaponId"`
 }
 
+// 回合阶段状态
+type RoundPhase string
+
+const (
+	// 冻结时间（买枪阶段）
+	RoundPhaseFreezeTime RoundPhase = "freezetime"
+	// 正常游戏时间
+	RoundPhaseNormal RoundPhase = "normal"
+	// C4 已安放，倒计时中
+	RoundPhaseBombPlanted RoundPhase = "planted"
+	// 回合结束
+	RoundPhaseEnd RoundPhase = "end"
+)
+
+// 回合时间信息
+type RoundTimeInfo struct {
+	// 当前回合阶段
+	Phase RoundPhase `json:"phase"`
+	// 倒计时剩余秒数（浮点数，保留小数）
+	// FreezeTime: 冻结时间剩余秒数
+	// Normal: 回合时间剩余秒数
+	// BombPlanted: C4 爆炸倒计时剩余秒数
+	// End: 0
+	TimeRemaining float64 `json:"timeRemaining"`
+}
+
 // C4 炸弹信息
 type BombFrame struct {
 	// C4 的 X 坐标
@@ -148,6 +174,8 @@ type Frame struct {
 	Tick int `json:"tick"`
 	// 当前回合数
 	Round int `json:"round"`
+	// 回合时间信息（阶段 + 倒计时）
+	RoundTime RoundTimeInfo `json:"roundTime"`
 	// 当前帧所有玩家的状态信息
 	// 玩家 ID -> 玩家信息的映射
 	Players map[int]PlayerFrame `json:"players"`

@@ -16,11 +16,21 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.activeProjectiles = make(map[int]entity.ProjectileFrame)
 		b.currentKillEvents = make(map[int]entity.KillEvent)
 		b.inFreezeTime = true // Enter freeze time at round start
+		b.roundStartTick = b.parser.GameState().IngameTick()
+		b.freezeEndTick = 0
+		b.bombPlantedTick = 0
+		b.roundEndTick = 0
 	})
 
 	// Register freeze time end handler
 	b.parser.RegisterEventHandler(func(e events.RoundFreezetimeEnd) {
 		b.inFreezeTime = false // Exit freeze time
+		b.freezeEndTick = b.parser.GameState().IngameTick()
+	})
+
+	// Register round end handler
+	b.parser.RegisterEventHandler(func(e events.RoundEnd) {
+		b.roundEndTick = b.parser.GameState().IngameTick()
 	})
 
 	// Smoke event handlers
@@ -137,7 +147,11 @@ func (b *replayBuilder) registerEventHandlers() {
 
 	// Bomb event handlers
 	b.parser.RegisterEventHandler(func(e events.BombPlantBegin) { b.bombState = "planting"; b.bombSite = string(e.Site) })
-	b.parser.RegisterEventHandler(func(e events.BombPlanted) { b.bombState = "planted"; b.bombSite = string(e.Site) })
+	b.parser.RegisterEventHandler(func(e events.BombPlanted) {
+		b.bombState = "planted"
+		b.bombSite = string(e.Site)
+		b.bombPlantedTick = b.parser.GameState().IngameTick()
+	})
 	b.parser.RegisterEventHandler(func(e events.BombDefuseStart) { b.bombState = "defusing" })
 	b.parser.RegisterEventHandler(func(e events.BombDefused) { b.bombState = "defused" })
 	b.parser.RegisterEventHandler(func(e events.BombExplode) { b.bombState = "exploded" })

@@ -71,10 +71,10 @@
         <div class="status-meta">
           <div class="speed-tag">{{ playbackSpeed }}x</div>
           <div class="time-display">
-            <svg class="icon-stopwatch" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <svg class="icon-stopwatch" width="14" height="14" viewBox="0 0 24 24" fill="none" :stroke="roundTimeColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
             </svg>
-            <span class="time-font">{{ formatMs(roundRelativeTimeMs) }}</span>
+            <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
           </div>
         </div>
       </div>
@@ -91,6 +91,20 @@
               class="mark-line" 
               :class="{ 'ct': m.team === 3, 't': m.team === 2 }"
               :style="{ left: `${m.offset}%` }"
+            ></div>
+          </template>
+          
+          <!-- 炸弹事件标记 -->
+          <template v-for="(bm, idx) in bombEventMarkers" :key="`bomb-${idx}`">
+            <div 
+              class="bomb-event-mark" 
+              :class="{ 
+                'bomb-planted': bm.event === 'planted', 
+                'bomb-exploded': bm.event === 'exploded',
+                'round-end': bm.event === 'roundend'
+              }"
+              :style="{ left: `${bm.offset}%` }"
+              :title="bm.event === 'planted' ? 'Bomb Planted' : bm.event === 'exploded' ? 'Bomb Exploded' : 'Round End'"
             ></div>
           </template>
         </div>
@@ -232,6 +246,40 @@ const roundRelativeTimeMs = computed(() => {
   return Math.max(0, props.currentTimeMs - props.roundStartTimeMs);
 });
 
+// 获取当前帧的回合时间信息
+const currentRoundTime = computed(() => {
+  if (!props.frames || props.frames.length === 0 || props.currentFrameIndex >= props.frames.length) {
+    return { phase: 'normal', timeRemaining: 0 };
+  }
+  const frame = props.frames[props.currentFrameIndex];
+  return frame?.roundTime || { phase: 'normal', timeRemaining: 0 };
+});
+
+// 根据 phase 计算颜色
+const roundTimeColor = computed(() => {
+  const phase = currentRoundTime.value.phase;
+  switch (phase) {
+    case 'freezetime':
+      return '#4dabf7'; // 蓝色 - 冻结时间
+    case 'normal':
+      return '#ffffff'; // 白色 - 正常时间
+    case 'planted':
+      return '#ff6b6b'; // 红色 - C4 已安放
+    case 'end':
+      return '#868e96'; // 灰色 - 回合结束
+    default:
+      return '#ffffff';
+  }
+});
+
+// 格式化回合时间显示
+const formatRoundTime = computed(() => {
+  const timeRemaining = currentRoundTime.value.timeRemaining;
+  const minutes = Math.floor(timeRemaining / 60);
+  const seconds = Math.floor(timeRemaining % 60);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+});
+
 // 计算道具投掷标记
 const throwMarkers = computed(() => {
   if (!props.roundFrames || props.roundDurationMs === 0) return [];
@@ -260,6 +308,43 @@ const throwMarkers = computed(() => {
       });
     }
   });
+  return markers;
+});
+
+// 计算炸弹事件标记（安放和爆炸）
+const bombEventMarkers = computed(() => {
+  if (!props.roundFrames || props.roundDurationMs === 0) return [];
+  const markers: { offset: number; event: 'planted' | 'exploded' | 'roundend' }[] = [];
+  
+  let bombPlantedFound = false;
+  let bombExplodedFound = false;
+  let roundEndFound = false;
+  
+  props.roundFrames.forEach(f => {
+    const relTime = f.timeMs - props.roundStartTimeMs;
+    const offset = (relTime / props.roundDurationMs) * 100;
+    
+    if (f.bomb) {
+      // 检测炸弹安放时刻（状态从非 planted 变为 planted）
+      if (!bombPlantedFound && f.bomb.state === 'planted') {
+        bombPlantedFound = true;
+        markers.push({ offset, event: 'planted' });
+      }
+      
+      // 检测炸弹爆炸时刻（状态变为 exploded）
+      if (!bombExplodedFound && f.bomb.state === 'exploded') {
+        bombExplodedFound = true;
+        markers.push({ offset, event: 'exploded' });
+      }
+    }
+    
+    // 检测回合结束时刻（roundTime.phase 变为 'end'）
+    if (!roundEndFound && f.roundTime && f.roundTime.phase === 'end') {
+      roundEndFound = true;
+      markers.push({ offset, event: 'roundend' });
+    }
+  });
+  
   return markers;
 });
 
@@ -331,17 +416,6 @@ const formatMs = (ms: number) => {
   const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
   const s = (totalSeconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
-};
-
-const onIconError = (event: Event) => {
-  const img = event.target as HTMLImageElement;
-  img.src = '/weapons/default.svg';
-};
-
-const getProjectileIcon = (type: string) => {
-  const typeId = Number(type);
-  const fileName = EQUIPMENT_ID_MAP[typeId] || 'hegrenade';
-  return `/utility/${fileName}.svg`;
 };
 </script>
 
@@ -677,6 +751,48 @@ const getProjectileIcon = (type: string) => {
 .mark-line.t {
   background: #f97316;
   opacity: 0.8;
+}
+
+/* 炸弹事件标记 */
+.bomb-event-mark {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  z-index: 3;
+  pointer-events: auto;
+  cursor: help;
+}
+
+/* 炸弹安放 - 标准红色 */
+.bomb-event-mark.bomb-planted {
+  background: #ff0000;
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.7), 0 0 18px rgba(255, 0, 0, 0.4);
+  
+}
+
+/* 炸弹爆炸 - 红色发光 */
+.bomb-event-mark.bomb-exploded {
+  background: linear-gradient(180deg, #ff6b6b 0%, #e03131 100%);
+  box-shadow: 0 0 12px rgba(255, 107, 107, 0.8), 0 0 20px rgba(255, 107, 107, 0.4);
+  animation: bomb-pulse 1.5s ease-in-out infinite;
+}
+
+/* 回合结束 - 橙色 */
+.bomb-event-mark.round-end {
+  background: linear-gradient(180deg, #ffa94d 0%, #fd7e14 100%);
+  box-shadow: 0 0 8px rgba(255, 169, 77, 0.6);
+}
+
+@keyframes bomb-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(255, 107, 107, 0.8), 0 0 20px rgba(255, 107, 107, 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 16px rgba(255, 107, 107, 1), 0 0 28px rgba(255, 107, 107, 0.6);
+  }
 }
 
 .mark-icon {

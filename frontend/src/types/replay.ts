@@ -64,10 +64,26 @@ export interface KillEvent {
   weaponId: string;
 }
 
+// 回合阶段
+export type RoundPhase = 'freezetime' | 'normal' | 'planted' | 'end';
+
+// 回合时间信息
+export interface RoundTimeInfo {
+  // 当前回合阶段
+  phase: RoundPhase;
+  // 倒计时剩余秒数
+  // freezetime: 冻结时间剩余秒数
+  // normal: 回合时间剩余秒数
+  // planted: C4 爆炸倒计时剩余秒数
+  // end: 0
+  timeRemaining: number;
+}
+
 export interface Frame {
   timeMs: number;
   tick: number;
   round: number;
+  roundTime: RoundTimeInfo; // 回合时间信息
   players: Record<number, PlayerState>; // Player ID -> PlayerState map
   sortedPlayers?: number[]; // Pre-sorted player IDs for rendering order
   projectiles?: Record<number, ProjectileState>;
