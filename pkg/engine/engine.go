@@ -144,7 +144,8 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	gs := b.parser.GameState()
 	currentTick := gs.IngameTick()
 
-	var players []entity.PlayerFrame
+	// Build players map instead of slice
+	playersMap := make(map[int]entity.PlayerFrame)
 	for _, pl := range gs.Participants().Playing() {
 		pos := pl.Position()
 		x, y := pos.X, pos.Y
@@ -155,6 +156,8 @@ func (b *replayBuilder) frameOne() entity.Frame {
 				inventory = append(inventory, w.Type)
 			}
 		}
+		// Sort inventory by equipment type ID for consistent display
+		entity.SortInventoryByType(inventory)
 
 		activeWeapon := common.EqUnknown
 		if aw := pl.ActiveWeapon(); aw != nil && aw.Type != common.EqUnknown {
@@ -168,7 +171,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			}
 		}
 
-		players = append(players, entity.PlayerFrame{
+		playerFrame := entity.PlayerFrame{
 			ID:                  pl.UserID,
 			Name:                pl.Name,
 			Team:                int(pl.Team),
@@ -197,8 +200,12 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			EquipmentValue:      pl.EquipmentValueCurrent(),
 			SteamID:             pl.SteamID64,
 			IsBot:               pl.IsBot,
-		})
+		}
+		playersMap[pl.UserID] = playerFrame
 	}
+
+	// Generate sorted player IDs for rendering
+	sortedPlayers := entity.SortPlayersByID(playersMap)
 
 	// Extract bomb info
 	var bombFrame *entity.BombFrame
@@ -248,10 +255,10 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		}
 
 		throwerName := ""
-		var throwerSteamID uint64
+		throwerID := 0
 		if proj.Thrower != nil {
 			throwerName = proj.Thrower.Name
-			throwerSteamID = proj.Thrower.SteamID64
+			throwerID = proj.Thrower.UserID
 		}
 
 		// Ensure we have a valid equipment type
@@ -262,15 +269,15 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		}
 
 		flyingProjectiles[proj.Entity.ID()] = entity.ProjectileFrame{
-			Type:           equipType, // Use the validated equipment type
-			X:              pos.X,
-			Y:              pos.Y,
-			Z:              pos.Z,
-			ThrowerName:    throwerName,
-			ThrowerSteamID: throwerSteamID,
-			EntityID:       proj.Entity.ID(),
-			Trajectory:     trajectory,
-			IsExploded:     false, // Flying projectiles are not exploded yet
+			Type:        equipType, // Use the validated equipment type
+			X:           pos.X,
+			Y:           pos.Y,
+			Z:           pos.Z,
+			ThrowerName: throwerName,
+			ThrowerID:   throwerID,
+			EntityID:    proj.Entity.ID(),
+			Trajectory:  trajectory,
+			IsExploded:  false, // Flying projectiles are not exploded yet
 		}
 	}
 
@@ -386,13 +393,18 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		killEvents[k] = v
 	}
 
+	// Generate sorted projectile IDs for rendering (by type priority and TTL)
+	sortedProjs := entity.SortProjectilesByPriority(projectiles)
+
 	return entity.Frame{
 		TimeMs:           timeMs,
 		Tick:             currentTick,
 		Round:            b.currentRound,
-		Players:          players,
+		Players:          playersMap,
+		SortedPlayers:    sortedPlayers,
 		KillEvents:       killEvents,
 		Projectiles:      projectiles,
+		SortedProjs:      sortedProjs,
 		DroppedEquipment: droppedEquipment,
 		Bomb:             bombFrame,
 	}

@@ -246,8 +246,8 @@ const throwMarkers = computed(() => {
           seenIds.add(p.entityID);
           const relTime = f.timeMs - props.roundStartTimeMs;
           
-          // 根据投掷者ID查找阵营
-          const thrower = f.players?.find((player: any) => player.steamID === p.throwerSteamID);
+          // Find thrower by player ID from players map (direct lookup)
+          const thrower = f.players?.[p.throwerID] || null;
           const team = thrower ? thrower.team : 0;
 
           markers.push({

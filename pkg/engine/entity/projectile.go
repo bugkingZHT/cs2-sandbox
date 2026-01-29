@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"sort"
+
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 )
 
@@ -14,6 +16,16 @@ type ProjectileRenderConfig struct {
 	CanClearSmoke bool `json:"canClearSmoke,omitempty"`
 	// 是否可以灭火（烟雾弹特有）
 	CanExtinguishFire bool `json:"canExtinguishFire,omitempty"`
+}
+
+// 投掷物渲染优先级（数值越小优先级越高）
+var projectileRenderPriority = map[common.EquipmentType]int{
+	common.EqDecoy:      1, // 诱饵弹优先级最高
+	common.EqHE:         2, // 高爆手雷
+	common.EqFlash:      3, // 闪光弹
+	common.EqSmoke:      4, // 烟雾弹
+	common.EqMolotov:    5, // T 火（燃烧瓶）
+	common.EqIncendiary: 5, // CT 火（燃烧弹）- 与 Molotov 同优先级
 }
 
 var projectileRenderConfig = map[common.EquipmentType]ProjectileRenderConfig{
@@ -53,4 +65,60 @@ func GetProjectileConfig() map[common.EquipmentType]ProjectileRenderConfig {
 // GetProjectileConfigByType returns the default projectile render configuration for a given projectile type
 func GetProjectileConfigByType(equipmentType common.EquipmentType) ProjectileRenderConfig {
 	return projectileRenderConfig[equipmentType]
+}
+
+// GetProjectileRenderPriority returns the render priority for a projectile type (lower number = higher priority)
+func GetProjectileRenderPriority(equipmentType common.EquipmentType) int {
+	if priority, ok := projectileRenderPriority[equipmentType]; ok {
+		return priority
+	}
+	return 999 // Unknown types have lowest priority
+}
+
+// SortProjectilesByPriority sorts projectile entity IDs by:
+// 1. Type priority (Decoy > HE > Flash > Smoke > Fire)
+// 2. TTL (higher TTL = newer = higher priority)
+func SortProjectilesByPriority(projectiles map[int]ProjectileFrame) []int {
+	// Extract entity IDs
+	entityIDs := make([]int, 0, len(projectiles))
+	for id := range projectiles {
+		entityIDs = append(entityIDs, id)
+	}
+
+	// Sort by type priority first, then by TTL (descending)
+	sort.Slice(entityIDs, func(i, j int) bool {
+		projI := projectiles[entityIDs[i]]
+		projJ := projectiles[entityIDs[j]]
+
+		// Compare type priority first
+		priorityI := GetProjectileRenderPriority(projI.Type)
+		priorityJ := GetProjectileRenderPriority(projJ.Type)
+
+		if priorityI != priorityJ {
+			return priorityI < priorityJ // Lower priority number = render first
+		}
+
+		// If same priority, sort by TTL (higher TTL = newer = render first)
+		return projI.TTL > projJ.TTL
+	})
+
+	return entityIDs
+}
+
+// SortPlayersByID sorts player IDs in ascending order for consistent rendering
+func SortPlayersByID(players map[int]PlayerFrame) []int {
+	playerIDs := make([]int, 0, len(players))
+	for id := range players {
+		playerIDs = append(playerIDs, id)
+	}
+
+	sort.Ints(playerIDs)
+	return playerIDs
+}
+
+// SortInventoryByType sorts inventory equipment types by their numeric value for consistent display
+func SortInventoryByType(inventory []common.EquipmentType) {
+	sort.Slice(inventory, func(i, j int) bool {
+		return inventory[i] < inventory[j]
+	})
 }

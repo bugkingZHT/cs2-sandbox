@@ -100,8 +100,8 @@ type ProjectileFrame struct {
 	Z float64 `json:"z"`
 	// 投掷该道具的玩家名称
 	ThrowerName string `json:"throwerName"`
-	// 投掷该道具的玩家 Steam ID
-	ThrowerSteamID uint64 `json:"throwerSteamID"`
+	// 投掷该道具的玩家对局内 ID (对应 PlayerFrame.ID)
+	ThrowerID int `json:"throwerID"`
 	// 投掷物实体的唯一 ID
 	EntityID int `json:"entityID"`
 	// 投掷物的飞行轨迹路径点
@@ -146,14 +146,18 @@ type Frame struct {
 	Tick int `json:"tick"`
 	// 当前回合数
 	Round int `json:"round"`
-	// 当前帧所有玩家的状态信息（TODO: use map and sortedRender)
-	Players    []PlayerFrame     `json:"players"`
+	// 当前帧所有玩家的状态信息
+	// 玩家 ID -> 玩家信息的映射
+	Players map[int]PlayerFrame `json:"players"`
+	// 玩家渲染顺序（按 ID 排序）
+	SortedPlayers []int `json:"sortedPlayers"`
+	// 击杀事件
 	KillEvents map[int]KillEvent `json:"killEvents"`
 
 	// 道具信息（烟、火、闪、雷）
 	// 投掷物实体的唯一 ID -> 投掷物信息
 	Projectiles map[int]ProjectileFrame `json:"projectiles"`
-	// 渲染顺序(TODO)
+	// 投掷物渲染顺序
 	// 类型优先：诱 -> 雷 -> 闪 -> 烟 -> 火
 	// 时间其次：从新到旧
 	SortedProjs []int `json:"sortedProjs"`

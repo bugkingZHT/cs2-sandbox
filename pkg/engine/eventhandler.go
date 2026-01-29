@@ -26,21 +26,21 @@ func (b *replayBuilder) registerEventHandlers() {
 	// Smoke event handlers
 	b.parser.RegisterEventHandler(func(e events.SmokeStart) {
 		throwerName := ""
-		var throwerSteamID uint64
+		throwerID := 0
 		if e.Thrower != nil {
 			throwerName = e.Thrower.Name
-			throwerSteamID = e.Thrower.SteamID64
+			throwerID = e.Thrower.UserID
 		}
 		b.activeProjectiles[e.GrenadeEntityID] = entity.ProjectileFrame{
-			Type:           common.EqSmoke, // Explicitly set equipment type
-			X:              e.Position.X,
-			Y:              e.Position.Y,
-			Z:              e.Position.Z,
-			ThrowerName:    throwerName,
-			ThrowerSteamID: throwerSteamID,
-			EntityID:       e.GrenadeEntityID,
-			IsExploded:     true,
-			TTL:            entity.GetProjectileConfigByType(common.EqSmoke).DurationInMs,
+			Type:        common.EqSmoke, // Explicitly set equipment type
+			X:           e.Position.X,
+			Y:           e.Position.Y,
+			Z:           e.Position.Z,
+			ThrowerName: throwerName,
+			ThrowerID:   throwerID,
+			EntityID:    e.GrenadeEntityID,
+			IsExploded:  true,
+			TTL:         entity.GetProjectileConfigByType(common.EqSmoke).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.SmokeExpired) {
@@ -50,21 +50,21 @@ func (b *replayBuilder) registerEventHandlers() {
 	// Decoy event handlers
 	b.parser.RegisterEventHandler(func(e events.DecoyStart) {
 		throwerName := ""
-		var throwerSteamID uint64
+		throwerID := 0
 		if e.Thrower != nil {
 			throwerName = e.Thrower.Name
-			throwerSteamID = e.Thrower.SteamID64
+			throwerID = e.Thrower.UserID
 		}
 		b.activeProjectiles[e.GrenadeEntityID] = entity.ProjectileFrame{
-			Type:           common.EqDecoy, // Explicitly set equipment type
-			X:              e.Position.X,
-			Y:              e.Position.Y,
-			Z:              e.Position.Z,
-			ThrowerName:    throwerName,
-			ThrowerSteamID: throwerSteamID,
-			EntityID:       e.GrenadeEntityID,
-			IsExploded:     true,
-			TTL:            entity.GetProjectileConfigByType(common.EqDecoy).DurationInMs,
+			Type:        common.EqDecoy, // Explicitly set equipment type
+			X:           e.Position.X,
+			Y:           e.Position.Y,
+			Z:           e.Position.Z,
+			ThrowerName: throwerName,
+			ThrowerID:   throwerID,
+			EntityID:    e.GrenadeEntityID,
+			IsExploded:  true,
+			TTL:         entity.GetProjectileConfigByType(common.EqDecoy).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.DecoyExpired) {
@@ -74,21 +74,21 @@ func (b *replayBuilder) registerEventHandlers() {
 	// Fire event handlers (Infernos)
 	b.parser.RegisterEventHandler(func(e events.InfernoStart) {
 		throwerName := ""
-		var throwerSteamID uint64
+		throwerID := 0
 		if thrower := e.Inferno.Thrower(); thrower != nil {
 			throwerName = thrower.Name
-			throwerSteamID = thrower.SteamID64
+			throwerID = thrower.UserID
 		}
 		b.activeProjectiles[e.Inferno.Entity.ID()] = entity.ProjectileFrame{
-			Type:           common.EqMolotov, // Explicitly set equipment type
-			X:              e.Inferno.Entity.Position().X,
-			Y:              e.Inferno.Entity.Position().Y,
-			Z:              e.Inferno.Entity.Position().Z,
-			ThrowerName:    throwerName,
-			ThrowerSteamID: throwerSteamID,
-			EntityID:       e.Inferno.Entity.ID(),
-			IsExploded:     true,
-			TTL:            entity.GetProjectileConfigByType(common.EqMolotov).DurationInMs,
+			Type:        common.EqMolotov, // Explicitly set equipment type
+			X:           e.Inferno.Entity.Position().X,
+			Y:           e.Inferno.Entity.Position().Y,
+			Z:           e.Inferno.Entity.Position().Z,
+			ThrowerName: throwerName,
+			ThrowerID:   throwerID,
+			EntityID:    e.Inferno.Entity.ID(),
+			IsExploded:  true,
+			TTL:         entity.GetProjectileConfigByType(common.EqMolotov).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.InfernoExpired) {
@@ -98,40 +98,40 @@ func (b *replayBuilder) registerEventHandlers() {
 	// Explosion event handlers
 	b.parser.RegisterEventHandler(func(e events.HeExplode) {
 		throwerName := ""
-		var throwerSteamID uint64
+		throwerID := 0
 		if e.Thrower != nil {
 			throwerName = e.Thrower.Name
-			throwerSteamID = e.Thrower.SteamID64
+			throwerID = e.Thrower.UserID
 		}
 		b.activeProjectiles[e.GrenadeEntityID] = entity.ProjectileFrame{
-			Type:           common.EqHE, // Explicitly set equipment type
-			X:              e.Position.X,
-			Y:              e.Position.Y,
-			Z:              e.Position.Z,
-			ThrowerName:    throwerName,
-			ThrowerSteamID: throwerSteamID,
-			EntityID:       e.GrenadeEntityID,
-			IsExploded:     true,
-			TTL:            entity.GetProjectileConfigByType(common.EqHE).DurationInMs,
+			Type:        common.EqHE, // Explicitly set equipment type
+			X:           e.Position.X,
+			Y:           e.Position.Y,
+			Z:           e.Position.Z,
+			ThrowerName: throwerName,
+			ThrowerID:   throwerID,
+			EntityID:    e.GrenadeEntityID,
+			IsExploded:  true,
+			TTL:         entity.GetProjectileConfigByType(common.EqHE).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.FlashExplode) {
 		throwerName := ""
-		var throwerSteamID uint64
+		throwerID := 0
 		if e.Thrower != nil {
 			throwerName = e.Thrower.Name
-			throwerSteamID = e.Thrower.SteamID64
+			throwerID = e.Thrower.UserID
 		}
 		b.activeProjectiles[e.GrenadeEntityID] = entity.ProjectileFrame{
-			Type:           common.EqFlash, // Explicitly set equipment type
-			X:              e.Position.X,
-			Y:              e.Position.Y,
-			Z:              e.Position.Z,
-			ThrowerName:    throwerName,
-			ThrowerSteamID: throwerSteamID,
-			EntityID:       e.GrenadeEntityID,
-			IsExploded:     true,
-			TTL:            entity.GetProjectileConfigByType(common.EqFlash).DurationInMs,
+			Type:        common.EqFlash, // Explicitly set equipment type
+			X:           e.Position.X,
+			Y:           e.Position.Y,
+			Z:           e.Position.Z,
+			ThrowerName: throwerName,
+			ThrowerID:   throwerID,
+			EntityID:    e.GrenadeEntityID,
+			IsExploded:  true,
+			TTL:         entity.GetProjectileConfigByType(common.EqFlash).DurationInMs,
 		}
 	})
 

@@ -44,7 +44,7 @@ export interface ProjectileState {
   y: number;
   z: number;
   throwerName: string;
-  throwerSteamID: number;
+  throwerID: number; // Player's in-game ID (corresponds to PlayerState.id)
   entityID: number;
   trajectory?: Point[];
   isExploded?: boolean; // 投掷物是否已爆炸/生效
@@ -68,8 +68,10 @@ export interface Frame {
   timeMs: number;
   tick: number;
   round: number;
-  players: PlayerState[];
+  players: Record<number, PlayerState>; // Player ID -> PlayerState map
+  sortedPlayers?: number[]; // Pre-sorted player IDs for rendering order
   projectiles?: Record<number, ProjectileState>;
+  sortedProjs?: number[]; // Pre-sorted projectile entity IDs for rendering order
   killEvents?: Record<number, KillEvent>;
 }
 

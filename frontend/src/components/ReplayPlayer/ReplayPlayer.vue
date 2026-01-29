@@ -225,26 +225,40 @@ const currentFrame = computed<Frame | null>(() => {
 });
 
 const teamCTPlayers = computed<PlayerState[]>(() => {
-  return (currentFrame.value?.players ?? [])
-    .filter((p) => p.team === 3)
-    .slice()
-    .sort((a, b) => a.id - b.id);
+  if (!currentFrame.value?.players) return [];
+  
+  // Use pre-sorted player IDs from engine
+  const sortedPlayerIds = currentFrame.value.sortedPlayers || Object.keys(currentFrame.value.players).map(Number);
+  
+  // Filter and return CT players in sorted order
+  return sortedPlayerIds
+    .map(id => currentFrame.value!.players[id])
+    .filter(p => p && p.team === 3);
 });
 
 const teamTPlayers = computed<PlayerState[]>(() => {
-  return (currentFrame.value?.players ?? [])
-    .filter((p) => p.team === 2)
-    .slice()
-    .sort((a, b) => a.id - b.id);
+  if (!currentFrame.value?.players) return [];
+  
+  // Use pre-sorted player IDs from engine
+  const sortedPlayerIds = currentFrame.value.sortedPlayers || Object.keys(currentFrame.value.players).map(Number);
+  
+  // Filter and return T players in sorted order
+  return sortedPlayerIds
+    .map(id => currentFrame.value!.players[id])
+    .filter(p => p && p.team === 2);
 });
 
 // 计算所有玩家 ID 到名称的映射，用于击杀信息显示
 const playerNameMap = computed(() => {
   const map: Record<number, string> = {};
   safeFrames.value.forEach(f => {
-    f.players?.forEach(p => {
-      if (!map[p.id]) map[p.id] = p.name;
-    });
+    if (f.players) {
+      // Iterate through players map
+      for (const playerId in f.players) {
+        const p = f.players[playerId];
+        if (!map[p.id]) map[p.id] = p.name;
+      }
+    }
   });
   return map;
 });
@@ -291,10 +305,10 @@ const currentRoundKills = computed(() => {
 // 获取玩家阵营对应的 CSS 类
 const getTeamClass = (playerId: number) => {
   // 尝试从当前帧找，找不到就从所有帧找（处理离线/结束情况）
-  let player = currentFrame.value?.players.find(p => p.id === playerId);
+  let player = currentFrame.value?.players?.[playerId];
   if (!player) {
     for (const f of safeFrames.value) {
-      player = f.players.find(p => p.id === playerId);
+      player = f.players?.[playerId];
       if (player) break;
     }
   }
@@ -463,15 +477,6 @@ const onLogoError = (event: Event) => {
 
 const onUpdateSpeed = (value: number) => {
   playbackSpeed.value = value;
-};
-
-/**
- * 对道具进行排序，保证位置固定
- * 排序逻辑：按 ID 大小排序
- */
-const sortInventory = (inventory: any[]) => {
-  if (!inventory) return [];
-  return [...inventory].sort((a, b) => Number(a) - Number(b));
 };
 
 

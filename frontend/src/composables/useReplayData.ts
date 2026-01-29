@@ -183,8 +183,9 @@ function createReplayData() {
 
     for (let i = 0; i < sampleCount; i++) {
       const frame = allFrames[i];
-      if (!frame.players || frame.players.length === 0) continue;
-      for (const p of frame.players) {
+      if (!frame.players || Object.keys(frame.players).length === 0) continue;
+      for (const playerId in frame.players) {
+        const p = frame.players[playerId];
         if (p.x < minX) minX = p.x;
         if (p.x > maxX) maxX = p.x;
         if (p.y < minY) minY = p.y;

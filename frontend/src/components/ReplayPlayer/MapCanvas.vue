@@ -18,34 +18,19 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Application, Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js';
+import { Application, Assets, Container, Sprite } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
 import { useMapConfig } from '@/composables/useMapConfig';
-import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import {
   clearProjectilesLayer,
   drawProjectilesForFrame as drawProjectilesForFrameExternal,
-} from '../../composables/projectilesRenderer';
-
-// Player sprite management for smooth transitions
-interface PlayerSprite {
-  graphics: Graphics;
-  label: Text;
-  targetX: number;
-  targetY: number;
-  currentX: number;
-  currentY: number;
-  targetYaw: number;
-  currentYaw: number;
-  lastUpdateFrame: number;
-}
-
-const playerSpriteMap = new Map<number, PlayerSprite>();
-const LERP_FACTOR = 0.3; // Smoothing factor (0-1, higher = faster transition)
-const HARD_CUT_THRESHOLD = 5; // If frame jump > this, use hard cut instead of smooth
-let animationFrameId: number | null = null;
-let lastFrameIndex = 0; // Track previous frame for jump detection
+} from '../../composables/projectilesRender';
+import {
+  drawPlayersForFrame as drawPlayersForFrameExternal,
+  stopPlayerAnimation,
+  resetPlayerRenderer,
+} from '../../composables/playersRender';
 
 const props = defineProps<{
   frames: Frame[] | undefined;
@@ -71,15 +56,6 @@ const currentMapConfig = computed(() => {
 });
 
 const mapTextureUrl = computed(() => currentMapConfig.value.imageUrl);
-
-const PLAYER_STYLE = {
-  aliveRadius: 10,
-  deadRadius: 5,
-  nameSize: 15,
-  triLen: 8,
-  triWidth: 6,
-  attackLen: 40
-};
 
 const host = ref<HTMLDivElement | null>(null);
 let app: Application | null = null;
@@ -239,76 +215,6 @@ const onWheel = (event: WheelEvent) => {
   worldContainer.position.y = pivotY - worldPosAfter.y;
 };
 
-const clearPlayers = () => {
-  if (!playerLayer) return;
-  playerLayer.removeChildren();
-  playerSpriteMap.clear();
-};
-
-// Linear interpolation helper
-const lerp = (start: number, end: number, factor: number): number => {
-  return start + (end - start) * factor;
-};
-
-// Angle interpolation (handles wrapping around 360°)
-const lerpAngle = (start: number, end: number, factor: number): number => {
-  let diff = end - start;
-  // Normalize to [-180, 180]
-  while (diff > 180) diff -= 360;
-  while (diff < -180) diff += 360;
-  return start + diff * factor;
-};
-
-// Start smooth animation loop
-const startSmoothAnimation = () => {
-  if (animationFrameId !== null) return;
-  
-  const animate = () => {
-    if (!playerLayer || !props.isPlaying) {
-      animationFrameId = null;
-      return;
-    }
-    
-    let needsUpdate = false;
-    
-    // Interpolate all player sprites
-    playerSpriteMap.forEach((sprite) => {
-      const dx = Math.abs(sprite.targetX - sprite.currentX);
-      const dy = Math.abs(sprite.targetY - sprite.currentY);
-      const dYaw = Math.abs(sprite.targetYaw - sprite.currentYaw);
-      
-      if (dx > 0.5 || dy > 0.5 || dYaw > 0.5) {
-        sprite.currentX = lerp(sprite.currentX, sprite.targetX, LERP_FACTOR);
-        sprite.currentY = lerp(sprite.currentY, sprite.targetY, LERP_FACTOR);
-        sprite.currentYaw = lerpAngle(sprite.currentYaw, sprite.targetYaw, LERP_FACTOR);
-        
-        sprite.graphics.x = sprite.currentX;
-        sprite.graphics.y = sprite.currentY;
-        sprite.label.x = sprite.currentX;
-        sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius + 2;
-        
-        needsUpdate = true;
-      }
-    });
-    
-    if (needsUpdate || props.isPlaying) {
-      animationFrameId = requestAnimationFrame(animate);
-    } else {
-      animationFrameId = null;
-    }
-  };
-  
-  animationFrameId = requestAnimationFrame(animate);
-};
-
-// Stop smooth animation
-const stopSmoothAnimation = () => {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
-  }
-};
-
 const clearProjectiles = () => {
   clearProjectilesLayer(projectileLayer);
 };
@@ -321,7 +227,23 @@ const onPlayerPointerOver = (e: any, p: PlayerState) => {
   hoverScreenPos.y = global.y;
 };
 
-const drawProjectilesForFrame = async (projectiles: Record<number, ProjectileState> | undefined, players: PlayerState[]) => {
+const onPlayerPointerMove = (e: any, p: PlayerState) => {
+  if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
+  hoverScreenPos.x = e.global.x;
+  hoverScreenPos.y = e.global.y;
+};
+
+const onPlayerPointerOut = (p: PlayerState) => {
+  if (hoverPlayer.value && hoverPlayer.value.id === p.id) {
+    hoverPlayer.value = null;
+  }
+};
+
+const drawProjectilesForFrame = async (
+  projectiles: Record<number, ProjectileState> | undefined, 
+  players: PlayerState[],
+  sortedProjs?: number[]
+) => {
   await drawProjectilesForFrameExternal({
     projectiles,
     players,
@@ -331,178 +253,36 @@ const drawProjectilesForFrame = async (projectiles: Record<number, ProjectileSta
     currentFrameIndex: props.currentFrameIndex,
     worldToMap,
     projectileConfigs: props.projectileConfigs,
+    sortedProjs,
   });
 };
 
 const drawPlayersForFrame = () => {
   if (!playerLayer || !mapSprite || !props.frames) return;
   const frame = props.frames[props.currentFrameIndex];
-  if (!frame) {
-    clearPlayers();
-    clearProjectiles();
-    hoverPlayer.value = null;
-    return;
-  }
+  if (!frame) return;
 
-  // Detect if this is a seek (large frame jump) or smooth playback
-  const frameJump = Math.abs(props.currentFrameIndex - lastFrameIndex);
-  const isSeek = frameJump > HARD_CUT_THRESHOLD && !props.isDragging; // Don't treat as seek if dragging
-  lastFrameIndex = props.currentFrameIndex;
-
-  // Track which players exist in current frame
-  const currentPlayers = new Set<number>();
-  
   // Clear projectiles (they don't need smooth transitions)
   clearProjectiles();
 
-  if (frame.players) {
-    // 按 player id 排序叠放，确保重叠时顺序一致，避免频闪
-    const sortedPlayers = [...frame.players].sort((a, b) => a.id - b.id);
-    
-    for (const p of sortedPlayers) {
-      currentPlayers.add(p.id);
-      const mapPos = worldToMap(p.x, p.y);
-      
-      // Check if player sprite already exists
-      let playerSprite = playerSpriteMap.get(p.id);
-      
-      if (!playerSprite) {
-        // Create new player sprite
-        const g = new Graphics();
-        const label = new Text(p.name, {
-          fontFamily: 'system-ui',
-          fontSize: PLAYER_STYLE.nameSize,
-          fill: 0xffffff,
-          stroke: { color: 0x000000, width: 4 },
-        });
-        label.anchor.set(0.5, 0);
-        
-        playerSprite = {
-          graphics: g,
-          label: label,
-          targetX: mapPos.x,
-          targetY: mapPos.y,
-          currentX: mapPos.x,
-          currentY: mapPos.y,
-          targetYaw: p.yaw,
-          currentYaw: p.yaw,
-          lastUpdateFrame: props.currentFrameIndex,
-        };
-        
-        playerSpriteMap.set(p.id, playerSprite);
-        playerLayer.addChild(g);
-        playerLayer.addChild(label);
-        
-        g.eventMode = 'static';
-        g.cursor = 'pointer';
-        (g as any).on('pointerover', (e: any) => onPlayerPointerOver(e, p));
-        (g as any).on('pointermove', (e: any) => {
-          if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
-          hoverScreenPos.x = e.global.x;
-          hoverScreenPos.y = e.global.y;
-        });
-        (g as any).on('pointerout', () => {
-          if (hoverPlayer.value && hoverPlayer.value.id === p.id) hoverPlayer.value = null;
-        });
-      } else {
-        // Update existing player sprite targets
-        playerSprite.targetX = mapPos.x;
-        playerSprite.targetY = mapPos.y;
-        playerSprite.targetYaw = p.yaw;
-        playerSprite.lastUpdateFrame = props.currentFrameIndex;
-        
-        // Hard cut: snap to position immediately if seeking or not playing
-        if (isSeek || !props.isPlaying) {
-          playerSprite.currentX = mapPos.x;
-          playerSprite.currentY = mapPos.y;
-          playerSprite.currentYaw = p.yaw;
-        }
-      }
-      
-      // Redraw player graphics
-      const g = playerSprite.graphics;
-      g.clear();
-      
-      const color = p.team === 3 ? 0x3b82f6 : 0xf97316;
-      const radius = p.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
-      const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
-      
-      // Store radius for label positioning
-      (g as any)._radius = radius;
-      
-      if (p.alive) {
-        // 绘制方向三角形
-        const isAttacking = p.buttons?.includes(1); // 1 = common.ButtonAttack
-        const triColor = isAttacking ? 0xff0000 : color;
-        
-        const tipX = Math.cos(angleRad) * (radius + PLAYER_STYLE.triLen);
-        const tipY = Math.sin(angleRad) * (radius + PLAYER_STYLE.triLen);
-        const baseAngle1 = angleRad + Math.PI / 2;
-        const baseAngle2 = angleRad - Math.PI / 2;
-        const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * PLAYER_STYLE.triWidth;
-        const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * PLAYER_STYLE.triWidth;
-        const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * PLAYER_STYLE.triWidth;
-        const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * PLAYER_STYLE.triWidth;
-        
-        // 三角形填充
-        g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
+  // Draw players using external renderer
+  drawPlayersForFrameExternal({
+    frame,
+    playerLayer,
+    currentFrameIndex: props.currentFrameIndex,
+    isPlaying: props.isPlaying || false,
+    isDragging: props.isDragging || false,
+    worldToMap,
+    onPlayerPointerOver,
+    onPlayerPointerMove,
+    onPlayerPointerOut,
+  });
 
-        // 如果正在开火，画一条细红线延伸出去
-        const activeWeaponId = p.activeWeapon ? Number(p.activeWeapon) : 0;
-        const isUtility = isUtilityItem(activeWeaponId);
-        if (isAttacking && !isUtility) {
-          const lineLen = PLAYER_STYLE.attackLen * 6;
-          const endX = tipX + Math.cos(angleRad) * lineLen;
-          const endY = tipY + Math.sin(angleRad) * lineLen;
-          g.moveTo(tipX, tipY).lineTo(endX, endY).stroke({ width: 1, color: 0xff0000, alpha: 0.8 });
-        }
-      }
-
-      // 绘制人物圆圈主体
-      g.circle(0, 0, radius).fill(p.alive ? color : 0x888888);
-      
-      // 深色边框增强对比度
-      g.circle(0, 0, radius)
-        .stroke({ width: 1.5, color: 0x000000, alpha: 0.5 });
-      
-      if (!p.alive) {
-        const crossSize = radius * 0.7;
-        g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);
-        g.moveTo(crossSize, -crossSize).lineTo(-crossSize, crossSize);
-        g.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
-      }
-
-      // Set position (either current interpolated or target)
-      g.x = playerSprite.currentX;
-      g.y = playerSprite.currentY;
-      playerSprite.label.x = playerSprite.currentX;
-      playerSprite.label.y = playerSprite.currentY + radius + 2;
-    }
-  }
-  
-  // Remove players that are no longer in the frame
-  if (playerLayer) {
-    const toRemove: number[] = [];
-    const layer = playerLayer; // Capture for type narrowing
-    playerSpriteMap.forEach((sprite, playerId) => {
-      if (!currentPlayers.has(playerId)) {
-        layer.removeChild(sprite.graphics);
-        layer.removeChild(sprite.label);
-        sprite.graphics.destroy();
-        sprite.label.destroy();
-        toRemove.push(playerId);
-      }
-    });
-    toRemove.forEach(id => playerSpriteMap.delete(id));
-  }
-
+  // Draw projectiles if present
   if (frame.projectiles) {
-    drawProjectilesForFrame(frame.projectiles, frame.players || []);
-  }
-  
-  // Start animation loop only if playing AND not seeking
-  if (props.isPlaying && !isSeek) {
-    startSmoothAnimation();
+    // Convert players map to array for projectiles renderer
+    const playersArray = Object.values(frame.players || {});
+    drawProjectilesForFrame(frame.projectiles, playersArray, frame.sortedProjs);
   }
 };
 
@@ -521,7 +301,7 @@ watch(
   () => props.isPlaying,
   (playing) => {
     if (!playing) {
-      stopSmoothAnimation();
+      stopPlayerAnimation();
     }
   }
 );
@@ -589,11 +369,9 @@ onBeforeUnmount(() => {
     framesChangeTimer = null;
   }
   
-  // Stop smooth animation
-  stopSmoothAnimation();
-  
-  // Clear player sprites
-  playerSpriteMap.clear();
+  // Stop smooth animation and clear player sprites
+  stopPlayerAnimation();
+  resetPlayerRenderer();
   
   if (app) {
     app.destroy(true, { children: true });

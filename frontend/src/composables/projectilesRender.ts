@@ -2,6 +2,15 @@ import { Assets, Container, Graphics, Sprite } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig } from '@/types/replay';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 
+/**
+ * Projectile Renderer Module
+ * 
+ * Handles rendering of all projectile entities (grenades, smokes, flashes, etc.) on the map canvas.
+ * Uses pre-sorted projectile IDs from the engine (frame.sortedProjs) for optimal rendering order
+ * (priority by type: Decoy -> HE -> Flash -> Smoke -> Fire, then by time: newest to oldest),
+ * eliminating the need for frontend sorting on every frame.
+ */
+
 // 投掷物名称映射
 const PROJECTILE_NAME_KEY: Record<string, string> = {
   hegrenade: 'HE',
@@ -137,7 +146,7 @@ const drawTrajectory = (
     points.reverse();
 
     const thrower = players.find(
-      (p) => p.steamID === proj.throwerSteamID || p.name === proj.throwerName,
+      (p) => p.id === proj.throwerID || p.name === proj.throwerName,
     );
     let trajColor = 0xff6b6b;
     if (thrower) {
@@ -201,7 +210,7 @@ const drawIcon = async (
     sprite.y = mapPos.y;
 
     const thrower = players.find(
-      (p) => p.steamID === proj.throwerSteamID || p.name === proj.throwerName,
+      (p) => p.id === proj.throwerID || p.name === proj.throwerName,
     );
     if (thrower) {
       sprite.tint = thrower.team === 3 ? 0x4dabf7 : 0xff922b;
@@ -349,6 +358,7 @@ export const drawProjectilesForFrame = async (options: {
   currentFrameIndex: number;
   worldToMap: (x: number, y: number) => { x: number; y: number };
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
+  sortedProjs?: number[]; // Pre-sorted projectile entity IDs from engine
 }) => {
   const {
     projectiles,
@@ -359,6 +369,7 @@ export const drawProjectilesForFrame = async (options: {
     currentFrameIndex,
     worldToMap,
     projectileConfigs,
+    sortedProjs,
   } = options;
 
   if (!projectileLayer || !mapSprite || !frames || !projectiles) return;
@@ -372,8 +383,12 @@ export const drawProjectilesForFrame = async (options: {
     configs: projectileConfigs,
   };
 
-  for (const key in projectiles) {
-    const proj = projectiles[key];
+  // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
+  const projIds = sortedProjs || Object.keys(projectiles).map(Number);
+
+  for (const entityId of projIds) {
+    const proj = projectiles[entityId];
+    if (!proj) continue; // Skip if projectile not found
     
     // Filter out projectiles with negative TTL - don't display any information
     if (proj.ttl !== undefined && proj.ttl < 0) {
