@@ -85,8 +85,6 @@ export const clearProjectilesLayer = (projectileLayer: Container | null) => {
 interface RenderContext {
   projectileLayer: Container;
   players: PlayerState[];
-  frames: Frame[];
-  currentFrameIndex: number;
   worldToMap: (x: number, y: number) => { x: number; y: number };
   configs?: Record<number, ProjectileRenderConfig>;
 }
@@ -125,60 +123,48 @@ const drawTrajectory = (
   ctx: RenderContext,
   colorOverride?: number,
 ) => {
-  const { frames, currentFrameIndex, worldToMap, players, projectileLayer } = ctx;
-  const points: { x: number; y: number }[] = [];
-
-  // 从当前帧向后查找，直到该投掷物不存在
-  for (let i = currentFrameIndex; i >= 0; i--) {
-    const f = frames[i];
-    // Use direct lookup for Record<number, ProjectileState>
-    // Note: proj.entityID must be defined. If frames structure is correct, this should work.
-    const p = f.projectiles?.[proj.entityID];
-    if (p) {
-      points.push({ x: p.x, y: p.y });
-    } else {
-      break;
-    }
+  const { worldToMap, players, projectileLayer } = ctx;
+  
+  // 使用引擎提供的未来碰撞点数据：当前坐标(X, Y) -> trajectory[0] -> trajectory[1] -> ...
+  // trajectory 中存储的是尚未经过的 checkpoints
+  if (!proj.trajectory || proj.trajectory.length === 0) {
+    return; // 没有未来碰撞点，无需绘制轨迹
   }
 
-  if (points.length > 1) {
-    // 逆序以保证时间顺序（从出生到当前）
-    points.reverse();
-
-    const thrower = players.find(
-      (p) => p.id === proj.throwerID || p.name === proj.throwerName,
-    );
-    let trajColor = 0xff6b6b;
-    if (thrower) {
-      trajColor = thrower.team === 3 ? 0x4dabf7 : 0xff922b;
-    }
-    if (colorOverride !== undefined) {
-      trajColor = colorOverride;
-    }
-
-    const trajectoryG = new Graphics();
-    const startMapPos = worldToMap(points[0].x, points[0].y);
-    trajectoryG.moveTo(startMapPos.x, startMapPos.y);
-
-    for (let i = 1; i < points.length; i++) {
-      const mapPoint = worldToMap(points[i].x, points[i].y);
-      trajectoryG.lineTo(mapPoint.x, mapPoint.y);
-    }
-
-    // 修改：线条变粗增强可见性 (width: 2)
-    trajectoryG.stroke({ width: 2, color: trajColor, alpha: 0.8 });
-
-    // 绘制碰撞点
-    if (proj.trajectory && proj.trajectory.length > 0) {
-      for (const cp of proj.trajectory) {
-        const cpMapPos = worldToMap(cp.x, cp.y);
-        // 碰撞点也稍微变小一点
-        trajectoryG.circle(cpMapPos.x, cpMapPos.y, 2).fill({ color: trajColor, alpha: 1.0 });
-      }
-    }
-
-    projectileLayer.addChild(trajectoryG);
+  const thrower = players.find(
+    (p) => p.id === proj.throwerID || p.name === proj.throwerName,
+  );
+  let trajColor = 0xff6b6b;
+  if (thrower) {
+    trajColor = thrower.team === 3 ? 0x4dabf7 : 0xff922b;
   }
+  if (colorOverride !== undefined) {
+    trajColor = colorOverride;
+  }
+
+  const trajectoryG = new Graphics();
+  
+  // 从当前位置开始
+  const currentMapPos = worldToMap(proj.x, proj.y);
+  trajectoryG.moveTo(currentMapPos.x, currentMapPos.y);
+
+  // 连接到未来的碰撞点
+  for (let i = 0; i < proj.trajectory.length; i++) {
+    const mapPoint = worldToMap(proj.trajectory[i].x, proj.trajectory[i].y);
+    trajectoryG.lineTo(mapPoint.x, mapPoint.y);
+  }
+
+  // 修改：线条变粗增强可见性 (width: 2)
+  trajectoryG.stroke({ width: 2, color: trajColor, alpha: 0.8 });
+
+  // 绘制碰撞点（未来的碰撞点）
+  for (const cp of proj.trajectory) {
+    const cpMapPos = worldToMap(cp.x, cp.y);
+    // 碰撞点也稍微变小一点
+    trajectoryG.circle(cpMapPos.x, cpMapPos.y, 2).fill({ color: trajColor, alpha: 1.0 });
+  }
+
+  projectileLayer.addChild(trajectoryG);
 };
 
 // 绘制图标（通用）
@@ -354,8 +340,6 @@ export const drawProjectilesForFrame = async (options: {
   players: PlayerState[];
   projectileLayer: Container | null;
   mapSprite: Sprite | null;
-  frames: Frame[] | undefined;
-  currentFrameIndex: number;
   worldToMap: (x: number, y: number) => { x: number; y: number };
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs from engine
@@ -365,20 +349,16 @@ export const drawProjectilesForFrame = async (options: {
     players,
     projectileLayer,
     mapSprite,
-    frames,
-    currentFrameIndex,
     worldToMap,
     projectileConfigs,
     sortedProjs,
   } = options;
 
-  if (!projectileLayer || !mapSprite || !frames || !projectiles) return;
+  if (!projectileLayer || !mapSprite || !projectiles) return;
 
   const ctx: RenderContext = {
     projectileLayer,
     players,
-    frames,
-    currentFrameIndex,
     worldToMap,
     configs: projectileConfigs,
   };

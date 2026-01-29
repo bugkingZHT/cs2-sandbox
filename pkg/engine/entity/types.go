@@ -104,7 +104,9 @@ type ProjectileFrame struct {
 	ThrowerID int `json:"throwerID"`
 	// 投掷物实体的唯一 ID
 	EntityID int `json:"entityID"`
-	// 投掷物的飞行轨迹路径点
+	// 投掷物尚未经过的关键碰撞点（checkpoints）
+	// 每帧只保存当前飞行路径上还未到达的碰撞点
+	// 前端渲染时连接：当前坐标(X, Y) -> trajectory[0] -> trajectory[1] -> ...
 	Trajectory []Point `json:"trajectory"`
 	// 投掷物是否已经爆炸或生效 (如烟雾已经散开、火堆正在燃烧)
 	IsExploded bool `json:"isExploded"`

@@ -243,15 +243,37 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			continue
 		}
 		pos := proj.Position()
+		entityID := proj.Entity.ID()
 
+		// Build trajectory from checkpoints that haven't been passed yet
 		var trajectory []entity.Point
-		for _, v := range proj.Trajectory {
-			// Add safety check for trajectory positions
-			if v.Position.X == 0 && v.Position.Y == 0 && v.Position.Z == 0 {
-				// Skip invalid trajectory points
+
+		// Start with checkpoints from demo parser
+		for _, checkpoint := range proj.Trajectory {
+			// Skip invalid checkpoint positions
+			if checkpoint.Position.X == 0 && checkpoint.Position.Y == 0 && checkpoint.Position.Z == 0 {
 				continue
 			}
-			trajectory = append(trajectory, entity.Point{X: v.Position.X, Y: v.Position.Y, Z: v.Position.Z})
+
+			checkX, checkY, checkZ := checkpoint.Position.X, checkpoint.Position.Y, checkpoint.Position.Z
+
+			// Check if this checkpoint has been passed
+			// If we have a previous position, check if we're moving away from the checkpoint
+			hasPassed := false
+			if prevProj, exists := prevFrameProjectiles[entityID]; exists {
+				distToPrev := distance(prevProj.X, prevProj.Y, prevProj.Z, checkX, checkY, checkZ)
+				distToCurrent := distance(pos.X, pos.Y, pos.Z, checkX, checkY, checkZ)
+
+				// If distance is increasing (moving away), we've passed the checkpoint
+				if distToCurrent > distToPrev {
+					hasPassed = true
+				}
+			}
+
+			// Only add checkpoints that haven't been passed yet
+			if !hasPassed {
+				trajectory = append(trajectory, entity.Point{X: checkX, Y: checkY, Z: checkZ})
+			}
 		}
 
 		throwerName := ""
@@ -268,14 +290,14 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			continue
 		}
 
-		flyingProjectiles[proj.Entity.ID()] = entity.ProjectileFrame{
+		flyingProjectiles[entityID] = entity.ProjectileFrame{
 			Type:        equipType, // Use the validated equipment type
 			X:           pos.X,
 			Y:           pos.Y,
 			Z:           pos.Z,
 			ThrowerName: throwerName,
 			ThrowerID:   throwerID,
-			EntityID:    proj.Entity.ID(),
+			EntityID:    entityID,
 			Trajectory:  trajectory,
 			IsExploded:  false, // Flying projectiles are not exploded yet
 		}
@@ -408,4 +430,22 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		DroppedEquipment: droppedEquipment,
 		Bomb:             bombFrame,
 	}
+}
+
+// Helper functions for projectile trajectory calculation
+
+// abs returns the absolute value of a float64
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// distance calculates the 3D Euclidean distance between two points
+func distance(x1, y1, z1, x2, y2, z2 float64) float64 {
+	dx := x2 - x1
+	dy := y2 - y1
+	dz := z2 - z1
+	return dx*dx + dy*dy + dz*dz // Return squared distance for performance (no sqrt needed for comparison)
 }

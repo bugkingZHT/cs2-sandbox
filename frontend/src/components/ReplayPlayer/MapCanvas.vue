@@ -249,8 +249,6 @@ const drawProjectilesForFrame = async (
     players,
     projectileLayer,
     mapSprite,
-    frames: props.frames,
-    currentFrameIndex: props.currentFrameIndex,
     worldToMap,
     projectileConfigs: props.projectileConfigs,
     sortedProjs,
