@@ -404,9 +404,10 @@ function createReplayData() {
       await saveMetaToDB(meta);
       await loadAllReplays(); // Refresh replay list
 
-      // Step 4: Parse rounds incrementally
+      // Step 4: Parse rounds incrementally with frame-based progress
       const rounds: ReplayRound[] = [];
       let roundNum = 1;
+      const totalFrames = meta.totalFrames || 0; // Get total frames from meta
 
       while (true) {
         const roundJson = await new Promise<string | null>((resolve, reject) => {
@@ -415,10 +416,15 @@ function createReplayData() {
               if (err) reject(new Error(err));
               else resolve(res);
             },
-            (statusMsg: string) => {
-              // Update progress based on round number
-              const progress = 15 + (roundNum * 3); // Incremental progress
-              updateParsingProgress(Math.min(90, progress), statusMsg);
+            (parsedFramesStr: string) => {
+              // Status callback receives total parsed frames as a string
+              const parsedFrames = parseInt(parsedFramesStr, 10);
+              if (!isNaN(parsedFrames) && totalFrames > 0) {
+                // Calculate progress: 15% (initial setup) + 80% (parsing) = 95% total
+                const parsingProgress = Math.min(80, (parsedFrames / totalFrames) * 80);
+                const progress = 15 + parsingProgress;
+                updateParsingProgress(Math.min(95, progress), `Parsing frames: ${parsedFrames}/${totalFrames}`);
+              }
             }
           );
         });
@@ -446,6 +452,7 @@ function createReplayData() {
 
       // Step 6: Update meta in DB with final values
       await saveMetaToDB(finalMeta);
+      await loadAllReplays(); // Refresh replay list with backfilled meta
 
       // Step 7: Close parser and cleanup
       (window as any).closeDemoParser();

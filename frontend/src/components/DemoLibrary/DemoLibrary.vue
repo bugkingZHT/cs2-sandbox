@@ -1,7 +1,7 @@
 <template>
   <div class="demo-library-page">
     <div class="library-header">
-      <h2 class="library-title">Demo 库</h2>
+      <h2 class="library-title">Counter-Strike</h2>
       <div class="library-actions">
         <input
           type="file"
@@ -239,7 +239,7 @@ const formatDate = (timestamp: number | undefined) => {
 }
 
 .library-header {
-  padding: 24px 32px;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;

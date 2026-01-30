@@ -125,7 +125,8 @@ const drawTrajectory = (
 ) => {
   const { worldToMap, players, projectileLayer } = ctx;
   
-  // 使用引擎提供的未来碰撞点数据：当前坐标(X, Y) -> trajectory[0] -> trajectory[1] -> ...
+  // 使用引擎提供的未来碰撞点数据
+  // 渲染顺序：trajectory[0] -> trajectory[1] -> ... -> 当前位置(X, Y)
   // trajectory 中存储的是尚未经过的 checkpoints
   if (!proj.trajectory || proj.trajectory.length === 0) {
     return; // 没有未来碰撞点，无需绘制轨迹
@@ -144,14 +145,19 @@ const drawTrajectory = (
 
   const trajectoryG = new Graphics();
   
-  // 从当前位置开始
-  const currentMapPos = worldToMap(proj.x, proj.y);
-  trajectoryG.moveTo(currentMapPos.x, currentMapPos.y);
-
-  // 连接到未来的碰撞点
-  for (let i = 0; i < proj.trajectory.length; i++) {
-    const mapPoint = worldToMap(proj.trajectory[i].x, proj.trajectory[i].y);
-    trajectoryG.lineTo(mapPoint.x, mapPoint.y);
+  // 先顺序连接所有 trajectory 检查点
+  if (proj.trajectory.length > 0) {
+    const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y);
+    trajectoryG.moveTo(firstPoint.x, firstPoint.y);
+    
+    for (let i = 1; i < proj.trajectory.length; i++) {
+      const mapPoint = worldToMap(proj.trajectory[i].x, proj.trajectory[i].y);
+      trajectoryG.lineTo(mapPoint.x, mapPoint.y);
+    }
+    
+    // 最后连接到投掷物当前实际位置
+    const currentMapPos = worldToMap(proj.x, proj.y);
+    trajectoryG.lineTo(currentMapPos.x, currentMapPos.y);
   }
 
   // 修改：线条变粗增强可见性 (width: 2)

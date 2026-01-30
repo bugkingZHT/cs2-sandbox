@@ -19,17 +19,19 @@ type Engine interface {
 	ExtractMetadata() (*entity.ReplayMeta, error)
 	ParseNextRound(onStatus func(string)) (*entity.ReplayRound, error)
 	BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, error)
+	GetTotalParsedFrames() int
 	Close() error
 }
 
 type DemoEngine struct {
 	resolveFreezeTime bool
 	// Singleton state for streaming parsing
-	parser      demoinfocs.Parser
-	builder     *replayBuilder
-	uuid        string
-	initialized bool
-	eofReached  bool // Track if EOF has been reached
+	parser            demoinfocs.Parser
+	builder           *replayBuilder
+	uuid              string
+	initialized       bool
+	eofReached        bool // Track if EOF has been reached
+	totalParsedFrames int  // Track total frames parsed across all rounds
 }
 
 func NewDemoEngine(config EngineConfig) *DemoEngine {
@@ -63,6 +65,7 @@ func (e *DemoEngine) InitParser(r io.Reader) error {
 
 	e.builder.registerEventHandlers()
 	e.initialized = true
+	e.totalParsedFrames = 0 // Reset frame counter
 
 	log.Println("[InitParser] Parser initialized successfully")
 	return nil
@@ -166,13 +169,14 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		}
 
 		frameCount++
+		e.totalParsedFrames++ // Increment global frame counter
 		gs := e.parser.GameState()
 		currentTick := gs.IngameTick()
 
 		// Log status and notify callback every 1000 frames
 		if frameCount%1000 == 0 {
-			msg := fmt.Sprintf("Parsed %d frames (tick: %d)...", frameCount, currentTick)
-			log.Printf("  %s\n", msg)
+			msg := fmt.Sprintf("%d", e.totalParsedFrames) // Send only frame count
+			log.Printf("  Parsed %d total frames (round %d, tick: %d)\n", e.totalParsedFrames, startRound, currentTick)
 			if onStatus != nil {
 				onStatus(msg)
 			}
@@ -252,6 +256,10 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 	return updatedMeta, nil
 }
 
+func (e *DemoEngine) GetTotalParsedFrames() int {
+	return e.totalParsedFrames
+}
+
 func (e *DemoEngine) Close() error {
 	if !e.initialized {
 		return nil
@@ -266,6 +274,7 @@ func (e *DemoEngine) Close() error {
 	e.uuid = ""
 	e.initialized = false
 	e.eofReached = false
+	e.totalParsedFrames = 0 // Reset frame counter
 
 	log.Println("[Close] Parser closed successfully")
 	return nil
@@ -398,10 +407,19 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		pos := proj.Position()
 		entityID := proj.Entity.ID()
 
-		// Build trajectory from checkpoints that haven't been passed yet
+		// Build trajectory from checkpoints
+		// Strategy: Try to find valid checkpoints from proj.Trajectory that are ahead of current position
+		// If found, use them; otherwise, reuse previous frame's trajectory
 		var trajectory []entity.Point
 
-		// Start with checkpoints from demo parser
+		// Get previous frame's trajectory for this projectile
+		var prevTrajectory []entity.Point
+		if prevProj, exists := prevFrameProjectiles[entityID]; exists {
+			prevTrajectory = prevProj.Trajectory
+		}
+
+		// Iterate through all checkpoints from proj.Trajectory to find valid ones ahead of current position
+		const reachedThreshold = 100.0 // Approximately 10 units squared distance
 		for _, checkpoint := range proj.Trajectory {
 			// Skip invalid checkpoint positions
 			if checkpoint.Position.X == 0 && checkpoint.Position.Y == 0 && checkpoint.Position.Z == 0 {
@@ -409,24 +427,18 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			}
 
 			checkX, checkY, checkZ := checkpoint.Position.X, checkpoint.Position.Y, checkpoint.Position.Z
+			distToCheckpoint := distance(pos.X, pos.Y, pos.Z, checkX, checkY, checkZ)
 
-			// Check if this checkpoint has been passed
-			// If we have a previous position, check if we're moving away from the checkpoint
-			hasPassed := false
-			if prevProj, exists := prevFrameProjectiles[entityID]; exists {
-				distToPrev := distance(prevProj.X, prevProj.Y, prevProj.Z, checkX, checkY, checkZ)
-				distToCurrent := distance(pos.X, pos.Y, pos.Z, checkX, checkY, checkZ)
-
-				// If distance is increasing (moving away), we've passed the checkpoint
-				if distToCurrent > distToPrev {
-					hasPassed = true
-				}
-			}
-
-			// Only add checkpoints that haven't been passed yet
-			if !hasPassed {
+			// Only include checkpoints that are not yet reached (beyond threshold)
+			if distToCheckpoint >= reachedThreshold {
 				trajectory = append(trajectory, entity.Point{X: checkX, Y: checkY, Z: checkZ})
 			}
+		}
+
+		// If we found valid checkpoints from proj.Trajectory, use them
+		// Otherwise, reuse previous trajectory (maintains stability when proj.Trajectory is empty/invalid)
+		if len(trajectory) == 0 && len(prevTrajectory) > 0 {
+			trajectory = prevTrajectory
 		}
 
 		throwerName := ""
