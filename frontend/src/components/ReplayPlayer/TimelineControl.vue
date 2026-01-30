@@ -181,66 +181,45 @@ const showCurrentFrameData = () => {
     return;
   }
   
-  // Open frame data in new tab
-  const dataWindow = window.open('', '_blank');
-  if (dataWindow) {
-    const frameData = JSON.stringify(currentFrame, null, 2);
-    dataWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Frame Data - Index ${props.currentFrameIndex}</title>
-          <style>
-            body {
-              background: #1a1a1a;
-              color: #e0e0e0;
-              font-family: 'Courier New', monospace;
-              padding: 20px;
-              margin: 0;
-            }
-            pre {
-              background: #2a2a2a;
-              padding: 20px;
-              border-radius: 8px;
-              overflow: auto;
-              font-size: 14px;
-              line-height: 1.5;
-            }
-            h1 {
-              color: #4dabf7;
-              font-size: 24px;
-              margin-bottom: 20px;
-            }
-            .meta {
-              background: #2a2a2a;
-              padding: 15px;
-              border-radius: 8px;
-              margin-bottom: 20px;
-              font-size: 14px;
-            }
-            .meta span {
-              display: inline-block;
-              margin-right: 20px;
-            }
-            .label {
-              color: #868e96;
-              font-weight: bold;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>🔍 Frame Data Viewer</h1>
-          <div class="meta">
-            <span><span class="label">Frame Index:</span> ${props.currentFrameIndex}</span>
-            <span><span class="label">Time:</span> ${currentFrame.timeMs}ms</span>
-            <span><span class="label">Tick:</span> ${currentFrame.tick}</span>
-            <span><span class="label">Round:</span> ${currentFrame.round}</span>
-          </div>
-          <pre>${frameData}</pre>
-        </body>
-      </html>
-    `);
-    dataWindow.document.close();
+  // Create a simple HTML page with formatted JSON
+  const frameData = JSON.stringify(currentFrame, null, 2);
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Frame ${props.currentFrameIndex} - Debug Data</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+<pre>${frameData}</pre>
+</body>
+</html>`;
+  
+  // Open in new window with data URL
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  
+  // Clean up the object URL after window opens
+  if (win) {
+    win.addEventListener('load', () => {
+      URL.revokeObjectURL(url);
+    });
   }
 };
 

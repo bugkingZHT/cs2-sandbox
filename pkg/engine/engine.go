@@ -142,6 +142,8 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 		ScoreCT:          gs.TeamCounterTerrorists().Score(),
 		ScoreT:           gs.TeamTerrorists().Score(),
 		TotalRounds:      maxRound,
+		TotalFrames:      reflector.GetPlaybackFrames(p),
+		TotalDurationMs:  reflector.GetPlaybackTime(p),
 	}
 
 	// Create ReplayRound array
@@ -157,6 +159,9 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 	}
 
 	log.Printf("Parsed %d rounds with UUID: %s", len(rounds), uuid)
+	if onStatus != nil {
+		onStatus(fmt.Sprintf("Parsed %d rounds", maxRound))
+	}
 	return meta, rounds, nil
 }
 

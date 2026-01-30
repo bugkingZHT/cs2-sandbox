@@ -4,8 +4,9 @@ import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, Worl
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
   parsing: ReturnType<typeof ref<boolean>>;
+  parsingProgress: ReturnType<typeof ref<number>>;
+  parsingStatus: ReturnType<typeof ref<string>>;
   statusMsg: ReturnType<typeof ref<string>>;
-  parsingSteps: ReturnType<typeof ref<Array<{step: string, completed: boolean, message?: string}>>>;
   error: ReturnType<typeof ref<string | null>>;
   replay: ReturnType<typeof ref<ReplayData | null>>;
   frames: ReturnType<typeof ref<Frame[]>>;
@@ -27,24 +28,10 @@ let replayDataInstance: ReturnType<typeof createReplayData> | null = null;
 function createReplayData() {
   const loading = ref(true);
   const parsing = ref(false);
+  const parsingProgress = ref(0);
+  const parsingStatus = ref('');
   const statusMsg = ref('');
   const replayList = ref<ReplayData[]>([]);
-  const parsingSteps = ref<Array<{step: string, completed: boolean, message?: string}>>([
-    { step: '开始解析', completed: false },
-    { step: '复制字节', completed: false },
-    { step: '解析Demo', completed: false },
-    { step: '生成JSON', completed: false },
-    { step: '保存数据', completed: false },
-  ]);
-
-  // WASM 步骤映射
-  const wasmStepMap: Record<string, number> = {
-    '[1/5]': 0,
-    '[2/5]': 1,
-    '[3/5]': 2, // 以防万一有[3/5]
-    '[4/5]': 3,
-    '[5/5]': 4,
-  };
   const error = ref<string | null>(null);
   const replay = ref<ReplayData | null>(null);
   const frames = ref<Frame[]>([]);
@@ -133,6 +120,8 @@ function createReplayData() {
           scoreCT: meta.scoreCT,
           scoreT: meta.scoreT,
           totalRounds: meta.totalRounds,
+          totalFrames: meta.totalFrames || 0,
+          totalDurationMs: meta.totalDurationMs || 0,
           frames: [], // Not loaded yet
           projectileRenderConfig: meta.projectileRenderConfig,
           timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
@@ -225,6 +214,8 @@ function createReplayData() {
       scoreCT: meta.scoreCT,
       scoreT: meta.scoreT,
       totalRounds: meta.totalRounds,
+      totalFrames: meta.totalFrames || 0,
+      totalDurationMs: meta.totalDurationMs || 0,
       frames: allFrames,
       projectileRenderConfig: meta.projectileRenderConfig,
       timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
@@ -327,42 +318,10 @@ function createReplayData() {
     }, { timeout: 100 });
   };
 
-  const updateParsingStep = (index: number, message?: string) => {
-    if (index >= 0 && index < parsingSteps.value.length) {
-      parsingSteps.value[index].completed = true;
-      if (message) {
-        parsingSteps.value[index].message = message;
-      }
-      // 触发响应式更新
-      parsingSteps.value = [...parsingSteps.value];
-    }
-  };
-
-  const resetParsingSteps = () => {
-    parsingSteps.value = [
-      { step: '开始解析', completed: false },
-      { step: '复制字节', completed: false },
-      { step: '解析Demo', completed: false },
-      { step: '生成JSON', completed: false },
-      { step: '保存数据', completed: false },
-    ];
-  };
-
-  const advanceParsingStep = (partialMessage: string, stepIndex: number, message?: string) => {
-    if (stepIndex >= 0 && stepIndex < parsingSteps.value.length) {
-      // 更新状态消息
-      statusMsg.value = partialMessage;
-      
-      // 如果当前步骤还未完成，则更新它
-      if (!parsingSteps.value[stepIndex].completed) {
-        updateParsingStep(stepIndex, message || partialMessage);
-      }
-      
-      // 如果是最后一步，也要标记为完成
-      if (stepIndex === 4) {
-        updateParsingStep(4, message || partialMessage);
-      }
-    }
+  const updateParsingProgress = (progress: number, status: string) => {
+    parsingProgress.value = Math.min(100, Math.max(0, progress));
+    parsingStatus.value = status;
+    statusMsg.value = status;
   };
 
   const parseDemo = async (file: File) => {
@@ -372,7 +331,8 @@ function createReplayData() {
     }
 
     parsing.value = true;
-    resetParsingSteps();
+    parsingProgress.value = 0;
+    parsingStatus.value = 'Demo 上传中...';
     statusMsg.value = `正在解析 ${file.name}...`;
     error.value = null;
 
@@ -381,33 +341,49 @@ function createReplayData() {
       const bytes = new Uint8Array(buffer);
 
       // 第一步：文件加载完成
-      advanceParsingStep(`已加载文件: ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB`, 0, `已加载文件: ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+      updateParsingProgress(10, `Demo 上传中... (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
 
       const jsonStr = await new Promise<string>((resolve, reject) => {
         (window as any).parseDemo(bytes, (res: string, err: string) => {
           if (err) reject(new Error(err));
           else resolve(res);
         }, (msg: string) => {
+          // 从消息中提取进度信息
+          // 检查是否包含解析进度信息，例如 "Parsed 1000 frames (tick: 5000)..."
+          const frameMatch = msg.match(/Parsed (\d+) frames/);
+          const roundsMatch = msg.match(/Parsed (\d+) rounds/);
+          const totalFramesMatch = msg.match(/Parsed total (\d+) frames/);
+                
+          if (totalFramesMatch) {
+            // 解析完成
+            updateParsingProgress(80, `解析完成，共 ${totalFramesMatch[1]} 帧`);
+          } else if (roundsMatch) {
+            // 正在解析回合
+            const roundCount = parseInt(roundsMatch[1]);
+            // 假设每个回合约4%进度（从30%到75%）
+            const progress = 30 + Math.min(45, roundCount * 4);
+            updateParsingProgress(progress, `解析对局中（${roundCount} 回合）`);
+          } else if (frameMatch) {
+            // 正在解析帧
+            const frameCount = parseInt(frameMatch[1]);
+            // 假设每1000帧约1%进度（从20%到75%）
+            const progress = 20 + Math.min(55, Math.floor(frameCount / 1000));
+            updateParsingProgress(progress, `解析对局中（${frameCount} 帧）`);
+          } else if (msg.includes('[1/5]') || msg.includes('Creating demo parser')) {
+            updateParsingProgress(15, '初始化解析器...');
+          } else if (msg.includes('[2/5]')) {
+            updateParsingProgress(20, '准备解析数据...');
+          } else if (msg.includes('Parsing frames')) {
+            updateParsingProgress(25, '开始解析对局...');
+          }
+                
           statusMsg.value = msg;
-          
-          // 根据消息更新步骤状态
-          let matched = false;
-          for (const [key, stepIndex] of Object.entries(wasmStepMap)) {
-            if (msg.includes(key)) {
-              advanceParsingStep(msg, stepIndex, msg.replace(key, '').trim());
-              matched = true;
-              break;
-            }
-          }
-          
-          // 如果没有匹配到特定步骤，但仍需要显示解析进行中
-          if (!matched && msg.includes('Parse error')) {
-            error.value = '解析失败: ' + msg;
-          }
         });
       });
 
       console.log('[ParseDemo] WASM解析完成，JSON字符串大小:', (jsonStr.length / 1024 / 1024).toFixed(2), 'MB');
+      
+      updateParsingProgress(85, '处理解析结果...');
       
       console.time('[ParseDemo] JSON.parse 耗时');
       const parsedData = JSON.parse(jsonStr) as ParsedReplayData;
@@ -415,12 +391,14 @@ function createReplayData() {
       
       console.log('[ParseDemo] 解析得到 meta 和 %d 个回合', parsedData.rounds.length);
       
+      updateParsingProgress(90, '保存解析结果...');
+      
       // 最后一步：保存数据（分离存储 meta 和 rounds）
       await saveReplayToDB(parsedData.meta, parsedData.rounds);
       console.log('[ParseDemo] 数据已保存到IndexedDB，准备设置到状态');
       
+      updateParsingProgress(100, `解析完成：${file.name}`);
       statusMsg.value = `解析完成：${file.name}`;
-      advanceParsingStep(`已保存到本地数据库`, 4, `已保存到本地数据库`);
       
       // 延迟一小段时间让用户看到完成状态，然后再设置数据和关闭弹窗
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -444,6 +422,8 @@ function createReplayData() {
         scoreCT: parsedData.meta.scoreCT,
         scoreT: parsedData.meta.scoreT,
         totalRounds: parsedData.meta.totalRounds,
+        totalFrames: parsedData.meta.totalFrames || 0,
+        totalDurationMs: parsedData.meta.totalDurationMs || 0,
         frames: allFrames,
         projectileRenderConfig: parsedData.meta.projectileRenderConfig,
         timestamp: parsedData.meta.uploadTime, // Map to uploadTime for backward compatibility
@@ -495,8 +475,9 @@ function createReplayData() {
   return {
     loading,
     parsing,
+    parsingProgress,
+    parsingStatus,
     statusMsg,
-    parsingSteps,
     error,
     replay,
     frames,

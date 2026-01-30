@@ -55,24 +55,17 @@
     <div v-if="parsing" class="parsing-overlay">
       <div class="parsing-modal">
         <h3>正在解析 Demo 文件</h3>
-        <p class="parsing-status">{{ statusMsg }}</p>
-        <div class="parsing-steps">
-          <div
-            v-for="(step, index) in parsingSteps"
-            :key="index"
-            class="step-item"
-            :class="{ completed: step.completed }"
-          >
-            <div class="step-indicator">
-              <span v-if="step.completed">✅</span>
-              <span v-else>⏳</span>
-            </div>
-            <div class="step-content">
-              <div class="step-name">{{ step.step }}</div>
-              <div v-if="step.message" class="step-message">{{ step.message }}</div>
-            </div>
+        
+        <!-- 进度条 -->
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: `${parsingProgress}%` }"></div>
           </div>
+          <div class="progress-text">{{ parsingProgress }}%</div>
         </div>
+        
+        <!-- 状态文字 -->
+        <p class="parsing-status">{{ parsingStatus }}</p>
       </div>
     </div>
   </div>
@@ -86,8 +79,8 @@ import { useReplayData } from '@/composables/useReplayData';
 
 const { 
   parsing, 
-  statusMsg, 
-  parsingSteps, 
+  parsingProgress,
+  parsingStatus,
   replayList, 
   loading,
   parseDemo,
@@ -247,64 +240,116 @@ const onExitReplay = () => {
 }
 
 .parsing-modal {
-  background: #222;
-  border: 1px solid #444;
-  border-radius: 8px;
-  padding: 20px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 32px;
   width: 500px;
   max-width: 90vw;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .parsing-modal h3 {
-  margin: 0 0 15px 0;
+  margin: 0 0 24px 0;
   color: #fff;
   text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.progress-container {
+  margin: 24px 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, 
+    #2563eb 0%, 
+    #3b82f6 50%,
+    #60a5fa 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 6px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  animation: gradient-flow 3s ease-in-out infinite;
+}
+
+@keyframes gradient-flow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  animation: shimmer 2s infinite;
+  transform: translateX(-100%);
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.progress-text {
+  min-width: 50px;
+  text-align: right;
+  color: #60a5fa;
+  font-weight: 700;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
 .parsing-status {
-  margin: 0 0 15px 0;
+  margin: 8px 0 0 0;
   color: #aaa;
   text-align: center;
-  font-style: italic;
+  font-size: 14px;
+  min-height: 24px;
+  line-height: 24px;
+  animation: fade-in 0.3s ease-in;
 }
 
-.parsing-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.step-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.step-item.completed {
-  background: rgba(51, 163, 102, 0.15);
-}
-
-.step-indicator {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.step-content {
-  flex: 1;
-}
-
-.step-name {
-  font-weight: bold;
-  color: #fff;
-}
-
-.step-message {
-  font-size: 12px;
-  color: #ccc;
-  margin-top: 4px;
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

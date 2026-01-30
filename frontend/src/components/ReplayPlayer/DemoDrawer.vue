@@ -144,6 +144,28 @@
         </div>
       </div>
     </Transition>
+
+    <!-- 删除确认弹窗 -->
+    <div v-if="showDeleteModal" class="delete-modal-overlay" @click="cancelDelete">
+      <div class="delete-modal" @click.stop>
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">确认删除</h3>
+        <p class="modal-message">
+          确定要删除 <strong>{{ demoToDelete?.mapName || 'Demo' }}</strong> 吗？
+        </p>
+        <p class="modal-warning">此操作无法撤销</p>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="cancelDelete">取消</button>
+          <button class="btn-confirm" @click="performDelete">删除</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -166,6 +188,8 @@ const emit = defineEmits<{
 
 const { parsing, parseDemo } = useReplayData();
 const fileInput = ref<HTMLInputElement | null>(null);
+const showDeleteModal = ref(false);
+const demoToDelete = ref<ReplayData | null>(null);
 
 const triggerUpload = () => {
   fileInput.value?.click();
@@ -222,9 +246,20 @@ const selectDemo = async (demo: ReplayData) => {
 };
 
 const deleteDemo = (demo: ReplayData) => {
-  if (confirm(`确定要删除 ${demo.mapName || 'Demo'} 吗？`)) {
-    emit('deleteDemo', demo);
+  demoToDelete.value = demo;
+  showDeleteModal.value = true;
+};
+
+const cancelDelete = () => {
+  showDeleteModal.value = false;
+  demoToDelete.value = null;
+};
+
+const performDelete = () => {
+  if (demoToDelete.value) {
+    emit('deleteDemo', demoToDelete.value);
   }
+  cancelDelete();
 };
 
 const getMapLeftSideImage = (mapName: string): string | undefined => {
@@ -665,6 +700,129 @@ const formatTimestamp = (timestamp: number): string => {
   50% {
     box-shadow: 0 2px 16px rgba(59, 130, 246, 0.8);
   }
+}
+
+/* 删除确认弹窗样式 */
+.delete-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.delete-modal {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 32px;
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  margin: 0 0 16px 0;
+}
+
+.modal-message {
+  font-size: 15px;
+  color: #aaa;
+  text-align: center;
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.modal-message strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.modal-warning {
+  font-size: 13px;
+  color: #ef4444;
+  text-align: center;
+  margin: 0 0 24px 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-cancel,
+.btn-confirm {
+  flex: 1;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.btn-confirm {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn-confirm:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.btn-confirm:active {
+  transform: translateY(0);
 }
 
 /* 过渡动画 */

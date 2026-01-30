@@ -7,10 +7,10 @@ import (
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
 )
 
-// GetMapName extracts the map name from the unexported header field of the parser
-func GetMapName(p demoinfocs.Parser) string {
+// getHeaderValue is a helper function to extract a field value from the unexported header
+func getHeaderValue(p demoinfocs.Parser, fieldName string) reflect.Value {
 	if p == nil {
-		return "unknown"
+		return reflect.Value{}
 	}
 
 	val := reflect.ValueOf(p)
@@ -19,44 +19,54 @@ func GetMapName(p demoinfocs.Parser) string {
 	}
 
 	if val.Kind() != reflect.Struct {
-		return "unknown"
+		return reflect.Value{}
 	}
 
 	headerField := val.FieldByName("header")
 	if !headerField.IsValid() || headerField.IsNil() {
-		return "unknown"
+		return reflect.Value{}
 	}
 
 	// Since header is an unexported pointer to an unexported struct,
 	// we need to use unsafe to access its fields.
-	// First, get the pointer to the header struct.
 	headerPtr := unsafe.Pointer(headerField.Pointer())
 	if headerPtr == nil {
-		return "unknown"
+		return reflect.Value{}
 	}
 
-	// We need to know the offset of MapName in the header struct.
-	// type header struct {
-	// 	Filestamp       string        // 0
-	// 	NetworkProtocol int           // 16 (on 64-bit)
-	// 	ServerName      string        // 24
-	// 	ClientName      string        // 40
-	// 	MapName         string        // 56
-	// 	GameDirectory   string        // 72
-	// 	PlaybackTime    time.Duration // 88
-	// 	PlaybackTicks   int           // 96
-	// 	PlaybackFrames  int           // 104
-	// }
-	// However, using hardcoded offsets is brittle.
-	// A better way with reflection if we can't cast:
-
-	// We can use reflection on the header struct itself even if it's unexported,
-	// but we need to use unsafe to make the fields addressable/readable if they are unexported.
+	// Use reflection on the header struct itself even if it's unexported
 	headerVal := reflect.NewAt(headerField.Type().Elem(), headerPtr).Elem()
-	mapNameField := headerVal.FieldByName("MapName")
+	field := headerVal.FieldByName(fieldName)
+	return field
+}
+
+// GetMapName extracts the map name from the unexported header field of the parser
+func GetMapName(p demoinfocs.Parser) string {
+	mapNameField := getHeaderValue(p, "MapName")
 	if mapNameField.IsValid() {
 		return mapNameField.String()
 	}
-
 	return "unknown"
+}
+
+// GetPlaybackFrames extracts the total number of frames from the unexported header field of the parser
+func GetPlaybackFrames(p demoinfocs.Parser) int {
+	framesField := getHeaderValue(p, "PlaybackFrames")
+	if framesField.IsValid() {
+		return int(framesField.Int())
+	}
+	return 0
+}
+
+// GetPlaybackTime extracts the total playback duration from the unexported header field of the parser
+// Returns duration in milliseconds
+func GetPlaybackTime(p demoinfocs.Parser) int64 {
+	timeField := getHeaderValue(p, "PlaybackTime")
+	if timeField.IsValid() {
+		// PlaybackTime is of type time.Duration (int64 nanoseconds)
+		duration := timeField.Int()
+		// Convert nanoseconds to milliseconds
+		return duration / 1_000_000
+	}
+	return 0
 }

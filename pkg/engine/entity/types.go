@@ -243,4 +243,8 @@ type ReplayMeta struct {
 	ScoreT int `json:"scoreT"`
 	// 总回合数
 	TotalRounds int `json:"totalRounds"`
+	// Demo 总帧数（来自 header.PlaybackFrames）
+	TotalFrames int `json:"totalFrames"`
+	// Demo 总时长（毫秒，来自 header.PlaybackTime）
+	TotalDurationMs int64 `json:"totalDurationMs"`
 }

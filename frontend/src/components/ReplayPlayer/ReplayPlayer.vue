@@ -138,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
 import { useReplayData } from '@/composables/useReplayData';
@@ -177,6 +177,23 @@ const cancelAnimation = () => {
   }
 };
 
+// Check URL for frameId parameter and seek to it
+const checkUrlFrameId = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const frameId = urlParams.get('frameId');
+  
+  if (frameId) {
+    const targetFrame = parseInt(frameId, 10);
+    if (!isNaN(targetFrame) && targetFrame >= 0 && targetFrame < (frames.value?.length || 0)) {
+      console.log(`[ReplayPlayer] URL contains frameId=${targetFrame}, seeking to frame`);
+      currentFrameIndex.value = targetFrame;
+      if (frames.value && frames.value[targetFrame]) {
+        currentPlaybackTimeMs.value = frames.value[targetFrame].timeMs;
+      }
+    }
+  }
+};
+
 // 监听 replay 和 frames 的变化
 watch(
   () => ({ replay: replay.value, frames: frames.value }),
@@ -194,6 +211,9 @@ watch(
       isPlaying.value = false;
       cancelAnimation();
       lastTimestamp = 0;
+      
+      // Check URL for frameId after data is loaded
+      checkUrlFrameId();
     }
   },
   { immediate: true }
