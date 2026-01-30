@@ -24,25 +24,88 @@ func TestParseDemoFile(t *testing.T) {
 
 	t.Logf("Parsing demo file: %s", demoPath)
 
-	// Use a status callback that logs to the test output
-	onStatus := func(msg string) {
-		t.Logf("[Status] %s", msg)
-	}
+	// Create engine instance
+	engine := NewDemoEngine(EngineConfig{ResolveFreezeTime: true})
 
-	// Parse the demo
-	meta, rounds, err := NewDemoEngine(EngineConfig{ResolveFreezeTime: true}).BuildReplay(file, onStatus)
+	// Phase 1: Initialize parser and extract metadata
+	t.Log("[Phase 1] Initializing parser...")
+	err = engine.InitParser(file)
 	if err != nil {
-		t.Fatalf("Failed to parse demo: %v", err)
+		t.Fatalf("Failed to initialize parser: %v", err)
 	}
 
-	t.Logf("Parse successful! Got %d rounds with UUID: %s", len(rounds), meta.UUID)
+	t.Log("[Phase 1] Extracting metadata...")
+	meta, err := engine.ExtractMetadata()
+	if err != nil {
+		t.Fatalf("Failed to extract metadata: %v", err)
+	}
+
+	if meta.UUID == "" {
+		t.Fatal("Meta UUID is empty")
+	}
+	if meta.MapName == "" {
+		t.Fatal("Meta MapName is empty")
+	}
+	if meta.TotalRounds != 0 {
+		t.Errorf("Expected TotalRounds to be 0 before backfill, got %d", meta.TotalRounds)
+	}
+
+	t.Logf("[Phase 1] Metadata extracted: UUID=%s, Map=%s", meta.UUID, meta.MapName)
+
+	// Phase 2: Parse rounds incrementally
+	t.Log("[Phase 2] Parsing rounds...")
+	rounds := []*entity.ReplayRound{}
+	for {
+		round, err := engine.ParseNextRound(func(msg string) {
+			t.Logf("[Status] %s", msg)
+		})
+		if err != nil {
+			t.Fatalf("Failed to parse round: %v", err)
+		}
+		if round == nil {
+			break // EOF
+		}
+		rounds = append(rounds, round)
+		t.Logf("[Phase 2] Parsed round %d with %d frames", round.Round, len(round.Frames))
+	}
+
+	if len(rounds) == 0 {
+		t.Fatal("No rounds parsed")
+	}
+
+	t.Logf("[Phase 2] Parsed %d rounds total", len(rounds))
+
+	// Phase 3: Backfill metadata
+	t.Log("[Phase 3] Backfilling metadata...")
+	updatedMeta, err := engine.BackfillMeta(meta)
+	if err != nil {
+		t.Fatalf("Failed to backfill metadata: %v", err)
+	}
+
+	if updatedMeta.TotalRounds != len(rounds) {
+		t.Errorf("Expected TotalRounds to be %d, got %d", len(rounds), updatedMeta.TotalRounds)
+	}
+	if updatedMeta.ScoreCT+updatedMeta.ScoreT == 0 {
+		t.Error("Expected non-zero scores after backfill")
+	}
+
+	t.Logf("[Phase 3] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d",
+		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT)
+
+	// Cleanup
+	err = engine.Close()
+	if err != nil {
+		t.Fatalf("Failed to close engine: %v", err)
+	}
+
+	t.Log("[Cleanup] Engine closed successfully")
 
 	// Create a combined structure for testing output
 	testOutput := struct {
 		Meta   *entity.ReplayMeta    `json:"meta"`
 		Rounds []*entity.ReplayRound `json:"rounds"`
 	}{
-		Meta:   meta,
+		Meta:   updatedMeta,
 		Rounds: rounds,
 	}
 

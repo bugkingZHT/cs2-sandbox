@@ -12,8 +12,10 @@ interface UseReplayResult {
   frames: ReturnType<typeof ref<Frame[]>>;
   bounds: ReturnType<typeof ref<WorldBounds | null>>;
   replayList: ReturnType<typeof ref<ReplayData[]>>;
+  currentRoundNumber: ReturnType<typeof ref<number>>;
   parseDemo: (file: File) => Promise<void>;
   loadReplayById: (id: string) => Promise<void>;
+  loadRoundData: (uuid: string, roundNumber: number) => Promise<void>;
   deleteReplayById: (id: string) => Promise<void>;
 }
 
@@ -36,6 +38,7 @@ function createReplayData() {
   const replay = ref<ReplayData | null>(null);
   const frames = ref<Frame[]>([]);
   const bounds = ref<WorldBounds | null>(null);
+  const currentRoundNumber = ref<number>(1);
 
   const abortController = new AbortController();
 
@@ -161,46 +164,25 @@ function createReplayData() {
       return null;
     }
 
-    // Load all rounds for this UUID by filtering keys
-    const rounds = await new Promise<ReplayRound[]>((resolve, reject) => {
+    // Load ONLY the first round instead of all rounds
+    const firstRound = await new Promise<ReplayRound | null>((resolve, reject) => {
       const tx = database.transaction(ROUND_STORE_NAME, 'readonly');
       const store = tx.objectStore(ROUND_STORE_NAME);
-      const getAllRequest = store.getAll();
-      const getAllKeysRequest = store.getAllKeys();
-      
-      let allData: any[] = [];
-      let allKeys: IDBValidKey[] = [];
-      
-      getAllRequest.onsuccess = () => {
-        allData = getAllRequest.result;
-      };
-      
-      getAllKeysRequest.onsuccess = () => {
-        allKeys = getAllKeysRequest.result;
-        
-        // Filter rounds that belong to this UUID
-        const filteredRounds: ReplayRound[] = [];
-        for (let i = 0; i < allKeys.length; i++) {
-          const key = allKeys[i];
-          if (typeof key === 'string' && key.startsWith(`${targetUuid}_`)) {
-            filteredRounds.push(allData[i]);
-          }
-        }
-        resolve(filteredRounds);
-      };
-      
-      tx.onerror = () => reject(tx.error);
+      const key = `${targetUuid}_1`; // Load round 1
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
     });
 
-    console.log('[IndexedDB] 加载到 meta 和 %d 个回合', rounds.length);
+    if (!firstRound) {
+      console.warn('[IndexedDB] First round not found');
+      return null;
+    }
 
-    // Combine all frames from rounds, ensuring proper sorting
-    const allFrames = rounds
-      .sort((a, b) => a.round - b.round)
-      .flatMap(round => {
-        // Sort frames within each round by timeMs to ensure correct order
-        return round.frames.sort((a, b) => a.timeMs - b.timeMs);
-      });
+    console.log('[IndexedDB] Loaded meta and first round (round 1) with', firstRound.frames.length, 'frames');
+
+    // Sort frames within the first round
+    const sortedFrames = firstRound.frames.sort((a, b) => a.timeMs - b.timeMs);
 
     // Convert to ReplayData format
     const replayData: ReplayData = {
@@ -216,7 +198,7 @@ function createReplayData() {
       totalRounds: meta.totalRounds,
       totalFrames: meta.totalFrames || 0,
       totalDurationMs: meta.totalDurationMs || 0,
-      frames: allFrames,
+      frames: sortedFrames,
       projectileRenderConfig: meta.projectileRenderConfig,
       timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
     };
@@ -232,6 +214,7 @@ function createReplayData() {
       console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
       if (data) {
         console.log('[LoadReplayById] 准备设置回放数据，帧数量:', data.frames?.length);
+        currentRoundNumber.value = 1; // Reset to first round
         setReplayData(data);
         localStorage.setItem(LATEST_KEY, uuid);
         console.log('[LoadReplayById] 回放数据设置完成，已更新最新UUID');
@@ -240,6 +223,43 @@ function createReplayData() {
       }
     } catch (e) {
       console.error('Failed to load replay', e);
+    }
+  };
+
+  // Load specific round data and update frames
+  const loadRoundData = async (uuid: string, roundNumber: number) => {
+    console.log('[LoadRoundData] Loading round', roundNumber, 'for UUID:', uuid);
+    try {
+      const database = await initDB();
+      const key = `${uuid}_${roundNumber}`;
+      
+      const round = await new Promise<ReplayRound | null>((resolve, reject) => {
+        const tx = database.transaction(ROUND_STORE_NAME, 'readonly');
+        const store = tx.objectStore(ROUND_STORE_NAME);
+        const request = store.get(key);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+
+      if (!round) {
+        console.warn('[LoadRoundData] Round', roundNumber, 'not found');
+        return;
+      }
+
+      console.log('[LoadRoundData] Loaded round', roundNumber, 'with', round.frames.length, 'frames');
+      
+      // Sort and update frames
+      const sortedFrames = round.frames.sort((a, b) => a.timeMs - b.timeMs);
+      frames.value = sortedFrames;
+      currentRoundNumber.value = roundNumber;
+      
+      // Recalculate bounds if needed
+      requestIdleCallback(() => {
+        bounds.value = estimateBounds(frames.value);
+        console.log('[LoadRoundData] Bounds recalculated for round', roundNumber);
+      }, { timeout: 100 });
+    } catch (e) {
+      console.error('[LoadRoundData] Failed to load round', roundNumber, e);
     }
   };
 
@@ -318,6 +338,31 @@ function createReplayData() {
     }, { timeout: 100 });
   };
 
+  // Save only metadata to DB
+  const saveMetaToDB = async (meta: ReplayMeta) => {
+    const database = await initDB();
+    return new Promise<void>((resolve, reject) => {
+      const tx = database.transaction([META_STORE_NAME], 'readwrite');
+      const metaStore = tx.objectStore(META_STORE_NAME);
+      metaStore.put(meta, meta.uuid);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+
+  // Save single round to DB
+  const saveRoundToDB = async (round: ReplayRound) => {
+    const database = await initDB();
+    return new Promise<void>((resolve, reject) => {
+      const tx = database.transaction([ROUND_STORE_NAME], 'readwrite');
+      const roundStore = tx.objectStore(ROUND_STORE_NAME);
+      const key = `${round.uuid}_${round.round}`;
+      roundStore.put(round, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+
   const updateParsingProgress = (progress: number, status: string) => {
     parsingProgress.value = Math.min(100, Math.max(0, progress));
     parsingStatus.value = status;
@@ -325,119 +370,94 @@ function createReplayData() {
   };
 
   const parseDemo = async (file: File) => {
-    if (typeof (window as any).parseDemo !== 'function') {
+    // Check if WASM functions are available
+    if (typeof (window as any).initDemoParser !== 'function') {
       error.value = 'WASM 引擎尚未就绪，请稍后再试';
       return;
     }
 
     parsing.value = true;
     parsingProgress.value = 0;
-    parsingStatus.value = 'Demo 上传中...';
-    statusMsg.value = `正在解析 ${file.name}...`;
     error.value = null;
 
     try {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
 
-      // 第一步：文件加载完成
-      updateParsingProgress(10, `Demo 上传中... (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+      // Step 1: Initialize parser
+      updateParsingProgress(5, 'Initializing parser...');
+      const initError = (window as any).initDemoParser(bytes);
+      if (initError) throw new Error(initError);
 
-      const jsonStr = await new Promise<string>((resolve, reject) => {
-        (window as any).parseDemo(bytes, (res: string, err: string) => {
+      // Step 2: Extract metadata (header only, no frame traversal)
+      updateParsingProgress(10, 'Extracting metadata...');
+      const metaJson = await new Promise<string>((resolve, reject) => {
+        (window as any).extractDemoMetadata((res: string, err: string) => {
           if (err) reject(new Error(err));
           else resolve(res);
-        }, (msg: string) => {
-          // 从消息中提取进度信息
-          // 检查是否包含解析进度信息，例如 "Parsed 1000 frames (tick: 5000)..."
-          const frameMatch = msg.match(/Parsed (\d+) frames/);
-          const roundsMatch = msg.match(/Parsed (\d+) rounds/);
-          const totalFramesMatch = msg.match(/Parsed total (\d+) frames/);
-                
-          if (totalFramesMatch) {
-            // 解析完成
-            updateParsingProgress(80, `解析完成，共 ${totalFramesMatch[1]} 帧`);
-          } else if (roundsMatch) {
-            // 正在解析回合
-            const roundCount = parseInt(roundsMatch[1]);
-            // 假设每个回合约4%进度（从30%到75%）
-            const progress = 30 + Math.min(45, roundCount * 4);
-            updateParsingProgress(progress, `解析对局中（${roundCount} 回合）`);
-          } else if (frameMatch) {
-            // 正在解析帧
-            const frameCount = parseInt(frameMatch[1]);
-            // 假设每1000帧约1%进度（从20%到75%）
-            const progress = 20 + Math.min(55, Math.floor(frameCount / 1000));
-            updateParsingProgress(progress, `解析对局中（${frameCount} 帧）`);
-          } else if (msg.includes('[1/5]') || msg.includes('Creating demo parser')) {
-            updateParsingProgress(15, '初始化解析器...');
-          } else if (msg.includes('[2/5]')) {
-            updateParsingProgress(20, '准备解析数据...');
-          } else if (msg.includes('Parsing frames')) {
-            updateParsingProgress(25, '开始解析对局...');
-          }
-                
-          statusMsg.value = msg;
         });
       });
+      const meta: ReplayMeta = JSON.parse(metaJson);
 
-      console.log('[ParseDemo] WASM解析完成，JSON字符串大小:', (jsonStr.length / 1024 / 1024).toFixed(2), 'MB');
-      
-      updateParsingProgress(85, '处理解析结果...');
-      
-      console.time('[ParseDemo] JSON.parse 耗时');
-      const parsedData = JSON.parse(jsonStr) as ParsedReplayData;
-      console.timeEnd('[ParseDemo] JSON.parse 耗时');
-      
-      console.log('[ParseDemo] 解析得到 meta 和 %d 个回合', parsedData.rounds.length);
-      
-      updateParsingProgress(90, '保存解析结果...');
-      
-      // 最后一步：保存数据（分离存储 meta 和 rounds）
-      await saveReplayToDB(parsedData.meta, parsedData.rounds);
-      console.log('[ParseDemo] 数据已保存到IndexedDB，准备设置到状态');
-      
-      updateParsingProgress(100, `解析完成：${file.name}`);
-      statusMsg.value = `解析完成：${file.name}`;
-      
-      // 延迟一小段时间让用户看到完成状态，然后再设置数据和关闭弹窗
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // 合并所有回合的帧数据设置到状态
-      const allFrames = parsedData.rounds
-        .sort((a, b) => a.round - b.round)
-        .flatMap(round => {
-          // Sort frames within each round by timeMs to ensure correct order
-          return round.frames.sort((a, b) => a.timeMs - b.timeMs);
+      // Step 3: Save incomplete meta to DB immediately
+      updateParsingProgress(15, 'Saving metadata...');
+      await saveMetaToDB(meta);
+      await loadAllReplays(); // Refresh replay list
+
+      // Step 4: Parse rounds incrementally
+      const rounds: ReplayRound[] = [];
+      let roundNum = 1;
+
+      while (true) {
+        const roundJson = await new Promise<string | null>((resolve, reject) => {
+          (window as any).parseNextRound(
+            (res: string | null, err: string) => {
+              if (err) reject(new Error(err));
+              else resolve(res);
+            },
+            (statusMsg: string) => {
+              // Update progress based on round number
+              const progress = 15 + (roundNum * 3); // Incremental progress
+              updateParsingProgress(Math.min(90, progress), statusMsg);
+            }
+          );
         });
-      
-      const replayData: ReplayData = {
-        uuid: parsedData.meta.uuid,
-        id: parsedData.meta.uuid,
-        uploaderUid: parsedData.meta.uploaderUid,
-        uploadTime: parsedData.meta.uploadTime,
-        mapName: parsedData.meta.mapName,
-        teamCT: parsedData.meta.teamCT,
-        teamT: parsedData.meta.teamT,
-        scoreCT: parsedData.meta.scoreCT,
-        scoreT: parsedData.meta.scoreT,
-        totalRounds: parsedData.meta.totalRounds,
-        totalFrames: parsedData.meta.totalFrames || 0,
-        totalDurationMs: parsedData.meta.totalDurationMs || 0,
-        frames: allFrames,
-        projectileRenderConfig: parsedData.meta.projectileRenderConfig,
-        timestamp: parsedData.meta.uploadTime, // Map to uploadTime for backward compatibility
-      };
-      
-      console.time('[ParseDemo] setReplayData 执行时间');
-      setReplayData(replayData);
-      console.timeEnd('[ParseDemo] setReplayData 执行时间');
-      console.log('[ParseDemo] 数据已设置到响应式状态');
-      
-      await loadAllReplays();
-      console.log('[ParseDemo] 回放列表已更新');
+
+        if (!roundJson) break; // EOF reached
+
+        const round: ReplayRound = JSON.parse(roundJson);
+        rounds.push(round);
+
+        // Save round to DB immediately after parsing
+        await saveRoundToDB(round);
+
+        roundNum++;
+      }
+
+      // Step 5: Backfill metadata with final round count and scores
+      updateParsingProgress(95, 'Finalizing metadata...');
+      const updatedMetaJson = await new Promise<string>((resolve, reject) => {
+        (window as any).backfillDemoMeta(JSON.stringify(meta), (res: string, err: string) => {
+          if (err) reject(new Error(err));
+          else resolve(res);
+        });
+      });
+      const finalMeta: ReplayMeta = JSON.parse(updatedMetaJson);
+
+      // Step 6: Update meta in DB with final values
+      await saveMetaToDB(finalMeta);
+
+      // Step 7: Close parser and cleanup
+      (window as any).closeDemoParser();
+
+      // Step 8: Load complete replay for display
+      updateParsingProgress(100, 'Parsing complete!');
+      await loadReplayById(finalMeta.uuid);
+
+      statusMsg.value = `解析完成：${file.name}`;
     } catch (e: any) {
-      error.value = '解析失败: ' + (e.message || String(e));
+      error.value = `解析失败: ${e.message || String(e)}`;
+      (window as any).closeDemoParser(); // Cleanup on error
     } finally {
       parsing.value = false;
     }
@@ -483,8 +503,10 @@ function createReplayData() {
     frames,
     bounds,
     replayList,
+    currentRoundNumber,
     parseDemo,
     loadReplayById,
+    loadRoundData,
     deleteReplayById,
   };
 }

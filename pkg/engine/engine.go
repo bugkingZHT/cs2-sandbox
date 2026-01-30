@@ -15,11 +15,21 @@ import (
 )
 
 type Engine interface {
-	BuildReplay(r io.Reader, onStatus func(string)) (*entity.ReplayMeta, []*entity.ReplayRound, error)
+	InitParser(r io.Reader) error
+	ExtractMetadata() (*entity.ReplayMeta, error)
+	ParseNextRound(onStatus func(string)) (*entity.ReplayRound, error)
+	BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, error)
+	Close() error
 }
 
 type DemoEngine struct {
 	resolveFreezeTime bool
+	// Singleton state for streaming parsing
+	parser      demoinfocs.Parser
+	builder     *replayBuilder
+	uuid        string
+	initialized bool
+	eofReached  bool // Track if EOF has been reached
 }
 
 func NewDemoEngine(config EngineConfig) *DemoEngine {
@@ -28,19 +38,21 @@ func NewDemoEngine(config EngineConfig) *DemoEngine {
 	}
 }
 
-func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.ReplayMeta, []*entity.ReplayRound, error) {
-	if onStatus != nil {
-		onStatus("Creating demo parser...")
+func (e *DemoEngine) InitParser(r io.Reader) error {
+	if e.initialized {
+		return fmt.Errorf("parser already initialized")
 	}
-	log.Println("[3/5] Creating demo parser...")
+
+	log.Println("[InitParser] Creating demo parser...")
 	p := demoinfocs.NewParser(r)
-	defer p.Close()
+	e.parser = p
 
 	// Generate UUID for this parsing session
-	uuid := uuid.New().String()
-	log.Printf("Generated UUID for this match: %s", uuid)
+	e.uuid = uuid.New().String()
+	log.Printf("[InitParser] Generated UUID for this match: %s", e.uuid)
 
-	b := &replayBuilder{
+	// Create replayBuilder with parser reference
+	e.builder = &replayBuilder{
 		parser:            p,
 		bombState:         "carried",
 		activeProjectiles: make(map[int]entity.ProjectileFrame),
@@ -49,40 +61,112 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 		inFreezeTime:      true, // Start in freeze time
 	}
 
-	b.registerEventHandlers()
+	e.builder.registerEventHandlers()
+	e.initialized = true
 
-	if onStatus != nil {
-		onStatus("Parsing frames...")
+	log.Println("[InitParser] Parser initialized successfully")
+	return nil
+}
+
+func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
+	if !e.initialized {
+		return nil, fmt.Errorf("parser not initialized, call InitParser first")
 	}
-	log.Println("Parsing frames...")
 
+	log.Println("[ExtractMetadata] Extracting metadata from header...")
+
+	// Parse the first frame to ensure game state is initialized
+	more, err := e.parser.ParseNextFrame()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse first frame: %w", err)
+	}
+	if !more {
+		return nil, fmt.Errorf("no frames available in demo file")
+	}
+
+	gs := e.parser.GameState()
+	// Get map name using reflection from the unexported header
+	mapName := reflector.GetMapName(e.parser)
+	// Fallback to ConVars if reflection fails
+	if mapName == "unknown" {
+		if convars := gs.Rules().ConVars(); convars != nil {
+			if name, ok := convars["host_map"]; ok {
+				mapName = name
+			}
+		}
+	}
+
+	// Create ReplayMeta with header info only (no frame traversal)
+	meta := &entity.ReplayMeta{
+		UUID:             e.uuid,
+		UploaderUID:      "000000", // Default uploader UID (6 digits)
+		UploadTime:       time.Now().UnixMilli(),
+		ProjectileRender: entity.GetProjectileConfig(),
+		MapName:          mapName,
+		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
+		TeamT:            gs.TeamTerrorists().ClanName(),
+		ScoreCT:          0, // Placeholder, backfilled in Phase 3
+		ScoreT:           0, // Placeholder, backfilled in Phase 3
+		TotalRounds:      0, // Placeholder, backfilled in Phase 3
+		TotalFrames:      reflector.GetPlaybackFrames(e.parser),
+		TotalDurationMs:  reflector.GetPlaybackTime(e.parser),
+	}
+
+	log.Printf("[ExtractMetadata] Metadata extracted: Map=%s, UUID=%s", mapName, e.uuid)
+	return meta, nil
+}
+
+func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound, error) {
+	if !e.initialized {
+		return nil, fmt.Errorf("parser not initialized, call InitParser first")
+	}
+
+	// If EOF was already reached, return nil immediately
+	if e.eofReached {
+		log.Println("[ParseNextRound] EOF already reached, no more rounds")
+		return nil, nil
+	}
+
+	// Capture current round number at start
+	startRound := e.builder.currentRound
 	var frames []entity.Frame
 	frameCount := 0
-	for {
-		more, err := p.ParseNextFrame()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, nil, err
-		}
-		if !more {
-			break
-		}
 
-		// HACK & FIXME: Temporarily truncate to only keep the first two rounds
-		// Currently for testing purposes only
-		if b.currentRound > 2 {
+	log.Printf("[ParseNextRound] Starting to parse round %d...", startRound)
+
+	for {
+		// Boundary detection: stop if entered next round
+		if e.builder.currentRound > startRound && len(frames) > 0 {
+			log.Printf("[ParseNextRound] Round boundary detected (moved from %d to %d), returning %d frames", startRound, e.builder.currentRound, len(frames))
 			break
 		}
 
 		// Skip frames during freeze time if resolveFreezeTime is false
-		if !b.resolveFreezeTime && b.inFreezeTime {
+		if !e.builder.resolveFreezeTime && e.builder.inFreezeTime {
+			// Still need to parse next frame even if skipping
+			more, err := e.parser.ParseNextFrame()
+			if err != nil {
+				if err == io.EOF {
+					e.eofReached = true
+					if len(frames) > 0 {
+						return &entity.ReplayRound{UUID: e.uuid, Round: startRound, Frames: frames}, nil
+					}
+					return nil, nil
+				}
+				return nil, err
+			}
+			if !more {
+				e.eofReached = true
+				if len(frames) > 0 {
+					return &entity.ReplayRound{UUID: e.uuid, Round: startRound, Frames: frames}, nil
+				}
+				return nil, nil
+			}
 			continue
 		}
 
 		frameCount++
-		gs := p.GameState()
+		gs := e.parser.GameState()
 		currentTick := gs.IngameTick()
 
 		// Log status and notify callback every 1000 frames
@@ -96,73 +180,95 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 			time.Sleep(time.Millisecond)
 		}
 
+		// Frame construction - process current frame
 		if len(frames) > 0 {
-			b.prevFrame = &frames[len(frames)-1]
+			e.builder.prevFrame = &frames[len(frames)-1]
 		}
-		frames = append(frames, b.frameOne())
-	}
+		frames = append(frames, e.builder.frameOne())
 
-	msg := fmt.Sprintf("Parsed total %d frames. Normalizing coordinates...", frameCount)
-	log.Println(msg)
-	if onStatus != nil {
-		onStatus(msg)
-	}
-
-	gs := p.GameState()
-	// Get map name using reflection from the unexported header
-	mapName := reflector.GetMapName(p)
-	// Fallback to ConVars if reflection fails
-	if mapName == "unknown" {
-		if convars := gs.Rules().ConVars(); convars != nil {
-			if name, ok := convars["host_map"]; ok {
-				mapName = name
+		// Parse next frame at the END of loop
+		more, err := e.parser.ParseNextFrame()
+		if err != nil {
+			if err == io.EOF {
+				// EOF reached, mark it to prevent further calls
+				e.eofReached = true
+				log.Printf("[ParseNextRound] EOF reached, returning round %d with %d frames", startRound, len(frames))
+				return &entity.ReplayRound{
+					UUID:   e.uuid,
+					Round:  startRound,
+					Frames: frames,
+				}, nil
 			}
+			return nil, err
+		}
+		if !more {
+			// No more frames, mark EOF to prevent further calls
+			e.eofReached = true
+			log.Printf("[ParseNextRound] No more frames, returning round %d with %d frames", startRound, len(frames))
+			return &entity.ReplayRound{
+				UUID:   e.uuid,
+				Round:  startRound,
+				Frames: frames,
+			}, nil
 		}
 	}
 
-	// Group frames by round
-	roundFramesMap := make(map[int][]entity.Frame)
-	maxRound := 0
-	for _, frame := range frames {
-		roundFramesMap[frame.Round] = append(roundFramesMap[frame.Round], frame)
-		if frame.Round > maxRound {
-			maxRound = frame.Round
-		}
+	log.Printf("[ParseNextRound] Completed round %d with %d frames", startRound, len(frames))
+	return &entity.ReplayRound{
+		UUID:   e.uuid,
+		Round:  startRound,
+		Frames: frames,
+	}, nil
+}
+
+func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, error) {
+	if !e.initialized {
+		return nil, fmt.Errorf("parser not initialized, call InitParser first")
 	}
 
-	// Create ReplayMeta
-	meta := &entity.ReplayMeta{
-		UUID:             uuid,
-		UploaderUID:      "000000", // Default uploader UID (6 digits)
-		UploadTime:       time.Now().UnixMilli(),
-		ProjectileRender: entity.GetProjectileConfig(),
-		MapName:          mapName,
-		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
-		TeamT:            gs.TeamTerrorists().ClanName(),
-		ScoreCT:          gs.TeamCounterTerrorists().Score(),
-		ScoreT:           gs.TeamTerrorists().Score(),
-		TotalRounds:      maxRound,
-		TotalFrames:      reflector.GetPlaybackFrames(p),
-		TotalDurationMs:  reflector.GetPlaybackTime(p),
+	log.Println("[BackfillMeta] Backfilling metadata with final statistics...")
+
+	gs := e.parser.GameState()
+
+	// Create updated meta preserving all original fields
+	updatedMeta := &entity.ReplayMeta{
+		UUID:             meta.UUID,
+		UploaderUID:      meta.UploaderUID,
+		UploadTime:       meta.UploadTime,
+		ProjectileRender: meta.ProjectileRender,
+		MapName:          meta.MapName,
+		TeamCT:           meta.TeamCT,
+		TeamT:            meta.TeamT,
+		TotalFrames:      meta.TotalFrames,
+		TotalDurationMs:  meta.TotalDurationMs,
+		// Update only these fields
+		ScoreCT:     gs.TeamCounterTerrorists().Score(),
+		ScoreT:      gs.TeamTerrorists().Score(),
+		TotalRounds: e.builder.currentRound,
 	}
 
-	// Create ReplayRound array
-	rounds := make([]*entity.ReplayRound, 0, maxRound)
-	for roundNum := 1; roundNum <= maxRound; roundNum++ {
-		if roundFrames, ok := roundFramesMap[roundNum]; ok {
-			rounds = append(rounds, &entity.ReplayRound{
-				UUID:   uuid,
-				Round:  roundNum,
-				Frames: roundFrames,
-			})
-		}
+	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d",
+		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT)
+	return updatedMeta, nil
+}
+
+func (e *DemoEngine) Close() error {
+	if !e.initialized {
+		return nil
 	}
 
-	log.Printf("Parsed %d rounds with UUID: %s", len(rounds), uuid)
-	if onStatus != nil {
-		onStatus(fmt.Sprintf("Parsed %d rounds", maxRound))
+	log.Println("[Close] Closing parser...")
+	if e.parser != nil {
+		e.parser.Close()
 	}
-	return meta, rounds, nil
+	e.parser = nil
+	e.builder = nil
+	e.uuid = ""
+	e.initialized = false
+	e.eofReached = false
+
+	log.Println("[Close] Parser closed successfully")
+	return nil
 }
 
 type replayBuilder struct {
