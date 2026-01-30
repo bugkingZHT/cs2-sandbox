@@ -196,8 +196,6 @@ function createReplayData() {
       scoreCT: meta.scoreCT,
       scoreT: meta.scoreT,
       totalRounds: meta.totalRounds,
-      totalFrames: meta.totalFrames || 0,
-      totalDurationMs: meta.totalDurationMs || 0,
       frames: sortedFrames,
       projectileRenderConfig: meta.projectileRenderConfig,
       timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility

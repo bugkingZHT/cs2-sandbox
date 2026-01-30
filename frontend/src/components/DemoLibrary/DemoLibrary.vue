@@ -58,36 +58,50 @@
 
         <!-- 卡片信息层 -->
         <div class="card-overlay">
-          <div class="card-info">
+          <div class="card-header">
             <h4 class="map-name">{{ demo.mapName || '未知地图' }}</h4>
-            <div class="team-info">
-              <span class="team ct">{{ demo.teamCT || 'CT' }}</span>
-              <span class="score">{{ demo.scoreCT || 0 }} : {{ demo.scoreT || 0 }}</span>
-              <span class="team t">{{ demo.teamT || 'T' }}</span>
-            </div>
-            <div v-if="demo.timestamp" class="timestamp">
-              {{ formatDate(demo.timestamp) }}
+            
+            <div class="header-actions">
+              <!-- 当前选中指示器 -->
+              <div v-if="demo.id === currentDemoId" class="active-indicator">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+
+              <!-- 删除按钮 -->
+              <button 
+                class="delete-btn"
+                @click.stop="confirmDelete(demo)"
+                title="删除此Demo"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
             </div>
           </div>
 
-          <!-- 删除按钮 -->
-          <button 
-            class="delete-btn"
-            @click.stop="confirmDelete(demo)"
-            title="删除此Demo"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </button>
-        </div>
+          <div class="card-content">
+            <div class="match-result">
+              <div class="team-name winner-name">{{ getWinnerTeam(demo) }}</div>
+              
+              <div class="score-block">
+                <div class="score-value winner-score">{{ getWinnerScore(demo) }}</div>
+                <div class="score-separator">:</div>
+                <div class="score-value loser-score">{{ getLoserScore(demo) }}</div>
+              </div>
+              
+              <div class="team-name loser-name">{{ getLoserTeam(demo) }}</div>
+            </div>
+          </div>
 
-        <!-- 当前选中指示器 -->
-        <div v-if="demo.id === currentDemoId" class="active-indicator">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
+          <div class="card-footer">
+            <div v-if="demo.uploadTime" class="timestamp">
+              {{ formatAbsoluteTime(demo.uploadTime) }}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -225,6 +239,43 @@ const formatDate = (timestamp: number | undefined) => {
     hour: '2-digit',
     minute: '2-digit'
   });
+};
+
+const formatAbsoluteTime = (timestamp: number | undefined) => {
+  if (!timestamp) return '未知时间';
+  const date = new Date(timestamp);
+  
+  return date.toLocaleString('zh-CN', { 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};
+
+const getWinnerTeam = (demo: ReplayData) => {
+  return (demo.scoreCT || 0) > (demo.scoreT || 0) ? demo.teamCT : demo.teamT;
+};
+
+const getLoserTeam = (demo: ReplayData) => {
+  return (demo.scoreCT || 0) > (demo.scoreT || 0) ? demo.teamT : demo.teamCT;
+};
+
+const getWinnerScore = (demo: ReplayData) => {
+  return Math.max(demo.scoreCT || 0, demo.scoreT || 0);
+};
+
+const getLoserScore = (demo: ReplayData) => {
+  return Math.min(demo.scoreCT || 0, demo.scoreT || 0);
+};
+
+const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
+  if (type === 'winner') {
+    return 'winner';
+  }
+  return 'loser';
 };
 </script>
 
@@ -427,12 +478,11 @@ const formatDate = (timestamp: number | undefined) => {
   bottom: 0;
   background: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.3) 0%,
-    rgba(0, 0, 0, 0.7) 100%
+    rgba(0, 0, 0, 0.4) 0%,
+    rgba(0, 0, 0, 0.85) 100%
   );
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   padding: 16px;
   transition: background 0.3s ease;
 }
@@ -440,68 +490,119 @@ const formatDate = (timestamp: number | undefined) => {
 .demo-card:hover .card-overlay {
   background: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.4) 0%,
-    rgba(0, 0, 0, 0.8) 100%
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.9) 100%
   );
 }
 
-.card-info {
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .map-name {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: #fff;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.5px;
 }
 
-.team-info {
+.match-result {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 15px;
 }
 
-.team {
-  padding: 4px 10px;
-  border-radius: 4px;
+.team-name {
+  font-size: 13px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  flex: 1;
+  opacity: 0.95;
 }
 
-.team.ct {
-  background: rgba(59, 130, 246, 0.3);
-  color: #93c5fd;
+.winner-name {
+  color: #22c55e;
+  text-align: left;
 }
 
-.team.t {
-  background: rgba(249, 115, 22, 0.3);
-  color: #fdba74;
+.loser-name {
+  color: #ef4444;
+  text-align: right;
 }
 
-.score {
-  color: #fff;
+.score-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.score-value {
+  font-size: 20px;
   font-weight: 700;
-  font-size: 14px;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  min-width: 28px;
+  text-align: center;
+}
+
+.winner-score {
+  color: #22c55e;
+}
+
+.loser-score {
+  color: #ef4444;
+}
+
+.score-separator {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.25);
 }
 
 .timestamp {
-  font-size: 12px;
-  color: #aaa;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
 }
 
 .delete-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
   width: 32px;
   height: 32px;
   border: none;
@@ -514,6 +615,7 @@ const formatDate = (timestamp: number | undefined) => {
   justify-content: center;
   opacity: 0;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .demo-card:hover .delete-btn {
@@ -526,27 +628,27 @@ const formatDate = (timestamp: number | undefined) => {
 }
 
 .active-indicator {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #3b82f6;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.95);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 2px 12px rgba(34, 197, 94, 0.6);
   animation: pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 @keyframes pulse {
   0%, 100% {
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+    box-shadow: 0 2px 12px rgba(34, 197, 94, 0.6);
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 2px 16px rgba(59, 130, 246, 0.8);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.8);
+    transform: scale(1.05);
   }
 }
 

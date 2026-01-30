@@ -109,13 +109,6 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 		UploadTime:       time.Now().UnixMilli(),
 		ProjectileRender: entity.GetProjectileConfig(),
 		MapName:          mapName,
-		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
-		TeamT:            gs.TeamTerrorists().ClanName(),
-		ScoreCT:          0, // Placeholder, backfilled in Phase 3
-		ScoreT:           0, // Placeholder, backfilled in Phase 3
-		TotalRounds:      0, // Placeholder, backfilled in Phase 3
-		TotalFrames:      0, // Placeholder, backfilled in Phase 3 (CDemoFileInfo message at end of demo)
-		TotalDurationMs:  0, // Placeholder, backfilled in Phase 3 (CDemoFileInfo message at end of demo)
 	}
 
 	log.Printf("[ExtractMetadata] Metadata extracted: Map=%s, UUID=%s", mapName, e.uuid)
@@ -247,15 +240,13 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
 		TeamT:            gs.TeamTerrorists().ClanName(),
 		// Update these fields with final values
-		ScoreCT:         gs.TeamCounterTerrorists().Score(),
-		ScoreT:          gs.TeamTerrorists().Score(),
-		TotalRounds:     e.builder.currentRound,
-		TotalFrames:     reflector.GetPlaybackFrames(e.parser),
-		TotalDurationMs: reflector.GetPlaybackTime(e.parser),
+		ScoreCT:     gs.TeamCounterTerrorists().Score(),
+		ScoreT:      gs.TeamTerrorists().Score(),
+		TotalRounds: e.builder.currentRound,
 	}
 
-	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d, TotalFrames=%d, TotalDurationMs=%d",
-		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT, updatedMeta.TotalFrames, updatedMeta.TotalDurationMs)
+	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d",
+		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT)
 	return updatedMeta, nil
 }
 
@@ -601,24 +592,6 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	}
 }
 
-// Helper functions for projectile trajectory calculation
-
-// abs returns the absolute value of a float64
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-// distance calculates the 3D Euclidean distance between two points
-func distance(x1, y1, z1, x2, y2, z2 float64) float64 {
-	dx := x2 - x1
-	dy := y2 - y1
-	dz := z2 - z1
-	return dx*dx + dy*dy + dz*dz // Return squared distance for performance (no sqrt needed for comparison)
-}
-
 // calculateRoundTime determines the current round phase and remaining time
 func (b *replayBuilder) calculateRoundTime(gs demoinfocs.GameState, currentTick int) entity.RoundTimeInfo {
 	// Get server tick rate from header
@@ -697,11 +670,4 @@ func (b *replayBuilder) calculateRoundTime(gs demoinfocs.GameState, currentTick 
 		Phase:         phase,
 		TimeRemaining: timeRemaining,
 	}
-}
-
-// parseFloat is a helper to parse string to float64
-func parseFloat(s string) float64 {
-	var f float64
-	fmt.Sscanf(s, "%f", &f)
-	return f
 }

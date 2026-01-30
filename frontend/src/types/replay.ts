@@ -131,8 +131,6 @@ export interface ReplayData {
   scoreCT: number;
   scoreT: number;
   totalRounds: number;
-  totalFrames: number; // Demo 总帧数（来自 header.PlaybackFrames）
-  totalDurationMs: number; // Demo 总时长（毫秒，来自 header.PlaybackTime）
   frames: Frame[];
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   // 额外字段用于列表展示
