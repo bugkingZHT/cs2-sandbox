@@ -100,6 +100,9 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 	}
 
 	// Create ReplayMeta with header info only (no frame traversal)
+	// Note: TotalFrames and TotalDurationMs are 0 here because in CS2 demos,
+	// this information is only available in CDemoFileInfo message at the end of the demo.
+	// These will be backfilled in Phase 3 after parsing is complete.
 	meta := &entity.ReplayMeta{
 		UUID:             e.uuid,
 		UploaderUID:      "000000", // Default uploader UID (6 digits)
@@ -111,8 +114,8 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 		ScoreCT:          0, // Placeholder, backfilled in Phase 3
 		ScoreT:           0, // Placeholder, backfilled in Phase 3
 		TotalRounds:      0, // Placeholder, backfilled in Phase 3
-		TotalFrames:      reflector.GetPlaybackFrames(e.parser),
-		TotalDurationMs:  reflector.GetPlaybackTime(e.parser),
+		TotalFrames:      0, // Placeholder, backfilled in Phase 3 (CDemoFileInfo message at end of demo)
+		TotalDurationMs:  0, // Placeholder, backfilled in Phase 3 (CDemoFileInfo message at end of demo)
 	}
 
 	log.Printf("[ExtractMetadata] Metadata extracted: Map=%s, UUID=%s", mapName, e.uuid)
@@ -241,18 +244,18 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		UploadTime:       meta.UploadTime,
 		ProjectileRender: meta.ProjectileRender,
 		MapName:          meta.MapName,
-		TeamCT:           meta.TeamCT,
-		TeamT:            meta.TeamT,
-		TotalFrames:      meta.TotalFrames,
-		TotalDurationMs:  meta.TotalDurationMs,
-		// Update only these fields
-		ScoreCT:     gs.TeamCounterTerrorists().Score(),
-		ScoreT:      gs.TeamTerrorists().Score(),
-		TotalRounds: e.builder.currentRound,
+		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
+		TeamT:            gs.TeamTerrorists().ClanName(),
+		// Update these fields with final values
+		ScoreCT:         gs.TeamCounterTerrorists().Score(),
+		ScoreT:          gs.TeamTerrorists().Score(),
+		TotalRounds:     e.builder.currentRound,
+		TotalFrames:     reflector.GetPlaybackFrames(e.parser),
+		TotalDurationMs: reflector.GetPlaybackTime(e.parser),
 	}
 
-	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d",
-		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT)
+	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d, TotalFrames=%d, TotalDurationMs=%d",
+		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT, updatedMeta.TotalFrames, updatedMeta.TotalDurationMs)
 	return updatedMeta, nil
 }
 

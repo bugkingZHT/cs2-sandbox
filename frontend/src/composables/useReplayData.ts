@@ -383,6 +383,13 @@ function createReplayData() {
     try {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
+      
+      // Calculate estimated total ticks based on file size
+      // Known ratio: 365MB = 131,735 ticks
+      // Ratio: ~360.8 ticks per MB
+      const fileSizeMB = file.size / (1024 * 1024);
+      const estimatedTotalTicks = Math.round(fileSizeMB * 360.8);
+      console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks}`);
 
       // Step 1: Initialize parser
       updateParsingProgress(5, 'Initializing parser...');
@@ -404,10 +411,9 @@ function createReplayData() {
       await saveMetaToDB(meta);
       await loadAllReplays(); // Refresh replay list
 
-      // Step 4: Parse rounds incrementally with frame-based progress
+      // Step 4: Parse rounds incrementally with tick-based progress estimation
       const rounds: ReplayRound[] = [];
       let roundNum = 1;
-      const totalFrames = meta.totalFrames || 0; // Get total frames from meta
 
       while (true) {
         const roundJson = await new Promise<string | null>((resolve, reject) => {
@@ -418,12 +424,17 @@ function createReplayData() {
             },
             (parsedFramesStr: string) => {
               // Status callback receives total parsed frames as a string
+              // But we use estimated ticks for progress calculation
               const parsedFrames = parseInt(parsedFramesStr, 10);
-              if (!isNaN(parsedFrames) && totalFrames > 0) {
+              if (!isNaN(parsedFrames) && estimatedTotalTicks > 0) {
+                // Assume frame count approximates tick count for progress
                 // Calculate progress: 15% (initial setup) + 80% (parsing) = 95% total
-                const parsingProgress = Math.min(80, (parsedFrames / totalFrames) * 80);
+                const parsingProgress = Math.min(80, (parsedFrames / estimatedTotalTicks) * 80);
                 const progress = 15 + parsingProgress;
-                updateParsingProgress(Math.min(95, progress), `Parsing frames: ${parsedFrames}/${totalFrames}`);
+                updateParsingProgress(
+                  Math.floor(Math.min(95, progress)), 
+                  `Parsing (${parsedFrames.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`
+                );
               }
             }
           );
