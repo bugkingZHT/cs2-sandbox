@@ -1,5 +1,5 @@
 import { onMounted, onUnmounted, ref } from 'vue';
-import type { Frame, ReplayData, WorldBounds } from '@/types/replay';
+import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
 
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
@@ -17,8 +17,9 @@ interface UseReplayResult {
 }
 
 const DB_NAME = 'CS2ReplayDB';
-const STORE_NAME = 'replays';
-const LATEST_KEY = 'latest_replay_id';
+const META_STORE_NAME = 'replayMeta';
+const ROUND_STORE_NAME = 'replayRounds';
+const LATEST_KEY = 'latest_replay_uuid';
 
 // 单例模式：确保所有组件使用同一个响应式实例
 let replayDataInstance: ReturnType<typeof createReplayData> | null = null;
@@ -56,7 +57,7 @@ function createReplayData() {
   const initDB = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
       if (db) return resolve(db);
-      const request = indexedDB.open(DB_NAME, 1);
+      const request = indexedDB.open(DB_NAME, 2); // Increment version for schema change
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         db = request.result;
@@ -64,112 +65,222 @@ function createReplayData() {
       };
       request.onupgradeneeded = (e: any) => {
         const database = e.target.result;
-        if (!database.objectStoreNames.contains(STORE_NAME)) {
-          database.createObjectStore(STORE_NAME);
+        
+        // Create meta store if not exists
+        if (!database.objectStoreNames.contains(META_STORE_NAME)) {
+          database.createObjectStore(META_STORE_NAME); // key = UUID
+        }
+        
+        // Create rounds store if not exists
+        // Key is manually specified as uuid_roundID, not using keyPath
+        if (!database.objectStoreNames.contains(ROUND_STORE_NAME)) {
+          database.createObjectStore(ROUND_STORE_NAME); // No keyPath, use explicit keys
         }
       };
     });
   };
 
-  const saveReplayToDB = async (replayData: ReplayData) => {
+  // Save meta and rounds to IndexedDB separately
+  const saveReplayToDB = async (meta: ReplayMeta, rounds: ReplayRound[]) => {
     console.time('[SaveReplayToDB] 保存到IndexedDB耗时');
     const database = await initDB();
     return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
+      const tx = database.transaction([META_STORE_NAME, ROUND_STORE_NAME], 'readwrite');
+      const metaStore = tx.objectStore(META_STORE_NAME);
+      const roundStore = tx.objectStore(ROUND_STORE_NAME);
       
-      // Save the replay data
-      const request = store.put(replayData, replayData.id);
+      // Save meta data with UUID as key
+      metaStore.put(meta, meta.uuid);
       
-      // Also update latest ID
-      localStorage.setItem(LATEST_KEY, replayData.id!);
+      // Save each round with composite key: uuid_roundID
+      rounds.forEach(round => {
+        const key = `${round.uuid}_${round.round}`;
+        roundStore.put(round, key);
+      });
+      
+      // Update latest UUID
+      localStorage.setItem(LATEST_KEY, meta.uuid);
 
-      request.onsuccess = () => {
+      tx.oncomplete = () => {
         console.timeEnd('[SaveReplayToDB] 保存到IndexedDB耗时');
         resolve();
       };
-      request.onerror = () => reject(request.error);
+      tx.onerror = () => reject(tx.error);
     });
   };
 
+  // Load all replay metadata for list display
   const loadAllReplays = async () => {
-    console.log('[LoadAllReplays] 开始加载所有回放数据');
+    console.log('[LoadAllReplays] 开始加载所有回放元数据');
     const database = await initDB();
     return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
+      const tx = database.transaction(META_STORE_NAME, 'readonly');
+      const store = tx.objectStore(META_STORE_NAME);
       const request = store.getAll();
       request.onsuccess = () => {
-        console.log('[LoadAllReplays] 获取到所有回放数据，数量:', request.result.length);
-        replayList.value = (request.result as ReplayData[]).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        console.log('[LoadAllReplays] 排序后的回放列表，数量:', replayList.value.length);
+        const metas = request.result as ReplayMeta[];
+        console.log('[LoadAllReplays] 加载到的元数据数量:', metas.length);
+        
+        // Convert meta to ReplayData for list display
+        replayList.value = metas.map(meta => ({
+          uuid: meta.uuid,
+          id: meta.uuid, // For backward compatibility
+          uploaderUid: meta.uploaderUid,
+          uploadTime: meta.uploadTime,
+          mapName: meta.mapName,
+          teamCT: meta.teamCT,
+          teamT: meta.teamT,
+          scoreCT: meta.scoreCT,
+          scoreT: meta.scoreT,
+          totalRounds: meta.totalRounds,
+          frames: [], // Not loaded yet
+          projectileRenderConfig: meta.projectileRenderConfig,
+          timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
+        }));
+        
         resolve();
       };
       request.onerror = () => {
-        console.error('[LoadAllReplays] 加载所有回放数据失败:', request.error);
+        console.error('[LoadAllReplays] 加载所有回放元数据失败:', request.error);
         reject(request.error);
       };
     });
   };
 
-  const loadReplayFromDB = async (id?: string): Promise<ReplayData | null> => {
-    console.log('[IndexedDB] 开始从数据库加载回放数据...', { id, storedId: localStorage.getItem(LATEST_KEY) });
+  // Load replay meta and all rounds from DB
+  const loadReplayFromDB = async (uuid?: string): Promise<ReplayData | null> => {
+    console.log('[IndexedDB] 开始从数据库加载回放数据...', { uuid, storedUuid: localStorage.getItem(LATEST_KEY) });
     const database = await initDB();
-    const targetId = id || localStorage.getItem(LATEST_KEY);
-    console.log('[IndexedDB] 目标ID:', targetId);
-    if (!targetId) {
-      console.log('[IndexedDB] 没有找到目标ID，返回null');
+    const targetUuid = uuid || localStorage.getItem(LATEST_KEY);
+    console.log('[IndexedDB] 目标UUID:', targetUuid);
+    if (!targetUuid) {
+      console.log('[IndexedDB] 没有找到目标UUID，返回null');
       return null;
     }
 
-    return new Promise((resolve, reject) => {
-      const tx = database.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.get(targetId);
-      request.onsuccess = () => {
-        console.log('[IndexedDB] 成功获取回放数据:', request.result ? '存在数据' : '未找到数据', { id: request.result?.id, frameCount: request.result?.frames?.length });
-        resolve(request.result);
-      };
-      request.onerror = () => {
-        console.error('[IndexedDB] 加载回放数据失败:', request.error);
-        reject(request.error);
-      };
+    // Load meta
+    const meta = await new Promise<ReplayMeta | null>((resolve, reject) => {
+      const tx = database.transaction(META_STORE_NAME, 'readonly');
+      const store = tx.objectStore(META_STORE_NAME);
+      const request = store.get(targetUuid);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
     });
+
+    if (!meta) {
+      console.log('[IndexedDB] 未找到元数据');
+      return null;
+    }
+
+    // Load all rounds for this UUID by filtering keys
+    const rounds = await new Promise<ReplayRound[]>((resolve, reject) => {
+      const tx = database.transaction(ROUND_STORE_NAME, 'readonly');
+      const store = tx.objectStore(ROUND_STORE_NAME);
+      const getAllRequest = store.getAll();
+      const getAllKeysRequest = store.getAllKeys();
+      
+      let allData: any[] = [];
+      let allKeys: IDBValidKey[] = [];
+      
+      getAllRequest.onsuccess = () => {
+        allData = getAllRequest.result;
+      };
+      
+      getAllKeysRequest.onsuccess = () => {
+        allKeys = getAllKeysRequest.result;
+        
+        // Filter rounds that belong to this UUID
+        const filteredRounds: ReplayRound[] = [];
+        for (let i = 0; i < allKeys.length; i++) {
+          const key = allKeys[i];
+          if (typeof key === 'string' && key.startsWith(`${targetUuid}_`)) {
+            filteredRounds.push(allData[i]);
+          }
+        }
+        resolve(filteredRounds);
+      };
+      
+      tx.onerror = () => reject(tx.error);
+    });
+
+    console.log('[IndexedDB] 加载到 meta 和 %d 个回合', rounds.length);
+
+    // Combine all frames from rounds, ensuring proper sorting
+    const allFrames = rounds
+      .sort((a, b) => a.round - b.round)
+      .flatMap(round => {
+        // Sort frames within each round by timeMs to ensure correct order
+        return round.frames.sort((a, b) => a.timeMs - b.timeMs);
+      });
+
+    // Convert to ReplayData format
+    const replayData: ReplayData = {
+      uuid: meta.uuid,
+      id: meta.uuid,
+      uploaderUid: meta.uploaderUid,
+      uploadTime: meta.uploadTime,
+      mapName: meta.mapName,
+      teamCT: meta.teamCT,
+      teamT: meta.teamT,
+      scoreCT: meta.scoreCT,
+      scoreT: meta.scoreT,
+      totalRounds: meta.totalRounds,
+      frames: allFrames,
+      projectileRenderConfig: meta.projectileRenderConfig,
+      timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
+    };
+
+    return replayData;
   };
 
-  const loadReplayById = async (id: string) => {
-    console.log('[LoadReplayById] 开始加载回放，ID:', id);
+  const loadReplayById = async (uuid: string) => {
+    console.log('[LoadReplayById] 开始加载回放，UUID:', uuid);
     try {
       // 不设置 loading 状态，避免触发 UI 重渲染
-      const data = await loadReplayFromDB(id);
+      const data = await loadReplayFromDB(uuid);
       console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
       if (data) {
         console.log('[LoadReplayById] 准备设置回放数据，帧数量:', data.frames?.length);
         setReplayData(data);
-        localStorage.setItem(LATEST_KEY, id);
-        console.log('[LoadReplayById] 回放数据设置完成，已更新最新ID');
+        localStorage.setItem(LATEST_KEY, uuid);
+        console.log('[LoadReplayById] 回放数据设置完成，已更新最新UUID');
       } else {
-        console.warn('[LoadReplayById] 未找到ID为', id, '的回放数据');
+        console.warn('[LoadReplayById] 未找到UUID为', uuid, '的回放数据');
       }
     } catch (e) {
       console.error('Failed to load replay', e);
     }
   };
 
-  const deleteReplayById = async (id: string) => {
+  const deleteReplayById = async (uuid: string) => {
     const database = await initDB();
-    return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.delete(id);
-      request.onsuccess = async () => {
+    return new Promise<void>(async (resolve, reject) => {
+      const tx = database.transaction([META_STORE_NAME, ROUND_STORE_NAME], 'readwrite');
+      const metaStore = tx.objectStore(META_STORE_NAME);
+      const roundStore = tx.objectStore(ROUND_STORE_NAME);
+      
+      // Delete meta
+      metaStore.delete(uuid);
+      
+      // Delete all rounds with this UUID by iterating and checking keys
+      const getAllKeysRequest = roundStore.getAllKeys();
+      getAllKeysRequest.onsuccess = () => {
+        const allKeys = getAllKeysRequest.result;
+        // Filter keys that start with uuid_
+        const keysToDelete = allKeys.filter(key => 
+          typeof key === 'string' && key.startsWith(`${uuid}_`)
+        );
+        keysToDelete.forEach(key => roundStore.delete(key));
+      };
+      
+      tx.oncomplete = async () => {
         await loadAllReplays();
-        if (localStorage.getItem(LATEST_KEY) === id) {
+        if (localStorage.getItem(LATEST_KEY) === uuid) {
           localStorage.removeItem(LATEST_KEY);
         }
         resolve();
       };
-      request.onerror = () => reject(request.error);
+      tx.onerror = () => reject(tx.error);
     });
   };
 
@@ -299,14 +410,13 @@ function createReplayData() {
       console.log('[ParseDemo] WASM解析完成，JSON字符串大小:', (jsonStr.length / 1024 / 1024).toFixed(2), 'MB');
       
       console.time('[ParseDemo] JSON.parse 耗时');
-      const replayData = JSON.parse(jsonStr) as ReplayData;
+      const parsedData = JSON.parse(jsonStr) as ParsedReplayData;
       console.timeEnd('[ParseDemo] JSON.parse 耗时');
       
-      replayData.id = `demo_${Date.now()}`;
-      replayData.timestamp = Date.now();
-
-      // 最后一步：保存数据
-      await saveReplayToDB(replayData);
+      console.log('[ParseDemo] 解析得到 meta 和 %d 个回合', parsedData.rounds.length);
+      
+      // 最后一步：保存数据（分离存储 meta 和 rounds）
+      await saveReplayToDB(parsedData.meta, parsedData.rounds);
       console.log('[ParseDemo] 数据已保存到IndexedDB，准备设置到状态');
       
       statusMsg.value = `解析完成：${file.name}`;
@@ -315,7 +425,30 @@ function createReplayData() {
       // 延迟一小段时间让用户看到完成状态，然后再设置数据和关闭弹窗
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // 直接设置数据对象，避免不必要的 JSON 序列化/反序列化
+      // 合并所有回合的帧数据设置到状态
+      const allFrames = parsedData.rounds
+        .sort((a, b) => a.round - b.round)
+        .flatMap(round => {
+          // Sort frames within each round by timeMs to ensure correct order
+          return round.frames.sort((a, b) => a.timeMs - b.timeMs);
+        });
+      
+      const replayData: ReplayData = {
+        uuid: parsedData.meta.uuid,
+        id: parsedData.meta.uuid,
+        uploaderUid: parsedData.meta.uploaderUid,
+        uploadTime: parsedData.meta.uploadTime,
+        mapName: parsedData.meta.mapName,
+        teamCT: parsedData.meta.teamCT,
+        teamT: parsedData.meta.teamT,
+        scoreCT: parsedData.meta.scoreCT,
+        scoreT: parsedData.meta.scoreT,
+        totalRounds: parsedData.meta.totalRounds,
+        frames: allFrames,
+        projectileRenderConfig: parsedData.meta.projectileRenderConfig,
+        timestamp: parsedData.meta.uploadTime, // Map to uploadTime for backward compatibility
+      };
+      
       console.time('[ParseDemo] setReplayData 执行时间');
       setReplayData(replayData);
       console.timeEnd('[ParseDemo] setReplayData 执行时间');

@@ -211,10 +211,24 @@ type DroppedEquipment struct {
 	Z float64 `json:"z"`
 }
 
-// 完整的录像数据
-type Replay struct {
+// 单个回合的录像数据
+type ReplayRound struct {
+	// 对局唯一标识符 UUID
+	UUID string `json:"uuid"`
+	// 回合编号
+	Round int `json:"round"`
 	// 包含的所有帧列表
 	Frames []Frame `json:"frames"`
+}
+
+// 录像元数据（地图整体信息）
+type ReplayMeta struct {
+	// 对局唯一标识符 UUID
+	UUID string `json:"uuid"`
+	// 上传用户 UID (6位字符串)
+	UploaderUID string `json:"uploaderUid"`
+	// 上传时间戳 (Unix milliseconds)
+	UploadTime int64 `json:"uploadTime"`
 	// 投掷物渲染配置
 	ProjectileRender map[common.EquipmentType]ProjectileRenderConfig `json:"projectileRenderConfig"`
 	// 地图名称
@@ -227,4 +241,6 @@ type Replay struct {
 	ScoreCT int `json:"scoreCT"`
 	// T队伍得分
 	ScoreT int `json:"scoreT"`
+	// 总回合数
+	TotalRounds int `json:"totalRounds"`
 }

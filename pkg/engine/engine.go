@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 
@@ -14,7 +15,7 @@ import (
 )
 
 type Engine interface {
-	BuildReplay(r io.Reader, onStatus func(string)) (*entity.Replay, error)
+	BuildReplay(r io.Reader, onStatus func(string)) (*entity.ReplayMeta, []*entity.ReplayRound, error)
 }
 
 type DemoEngine struct {
@@ -27,13 +28,17 @@ func NewDemoEngine(config EngineConfig) *DemoEngine {
 	}
 }
 
-func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Replay, error) {
+func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.ReplayMeta, []*entity.ReplayRound, error) {
 	if onStatus != nil {
 		onStatus("Creating demo parser...")
 	}
 	log.Println("[3/5] Creating demo parser...")
 	p := demoinfocs.NewParser(r)
 	defer p.Close()
+
+	// Generate UUID for this parsing session
+	uuid := uuid.New().String()
+	log.Printf("Generated UUID for this match: %s", uuid)
 
 	b := &replayBuilder{
 		parser:            p,
@@ -59,7 +64,7 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		if !more {
 			break
@@ -115,15 +120,44 @@ func (e *DemoEngine) BuildReplay(r io.Reader, onStatus func(string)) (*entity.Re
 		}
 	}
 
-	return &entity.Replay{
-		Frames:           frames,
+	// Group frames by round
+	roundFramesMap := make(map[int][]entity.Frame)
+	maxRound := 0
+	for _, frame := range frames {
+		roundFramesMap[frame.Round] = append(roundFramesMap[frame.Round], frame)
+		if frame.Round > maxRound {
+			maxRound = frame.Round
+		}
+	}
+
+	// Create ReplayMeta
+	meta := &entity.ReplayMeta{
+		UUID:             uuid,
+		UploaderUID:      "000000", // Default uploader UID (6 digits)
+		UploadTime:       time.Now().UnixMilli(),
 		ProjectileRender: entity.GetProjectileConfig(),
 		MapName:          mapName,
 		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
 		TeamT:            gs.TeamTerrorists().ClanName(),
 		ScoreCT:          gs.TeamCounterTerrorists().Score(),
 		ScoreT:           gs.TeamTerrorists().Score(),
-	}, nil
+		TotalRounds:      maxRound,
+	}
+
+	// Create ReplayRound array
+	rounds := make([]*entity.ReplayRound, 0, maxRound)
+	for roundNum := 1; roundNum <= maxRound; roundNum++ {
+		if roundFrames, ok := roundFramesMap[roundNum]; ok {
+			rounds = append(rounds, &entity.ReplayRound{
+				UUID:   uuid,
+				Round:  roundNum,
+				Frames: roundFrames,
+			})
+		}
+	}
+
+	log.Printf("Parsed %d rounds with UUID: %s", len(rounds), uuid)
+	return meta, rounds, nil
 }
 
 type replayBuilder struct {

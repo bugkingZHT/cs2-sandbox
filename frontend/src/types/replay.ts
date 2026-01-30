@@ -91,17 +91,49 @@ export interface Frame {
   killEvents?: Record<number, KillEvent>;
 }
 
-export interface ReplayData {
+// 录像元数据（地图整体信息）
+export interface ReplayMeta {
+  uuid: string;
+  uploaderUid: string; // 上传用户 UID (6位字符串)
+  uploadTime: number; // 上传时间戳 (Unix milliseconds)
   mapName: string;
   teamCT: string;
   teamT: string;
   scoreCT: number;
   scoreT: number;
+  totalRounds: number;
+  projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
+}
+
+// 单个回合的录像数据
+export interface ReplayRound {
+  uuid: string;
+  round: number;
+  frames: Frame[];
+}
+
+// WASM 返回的完整数据结构
+export interface ParsedReplayData {
+  meta: ReplayMeta;
+  rounds: ReplayRound[];
+}
+
+// 用于前端显示和兼容的完整数据
+export interface ReplayData {
+  uuid: string;
+  uploaderUid: string; // 上传用户 UID
+  uploadTime: number; // 上传时间戳
+  mapName: string;
+  teamCT: string;
+  teamT: string;
+  scoreCT: number;
+  scoreT: number;
+  totalRounds: number;
   frames: Frame[];
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   // 额外字段用于列表展示
   id?: string;
-  timestamp?: number;
+  timestamp?: number; // 向后兼容，映射到 uploadTime
 }
 
 export interface WorldBounds {

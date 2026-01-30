@@ -124,11 +124,14 @@
         :round-duration-ms="roundDurationMs"
         :score-c-t="replay?.scoreCT || 0"
         :score-t="replay?.scoreT || 0"
+        :replay-uuid="replay?.uuid"
+        :total-rounds="replay?.totalRounds || 0"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
         @exit-replay="emit('exit-replay')"
         @dragging-change="isDraggingTimeline = $event"
+        @load-round="loadRoundData"
       />
     </section>
   </div>
@@ -477,6 +480,54 @@ const onLogoError = (event: Event) => {
 
 const onUpdateSpeed = (value: number) => {
   playbackSpeed.value = value;
+};
+
+// Load specific round data from IndexedDB
+const loadRoundData = async (roundNumber: number) => {
+  if (!replay.value?.uuid) {
+    console.warn('[LoadRoundData] No replay UUID available');
+    return;
+  }
+  
+  console.log(`[LoadRoundData] Loading round ${roundNumber} data`);
+  
+  try {
+    // Open IndexedDB
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('CS2ReplayDB', 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    
+    // Load the specific round
+    const roundKey = `${replay.value.uuid}_${roundNumber}`;
+    const roundData = await new Promise<any>((resolve, reject) => {
+      const tx = db.transaction('replayRounds', 'readonly');
+      const store = tx.objectStore('replayRounds');
+      const request = store.get(roundKey);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    
+    if (roundData && roundData.frames && roundData.frames.length > 0) {
+      // Replace current frames with this round's frames
+      frames.value = roundData.frames;
+      
+      // Reset to first frame of this round
+      currentFrameIndex.value = 0;
+      currentPlaybackTimeMs.value = roundData.frames[0].timeMs;
+      
+      // Pause playback
+      isPlaying.value = false;
+      cancelAnimation();
+      
+      console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${roundData.frames.length} frames`);
+    } else {
+      console.warn(`[LoadRoundData] No frames found for round ${roundNumber}`);
+    }
+  } catch (error) {
+    console.error(`[LoadRoundData] Error loading round ${roundNumber}:`, error);
+  }
 };
 
 

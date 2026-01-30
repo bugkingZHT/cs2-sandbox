@@ -134,6 +134,8 @@ const props = defineProps<{
   roundDurationMs: number;
   scoreCT: number;
   scoreT: number;
+  replayUuid?: string;
+  totalRounds?: number;
 }>();
 
 const emit = defineEmits<{
@@ -142,6 +144,7 @@ const emit = defineEmits<{
   (e: 'update-speed', value: number): void;
   (e: 'exit-replay'): void;
   (e: 'dragging-change', value: boolean): void;
+  (e: 'load-round', roundNumber: number): void;
 }>();
 
 const isDragging = ref(false);
@@ -364,26 +367,23 @@ const currentRound = computed(() => {
   return props.frames[props.currentFrameIndex]?.round || 0;
 });
 
-// 计算回合标记用于跳转
+// 计算回合标记用于跳转 - 基于分片的round索引
 const roundMarkers = computed(() => {
-  if (!props.frames || props.frames.length === 0) return [];
-  const markers: { time: number; round: number }[] = [];
-  let lastR = -1;
-  for (let i = 0; i < props.frames.length; i++) {
-    const f = props.frames[i];
-    if (f.round !== lastR) {
-      lastR = f.round;
-      markers.push({ time: f.timeMs, round: f.round });
-    }
+  if (!props.replayUuid || !props.totalRounds) return [];
+  const markers: { round: number; uuid: string }[] = [];
+  // 根据总回合数生成标记
+  for (let r = 1; r <= props.totalRounds; r++) {
+    markers.push({ 
+      round: r, 
+      uuid: props.replayUuid 
+    });
   }
   return markers;
 });
 
 const seekToRound = (round: number) => {
-  const marker = roundMarkers.value.find(m => m.round === round);
-  if (marker) {
-    emit('seek-seconds', marker.time / 1000);
-  }
+  console.log(`[SeekToRound] Emitting load-round event for round ${round}`);
+  emit('load-round', round);
 };
 
 const handleInteraction = (clientX: number, el: HTMLElement) => {

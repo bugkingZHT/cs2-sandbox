@@ -48,15 +48,28 @@ func parseDemo(this js.Value, args []js.Value) interface{} {
 		}
 
 		engine := engine.NewDemoEngine(engine.EngineConfig{ResolveFreezeTime: false})
-		replay, err := engine.BuildReplay(bytes.NewReader(buf), onStatus)
+		meta, rounds, err := engine.BuildReplay(bytes.NewReader(buf), onStatus)
 		if err != nil {
 			log.Printf("Parse error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())
 			return
 		}
 
-		log.Printf("[4/5] Parse complete! Got %d frames, marshaling to JSON...\n", len(replay.Frames))
-		b, err := json.Marshal(replay)
+		log.Printf("[4/5] Parse complete! Got %d rounds with UUID: %s, marshaling to JSON...\n", len(rounds), meta.UUID)
+
+		// Create response structure with meta and rounds
+		response := struct {
+			Meta   interface{}   `json:"meta"`
+			Rounds []interface{} `json:"rounds"`
+		}{
+			Meta:   meta,
+			Rounds: make([]interface{}, len(rounds)),
+		}
+		for i, round := range rounds {
+			response.Rounds[i] = round
+		}
+
+		b, err := json.Marshal(response)
 		if err != nil {
 			log.Printf("JSON marshal error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())

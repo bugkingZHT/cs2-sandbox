@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 )
 
 func TestParseDemoFile(t *testing.T) {
@@ -28,15 +30,24 @@ func TestParseDemoFile(t *testing.T) {
 	}
 
 	// Parse the demo
-	replay, err := NewDemoEngine(EngineConfig{ResolveFreezeTime: true}).BuildReplay(file, onStatus)
+	meta, rounds, err := NewDemoEngine(EngineConfig{ResolveFreezeTime: true}).BuildReplay(file, onStatus)
 	if err != nil {
 		t.Fatalf("Failed to parse demo: %v", err)
 	}
 
-	t.Logf("Parse successful! Got %d frames.", len(replay.Frames))
+	t.Logf("Parse successful! Got %d rounds with UUID: %s", len(rounds), meta.UUID)
+
+	// Create a combined structure for testing output
+	testOutput := struct {
+		Meta   *entity.ReplayMeta    `json:"meta"`
+		Rounds []*entity.ReplayRound `json:"rounds"`
+	}{
+		Meta:   meta,
+		Rounds: rounds,
+	}
 
 	// Marshal to JSON
-	data, err := json.MarshalIndent(replay, "", "  ")
+	data, err := json.MarshalIndent(testOutput, "", "  ")
 	if err != nil {
 		t.Fatalf("Failed to marshal replay to JSON: %v", err)
 	}
