@@ -34,7 +34,7 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
   405: 'knife',      // EqKnife (在 utility 目录下)
 
   // Grenades (在 utility 目录下)
-  501: 'smoke',      // EqDecoy (暂时映射到 smoke)
+  501: 'decoy',      // EqDecoy
   502: 'molotov',    // EqMolotov
   503: 'incendiary', // EqIncendiary
   504: 'flash',      // EqFlash

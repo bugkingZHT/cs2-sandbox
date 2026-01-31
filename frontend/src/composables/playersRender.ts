@@ -247,6 +247,11 @@ const drawPlayerGraphics = (
   // Dark border for contrast
   g.circle(0, 0, radius).stroke({ width: 1.5, color: 0x000000, alpha: 0.5 });
 
+  // 致盲状态视觉效果 (外圈白线)
+  if (player.alive && (player.isBlinded || (player.flashDuration && player.flashDuration > 0))) {
+    g.circle(0, 0, radius + 3).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+  }
+
   if (!player.alive) {
     const crossSize = radius * 0.7;
     g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);

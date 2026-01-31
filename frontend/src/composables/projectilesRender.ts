@@ -73,8 +73,9 @@ const PROJECTILE_UI_CONFIG = {
 };
 
 // 默认逻辑配置（作为后备）
-const DEFAULT_LOGIC_CONFIG = {
+const DEFAULT_LOGIC_CONFIG: ProjectileRenderConfig = {
   explosionRadius: 160,
+  durationInMs: 18000, // 默认烟雾时长
 };
 
 export const clearProjectilesLayer = (projectileLayer: Container | null) => {
@@ -105,6 +106,63 @@ const getUIConfig = (typeKey: string) => {
   return PROJECTILE_UI_CONFIG[typeKey as keyof typeof PROJECTILE_UI_CONFIG] || PROJECTILE_UI_CONFIG['HE'];
 };
 
+// 确定性随机数生成器（基于种子）
+const pseudoRandom = (seed: number) => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
+// 渲染粒子簇效果（模拟烟雾/火焰）
+const renderParticles = (
+  g: Graphics,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  color: number,
+  alpha: number,
+  seed: number,
+  count: number = 50
+) => {
+  for (let i = 0; i < count; i++) {
+    const angle = pseudoRandom(seed + i) * Math.PI * 2;
+    // 使用平方根分布使粒子在圆内分布更均匀
+    const dist = Math.sqrt(pseudoRandom(seed + i + count)) * radius * 0.95;
+    const x = centerX + Math.cos(angle) * dist;
+    const y = centerY + Math.sin(angle) * dist;
+    // 统一粒子大小 (固定为总半径的 22%)，确保完全覆盖无缝隙
+    const particleRadius = radius * 0.22;
+    g.circle(x, y, particleRadius).fill({ color, alpha });
+  }
+};
+
+// 绘制倒计时环形进度条
+const drawCountdownRing = (
+  g: Graphics,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  progress: number, // 0 到 1
+  teamColor: number
+) => {
+  const ringRadius = radius * 0.35; // 倒计时环稍微再大一点
+  const startAngle = -Math.PI / 2;
+  const endAngle = startAngle + progress * Math.PI * 2;
+
+  // 背景环 (深色半透明)
+  g.circle(centerX, centerY, ringRadius).stroke({ width: 6, color: 0x000000, alpha: 0.4 });
+  
+  // 进度环 (阵营颜色)
+  if (progress > 0) {
+    // 明确起始点，防止从 (0,0) 画出粗线
+    const startX = centerX + Math.cos(startAngle) * ringRadius;
+    const startY = centerY + Math.sin(startAngle) * ringRadius;
+    
+    g.moveTo(startX, startY)
+     .arc(centerX, centerY, ringRadius, startAngle, endAngle, false)
+     .stroke({ width: 6, color: teamColor, alpha: 1.0 });
+  }
+};
+
 // 计算像素半径
 const calculatePixelRadius = (
   gameRadius: number,
@@ -124,6 +182,11 @@ const drawTrajectory = (
   colorOverride?: number,
 ) => {
   const { worldToMap, players, projectileLayer } = ctx;
+  
+  // 如果已爆炸，则不显示轨迹
+  if (proj.isExploded) {
+    return;
+  }
   
   // 使用引擎提供的未来碰撞点数据
   // 渲染顺序：trajectory[0] -> trajectory[1] -> ... -> 当前位置(X, Y)
@@ -265,47 +328,161 @@ const renderAreaEffect = async (
 
 // 烟雾弹渲染逻辑
 const renderSmoke = async (proj: ProjectileState, typeKey: string, ctx: RenderContext) => {
-  await renderAreaEffect(proj, typeKey, ctx);
+  const { projectileLayer, worldToMap, players } = ctx;
+  const typeId = Number(proj.type);
+  const logicConfig = getLogicConfig(typeId, ctx);
+  
+  if (proj.isExploded) {
+    const mapPos = worldToMap(proj.x, proj.y);
+    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y }, worldToMap);
+    const explosionG = new Graphics();
+    
+    // 奶白色实心小圆圈铺开 (#F5F5F5)
+    renderParticles(explosionG, mapPos.x, mapPos.y, pixelRadius, 0xF5F5F5, 0.8, proj.entityID);
+    
+    // 倒计时进度环
+    if (proj.ttl !== undefined && logicConfig.durationInMs > 0) {
+      const progress = Math.max(0, Math.min(1, proj.ttl / logicConfig.durationInMs));
+      const thrower = players.find(p => p.id === proj.throwerID);
+      const teamColor = thrower ? (thrower.team === 3 ? 0x3b82f6 : 0xf97316) : 0xffffff;
+      drawCountdownRing(explosionG, mapPos.x, mapPos.y, pixelRadius, progress, teamColor);
+    }
+
+    projectileLayer.addChild(explosionG);
+  } else {
+    drawTrajectory(proj, ctx);
+    await drawIcon(proj, typeKey, ctx, 0.7);
+  }
 };
 
 // 闪光弹渲染逻辑
 const renderFlash = async (proj: ProjectileState, typeKey: string, ctx: RenderContext) => {
-  // 闪光效果：亮白色
-  await renderAreaEffect(proj, typeKey, ctx, {
-    fillColor: 0xffffff,
-    fillAlpha: 0.8,
-    strokeColor: 0xffffff
-  });
+  const { projectileLayer, worldToMap } = ctx;
+  const typeId = Number(proj.type);
+  const logicConfig = getLogicConfig(typeId, ctx);
+  
+  if (proj.isExploded) {
+    const mapPos = worldToMap(proj.x, proj.y);
+    const explosionG = new Graphics();
+    
+    // 1. 瞬时扩大的闪烁效果（白光闪过）
+    if (proj.ttl !== undefined && logicConfig.durationInMs > 0) {
+      const elapsedTime = logicConfig.durationInMs - proj.ttl;
+      const flashDuration = 500; // 闪烁持续时间 500ms
+      
+      if (elapsedTime < flashDuration) {
+        const progress = elapsedTime / flashDuration;
+        // 半径迅速扩大
+        const currentRadius = logicConfig.explosionRadius * Math.pow(progress, 0.3);
+        const pixelRadius = calculatePixelRadius(currentRadius, { x: proj.x, y: proj.y }, worldToMap);
+        // 透明度衰减
+        const alpha = 0.7 * (1 - progress);
+        
+        explosionG.circle(mapPos.x, mapPos.y, pixelRadius).fill({ 
+          color: 0xffffff, 
+          alpha: alpha 
+        });
+      }
+    }
+    
+    // 2. 残留爆点（一直存在直到道具消失）
+    explosionG.circle(mapPos.x, mapPos.y, 2.5).fill({ color: 0xffffff, alpha: 0.9 });
+
+    projectileLayer.addChild(explosionG);
+  } else {
+    drawTrajectory(proj, ctx);
+    await drawIcon(proj, typeKey, ctx, 0.7);
+  }
 };
 
 // 诱饵弹渲染逻辑
 const renderDecoy = async (proj: ProjectileState, typeKey: string, ctx: RenderContext) => {
-  // 诱饵弹效果：亮白色
-  await renderAreaEffect(proj, typeKey, ctx, {
-    fillColor: 0xffffff,
-    fillAlpha: 0.6,
-    strokeColor: 0xffffff
-  });
+  const { projectileLayer, worldToMap } = ctx;
+  const uiConfig = getUIConfig(typeKey);
+  
+  if (proj.isExploded) {
+    const mapPos = worldToMap(proj.x, proj.y);
+    const explosionG = new Graphics();
+    
+    // 诱饵弹表现为一个闪烁的小红点（模拟小地图上的敌人显示）
+    const isPulsing = Math.floor(Date.now() / 200) % 2 === 0;
+    const color = isPulsing ? 0xff0000 : 0xaa0000;
+    
+    explosionG.circle(mapPos.x, mapPos.y, 4).fill({ color: color, alpha: 1.0 });
+    explosionG.circle(mapPos.x, mapPos.y, 8).stroke({ width: 1, color: 0xffffff, alpha: 0.3 });
+
+    projectileLayer.addChild(explosionG);
+  } else {
+    drawTrajectory(proj, ctx);
+    await drawIcon(proj, typeKey, ctx, 0.7);
+  }
 };
 
 // 高爆手雷渲染逻辑
 const renderHE = async (proj: ProjectileState, typeKey: string, ctx: RenderContext) => {
-  // HE 爆炸效果：暗黄色
-  await renderAreaEffect(proj, typeKey, ctx, {
-    fillColor: 0xccac00, // Dark Yellow
-    fillAlpha: 0.6,
-    strokeColor: 0xffff00
-  });
+  const { projectileLayer, worldToMap, players } = ctx;
+  const typeId = Number(proj.type);
+  const logicConfig = getLogicConfig(typeId, ctx);
+  
+  if (proj.isExploded) {
+    const mapPos = worldToMap(proj.x, proj.y);
+    const explosionG = new Graphics();
+    
+    // 确定颜色：根据阵营区分，并与火（0xFFA500）稍微区分
+    const thrower = players.find(p => p.id === proj.throwerID || p.name === proj.throwerName);
+    const heColor = 0xFF6347
+
+    // 1. 瞬时扩大的爆炸圈（闪过感）
+    if (proj.ttl !== undefined && logicConfig.durationInMs > 0) {
+      const elapsedTime = logicConfig.durationInMs - proj.ttl;
+      const flashDuration = 800; // 爆炸圈闪烁持续时间增长到 800ms
+      
+      if (elapsedTime < flashDuration) {
+        const progress = elapsedTime / flashDuration;
+        // 半径迅速扩大
+        const currentRadius = logicConfig.explosionRadius * Math.pow(progress, 0.4);
+        const pixelRadius = calculatePixelRadius(currentRadius, { x: proj.x, y: proj.y }, worldToMap);
+        // 透明度迅速衰减
+        const alpha = 0.8 * (1 - progress);
+        
+        explosionG.circle(mapPos.x, mapPos.y, pixelRadius).fill({ 
+          color: heColor,
+          alpha: alpha 
+        });
+      }
+    }
+    
+    // 2. 保留中心的小点（一直存在直到消失）
+    explosionG.circle(mapPos.x, mapPos.y, 3).fill({ color: heColor, alpha: 0.9 });
+
+    projectileLayer.addChild(explosionG);
+  } else {
+    drawTrajectory(proj, ctx);
+    await drawIcon(proj, typeKey, ctx, 0.7);
+  }
 };
 
 // 燃烧瓶/火瓶渲染逻辑
 const renderFire = async (proj: ProjectileState, typeKey: string, ctx: RenderContext) => {
-   // 火焰效果：暗红色
-   await renderAreaEffect(proj, typeKey, ctx, {
-     fillColor: 0x8b0000, // Dark Red
-     fillAlpha: 0.5,
-     strokeColor: 0xff4500
-   });
+  const { projectileLayer, worldToMap, players } = ctx;
+  const typeId = Number(proj.type);
+  const logicConfig = getLogicConfig(typeId, ctx);
+  
+  if (proj.isExploded) {
+    const mapPos = worldToMap(proj.x, proj.y);
+    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y }, worldToMap);
+    const explosionG = new Graphics();
+    
+    // 橙色实心小圆圈铺开 (#FFA500)
+    renderParticles(explosionG, mapPos.x, mapPos.y, pixelRadius, 0xFFA500, 0.7, proj.entityID);
+    
+    // 火不再显示倒计时环 (根据用户要求移除)
+
+    projectileLayer.addChild(explosionG);
+  } else {
+    drawTrajectory(proj, ctx);
+    await drawIcon(proj, typeKey, ctx, 0.7);
+  }
 };
 
 // 默认渲染逻辑（保持原有逻辑）
@@ -313,13 +490,6 @@ const renderDefault = async (proj: ProjectileState, typeKey: string, ctx: Render
   const { projectileLayer, worldToMap } = ctx;
   const uiConfig = getUIConfig(typeKey);
 
-  // 1. 绘制轨迹
-  drawTrajectory(proj, ctx);
-
-  // 2. 绘制图标
-  await drawIcon(proj, typeKey, ctx, uiConfig.iconScale);
-
-  // 3. 如果已爆炸，绘制范围效果（叠加在图标上，或者作为背景）
   if (proj.isExploded) {
     const mapPos = worldToMap(proj.x, proj.y);
     const explosionG = new Graphics();
@@ -338,6 +508,12 @@ const renderDefault = async (proj: ProjectileState, typeKey: string, ctx: Render
     });
 
     projectileLayer.addChild(explosionG);
+  } else {
+    // 1. 绘制轨迹
+    drawTrajectory(proj, ctx);
+
+    // 2. 绘制图标
+    await drawIcon(proj, typeKey, ctx, uiConfig.iconScale);
   }
 };
 
