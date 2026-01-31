@@ -8,9 +8,17 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  worker: {
+    format: 'iife',
+  },
   build: {
     outDir: '../web/static',
     emptyOutDir: false, // Don't delete main.wasm and wasm_exec.js
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
   },
   server: {
     port: 5173,

@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
+import ParserWorker from '@/workers/wasm-parser.worker?worker';
 
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
@@ -476,82 +477,107 @@ function createReplayData() {
       parsing.value = false;
       parsingProgress.value = 0;
 
-      // ============ ASYNCHRONOUS PHASE: Round parsing + Backfill ============
-      (async () => {
-        try {
-          const rounds: ReplayRound[] = [];
-          let roundNum = 1;
+      // ============ ASYNCHRONOUS PHASE: Round parsing in Web Worker ============
+      const worker = new ParserWorker();
+      const workerRounds: ReplayRound[] = [];
 
-          while (true) {
-            const roundJson = await new Promise<string | null>((resolve, reject) => {
-              (window as any).parseNextRound(
-                (res: string | null, err: string) => {
-                  if (err) reject(new Error(err));
-                  else resolve(res);
-                },
-                (parsedFramesStr: string) => {
-                  // Status callback receives total parsed frames as a string
-                  const parsedFrames = parseInt(parsedFramesStr, 10);
-                  if (!isNaN(parsedFrames) && estimatedTotalTicks > 0) {
-                    // Calculate progress: 0-90% for parsing
-                    const parsingProgress = Math.min(90, (parsedFrames / estimatedTotalTicks) * 90);
-                    const status = `Parsing rounds (${parsedFrames.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
-                    updateDemoParsingProgress(meta.uuid, Math.floor(parsingProgress), status);
-                  }
-                }
-              );
-            });
-
-            if (!roundJson) break; // EOF reached
-
-            const round: ReplayRound = JSON.parse(roundJson);
-            rounds.push(round);
-
-            // Save round to DB immediately after parsing
-            await saveRoundToDB(round);
-
-            roundNum++;
+      // Setup message handler
+      worker.onmessage = async (e: MessageEvent) => {
+        if (e.data.type === 'PROGRESS') {
+          // Update progress based on ticks (0-90% for parsing phase)
+          const parsedTicks = e.data.parsedTicks;
+          const progress = Math.min(90, (parsedTicks / estimatedTotalTicks) * 90);
+          const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
+          updateDemoParsingProgress(meta.uuid, Math.floor(progress), status);
+          
+        } else if (e.data.type === 'ROUND_COMPLETE') {
+          const round: ReplayRound = e.data.round;
+          workerRounds.push(round);
+          
+          // Save round to DB immediately
+          await saveRoundToDB(round);
+          
+          console.log(`[ParseDemo] Round ${workerRounds.length} saved to DB`);
+          
+        } else if (e.data.type === 'PARSING_COMPLETE') {
+          try {
+            // Phase 3: Update metadata with statistics from worker
+            updateDemoParsingProgress(meta.uuid, 95, 'Finalizing metadata...');
+            
+            // Update meta with final statistics from worker
+            meta.totalRounds = e.data.totalRounds;
+            meta.scoreCT = e.data.scoreCT;
+            meta.scoreT = e.data.scoreT;
+            meta.teamCT = e.data.teamCT;
+            meta.teamT = e.data.teamT;
+            
+            console.log(`[ParseDemo] Final stats - Rounds: ${meta.totalRounds}, CT: ${meta.teamCT} (${meta.scoreCT}), T: ${meta.teamT} (${meta.scoreT})`);
+            
+            // Remove temporary field after successful parsing
+            delete meta.originalFilePath;
+            await saveMetaToDB(meta);
+            await loadAllReplays();
+            
+            // Close parser on main thread
+            (window as any).closeDemoParser();
+            
+            // Mark parsing complete
+            updateDemoParsingProgress(meta.uuid, 100, 'Complete');
+            const completedDemo = replayList.value.find(d => d.uuid === meta.uuid);
+            if (completedDemo) {
+              completedDemo.isParsing = false;
+              completedDemo.parsingProgress = 100;
+              completedDemo.parsingStatus = 'Complete';
+            }
+            
+            console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
+          } catch (e: any) {
+            console.error('[ParseDemo] Finalization failed:', e);
+            const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
+            if (failedDemo) {
+              failedDemo.isParsing = false;
+              failedDemo.hasFailed = true;
+              failedDemo.parsingStatus = `Finalization error: ${e.message || String(e)}`;
+            }
+            (window as any).closeDemoParser();
+          } finally {
+            // Cleanup worker
+            worker.terminate();
           }
-
-          // Step 5: Backfill metadata with final round count and scores
-          updateDemoParsingProgress(meta.uuid, 95, 'Finalizing metadata...');
-          const updatedMetaJson = await new Promise<string>((resolve, reject) => {
-            (window as any).backfillDemoMeta(JSON.stringify(meta), (res: string, err: string) => {
-              if (err) reject(new Error(err));
-              else resolve(res);
-            });
-          });
-          const finalMeta: ReplayMeta = JSON.parse(updatedMetaJson);
-
-          // Step 6: Update meta in DB with final values and clear originalFilePath
-          delete finalMeta.originalFilePath; // Remove temporary field after successful backfill
-          await saveMetaToDB(finalMeta);
-          await loadAllReplays(); // Refresh replay list with backfilled meta
-
-          // Step 7: Close parser and cleanup
-          (window as any).closeDemoParser();
-
-          // Step 8: Mark parsing complete
-          updateDemoParsingProgress(meta.uuid, 100, 'Parsing complete!');
-          const completedDemo = replayList.value.find(d => d.uuid === meta.uuid);
-          if (completedDemo) {
-            completedDemo.isParsing = false;
-            completedDemo.parsingProgress = 100;
-            completedDemo.parsingStatus = 'Complete';
-          }
-
-          console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
-        } catch (e: any) {
-          console.error('[ParseDemo] Background parsing failed:', e);
+          
+        } else if (e.data.type === 'ERROR') {
+          console.error('[ParseDemo] Worker error:', e.data.error);
           const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
           if (failedDemo) {
             failedDemo.isParsing = false;
             failedDemo.hasFailed = true;
-            failedDemo.parsingStatus = `Error: ${e.message || String(e)}`;
+            failedDemo.parsingStatus = `Error: ${e.data.error}`;
           }
-          (window as any).closeDemoParser(); // Cleanup on error
+          (window as any).closeDemoParser();
+          worker.terminate();
         }
-      })();
+      };
+
+      // Handle worker errors
+      worker.onerror = (error: ErrorEvent) => {
+        console.error('[ParseDemo] Worker error event:', error);
+        const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
+        if (failedDemo) {
+          failedDemo.isParsing = false;
+          failedDemo.hasFailed = true;
+          failedDemo.parsingStatus = `Worker error: ${error.message}`;
+        }
+        (window as any).closeDemoParser();
+        worker.terminate();
+      };
+
+      // Start worker parsing
+      worker.postMessage({
+        type: 'PARSE_ROUNDS',
+        demoBytes: bytes,
+        uuid: meta.uuid,
+        estimatedTotalTicks
+      });
 
       statusMsg.value = `后台解析中: ${file.name}`;
     } catch (e: any) {
