@@ -25,6 +25,8 @@ import { useMapConfig } from '@/composables/useMapConfig';
 import {
   clearProjectilesLayer,
   drawProjectilesForFrame as drawProjectilesForFrameExternal,
+  drawBombForFrame,
+  preloadProjectileAssets,
 } from '../../composables/projectilesRender';
 import {
   drawPlayersForFrame as drawPlayersForFrameExternal,
@@ -313,6 +315,16 @@ const drawPlayersForFrame = () => {
     const playersArray = Object.values(frame.players || {});
     drawProjectilesForFrame(frame.projectiles, playersArray, frame.sortedProjs);
   }
+
+  // Draw planted bomb if present
+  if (frame.bomb) {
+    drawBombForFrame({
+      bomb: frame.bomb,
+      roundTime: frame.roundTime,
+      projectileLayer,
+      worldToMap,
+    });
+  }
 };
 
 watch(
@@ -384,6 +396,8 @@ watch(
 
 onMounted(async () => {
   await ensureApp();
+  // 预加载 SVG 资源到前端缓存，避免播放过程中频繁请求
+  preloadProjectileAssets();
   drawPlayersForFrame();
 });
 
