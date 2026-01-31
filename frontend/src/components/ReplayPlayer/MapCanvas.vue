@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Sprite } from 'pixi.js';
-import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig } from '@/types/replay';
+import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
 import { useMapConfig } from '@/composables/useMapConfig';
 import {
@@ -275,7 +275,9 @@ const onPlayerPointerOut = (p: PlayerState) => {
 const drawProjectilesForFrame = async (
   projectiles: Record<number, ProjectileState> | undefined, 
   players: PlayerState[],
-  sortedProjs?: number[]
+  sortedProjs?: number[],
+  droppedEquipment?: DroppedEquipment[],
+  timeMs?: number
 ) => {
   await drawProjectilesForFrameExternal({
     projectiles,
@@ -285,6 +287,8 @@ const drawProjectilesForFrame = async (
     worldToMap,
     projectileConfigs: props.projectileConfigs,
     sortedProjs,
+    droppedEquipment,
+    timeMs,
   });
 };
 
@@ -310,10 +314,16 @@ const drawPlayersForFrame = () => {
   });
 
   // Draw projectiles if present
-  if (frame.projectiles) {
+  if (frame.projectiles || frame.droppedEquipment) {
     // Convert players map to array for projectiles renderer
     const playersArray = Object.values(frame.players || {});
-    drawProjectilesForFrame(frame.projectiles, playersArray, frame.sortedProjs);
+    drawProjectilesForFrame(
+      frame.projectiles, 
+      playersArray, 
+      frame.sortedProjs,
+      frame.droppedEquipment,
+      frame.timeMs
+    );
   }
 
   // Draw planted bomb if present

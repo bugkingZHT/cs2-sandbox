@@ -1,11 +1,17 @@
 import { Assets, Container, Graphics, Sprite, ColorMatrixFilter, Texture } from 'pixi.js';
-import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig, BombFrame, RoundTimeInfo } from '@/types/replay';
+import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig, BombFrame, RoundTimeInfo, DroppedEquipment } from '@/types/replay';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 
 /**
  * 缓存已加载的纹理，避免在渲染循环中重复发起网络请求或进行异步解析
  */
 const textureCache: Record<string, Texture> = {};
+
+/**
+ * 掉落道具出现时间缓存，用于实现掉落动画
+ */
+const droppedAppearanceCache = new Map<string, number>();
+let lastFrameTime = 0;
 
 /**
  * 预加载所有投掷物和 C4 的 SVG 图标
@@ -113,6 +119,7 @@ interface RenderContext {
   players: PlayerState[];
   worldToMap: (x: number, y: number) => { x: number; y: number };
   configs?: Record<number, ProjectileRenderConfig>;
+  timeMs?: number;
 }
 
 // 获取投掷物类型Key
@@ -304,6 +311,81 @@ const drawIcon = async (
     projectileLayer.addChild(sprite);
   } catch (error) {
     console.warn('[投掷物] 加载图标失败:', assetPath, error);
+  }
+};
+
+/**
+ * 绘制掉落的投掷物图标（原色 + 偏移 + 掉落动画）
+ */
+const drawDroppedIcon = async (
+  eq: DroppedEquipment,
+  typeKey: string,
+  ctx: RenderContext,
+  scale: number = 0.6,
+) => {
+  const { worldToMap, projectileLayer, timeMs = 0 } = ctx;
+  const assetPath = PROJECTILE_ASSETS[typeKey];
+
+  if (!assetPath) return;
+
+  // 1. 计算确定性随机偏移，避免与尸体中心重合
+  // 使用坐标作为种子，保证同一个道具在同一个位置的偏移是一致的
+  const seed = (Math.floor(eq.x) * 1000) + Math.floor(eq.y) + Number(eq.type);
+  const pseudoRandom = (s: number) => {
+    const x = Math.sin(s) * 10000;
+    return x - Math.floor(x);
+  };
+  
+  const angle = pseudoRandom(seed) * Math.PI * 2;
+  const dist = 12 + pseudoRandom(seed + 1) * 8; // 偏移 12-20 像素
+  const offsetX = Math.cos(angle) * dist;
+  const offsetY = Math.sin(angle) * dist;
+
+  // 2. 动画逻辑：记录初次出现时间
+  const itemKey = `${eq.type}_${Math.floor(eq.x)}_${Math.floor(eq.y)}`;
+  
+  // 如果时间倒退（如拖动进度条），清理缓存重新开始动画
+  if (timeMs < lastFrameTime - 500) {
+    droppedAppearanceCache.clear();
+  }
+  lastFrameTime = timeMs;
+
+  if (!droppedAppearanceCache.has(itemKey)) {
+    droppedAppearanceCache.set(itemKey, timeMs);
+  }
+  
+  const firstSeen = droppedAppearanceCache.get(itemKey) || timeMs;
+  const elapsed = timeMs - firstSeen;
+  const animDuration = 400; // 400ms 掉落动画
+  const progress = Math.min(1, elapsed / animDuration);
+  
+  // 3. 渲染
+  try {
+    const texture = textureCache[assetPath] || await Assets.load(assetPath);
+    if (!textureCache[assetPath]) textureCache[assetPath] = texture;
+    
+    const sprite = new Sprite(texture);
+    const baseSize = 20;
+    
+    // 动画效果：从上方掉落，从大变小
+    const dropHeight = 25 * (1 - progress); // 从 25px 高度掉落
+    const animScale = scale * (progress + 0.4 * (1 - progress)); // 略微从大变小
+    
+    sprite.width = baseSize * animScale;
+    sprite.height = baseSize * animScale;
+    sprite.anchor.set(0.5);
+
+    const mapPos = worldToMap(eq.x, eq.y);
+    sprite.x = mapPos.x + offsetX;
+    sprite.y = mapPos.y + offsetY - dropHeight; // Y 轴负方向是上方
+
+    // 渐显效果
+    sprite.alpha = 0.4 + 0.6 * progress;
+    sprite.tint = 0xffffff;
+
+    projectileLayer.addChild(sprite);
+  } catch (error) {
+    console.warn('[投掷物] 加载掉落图标失败:', assetPath, error);
   }
 };
 
@@ -553,6 +635,8 @@ export const drawProjectilesForFrame = async (options: {
   worldToMap: (x: number, y: number) => { x: number; y: number };
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs from engine
+  droppedEquipment?: DroppedEquipment[];
+  timeMs?: number;
 }) => {
   const {
     projectiles,
@@ -562,52 +646,70 @@ export const drawProjectilesForFrame = async (options: {
     worldToMap,
     projectileConfigs,
     sortedProjs,
+    droppedEquipment,
+    timeMs,
   } = options;
 
-  if (!projectileLayer || !mapSprite || !projectiles) return;
+  if (!projectileLayer || !mapSprite) return;
 
   const ctx: RenderContext = {
     projectileLayer,
     players,
     worldToMap,
     configs: projectileConfigs,
+    timeMs,
   };
 
-  // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
-  const projIds = sortedProjs || Object.keys(projectiles).map(Number);
+  // 1. 渲染正在运行的投掷物 (Projectiles)
+  if (projectiles) {
+    // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
+    const projIds = sortedProjs || Object.keys(projectiles).map(Number);
 
-  for (const entityId of projIds) {
-    const proj = projectiles[entityId];
-    if (!proj) continue; // Skip if projectile not found
-    
-    // Filter out projectiles with negative TTL - don't display any information
-    if (proj.ttl !== undefined && proj.ttl < 0) {
-      continue;
+    for (const entityId of projIds) {
+      const proj = projectiles[entityId];
+      if (!proj) continue; // Skip if projectile not found
+      
+      // Filter out projectiles with negative TTL - don't display any information
+      if (proj.ttl !== undefined && proj.ttl < 0) {
+        continue;
+      }
+      
+      const typeId = Number(proj.type);
+      const typeKey = getProjectileTypeKey(typeId);
+
+      switch (typeKey) {
+        case 'Smoke':
+          await renderSmoke(proj, typeKey, ctx);
+          break;
+        case 'Molotov':
+        case 'Incendiary':
+          await renderFire(proj, typeKey, ctx);
+          break;
+        case 'HE':
+          await renderHE(proj, typeKey, ctx);
+          break;
+        case 'Flash':
+          await renderFlash(proj, typeKey, ctx);
+          break;
+        case 'Decoy':
+          await renderDecoy(proj, typeKey, ctx);
+          break;
+        default:
+          await renderDefault(proj, typeKey, ctx);
+          break;
+      }
     }
-    
-    const typeId = Number(proj.type);
-    const typeKey = getProjectileTypeKey(typeId);
+  }
 
-    switch (typeKey) {
-      case 'Smoke':
-        await renderSmoke(proj, typeKey, ctx);
-        break;
-      case 'Molotov':
-      case 'Incendiary':
-        await renderFire(proj, typeKey, ctx);
-        break;
-      case 'HE':
-        await renderHE(proj, typeKey, ctx);
-        break;
-      case 'Flash':
-        await renderFlash(proj, typeKey, ctx);
-        break;
-      case 'Decoy':
-        await renderDecoy(proj, typeKey, ctx);
-        break;
-      default:
-        await renderDefault(proj, typeKey, ctx);
-        break;
+  // 渲染掉落的投掷物 (Dropped Equipment)
+  if (droppedEquipment) {
+    for (const de of droppedEquipment) {
+      const typeId = Number(de.type);
+      // 只渲染投掷物 (501-506)
+      if (typeId >= 501 && typeId <= 506) {
+        const typeKey = getProjectileTypeKey(typeId);
+        await drawDroppedIcon(de, typeKey, ctx);
+      }
     }
   }
 };
