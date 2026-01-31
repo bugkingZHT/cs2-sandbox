@@ -202,10 +202,11 @@ body {
 }
 
 .map-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  display: flex;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .map-canvas-wrapper {

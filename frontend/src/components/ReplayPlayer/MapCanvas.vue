@@ -150,15 +150,46 @@ const ensureApp = async () => {
 
   host.value.addEventListener('wheel', onWheel, { passive: false });
 
-  centerWorld();
+  // 监听容器大小变化，实现自适应缩放
+  setupResizeObserver();
+
+  centerWorld(true);
 };
 
-const centerWorld = () => {
+let resizeObserver: ResizeObserver | null = null;
+const setupResizeObserver = () => {
+  if (!host.value || resizeObserver) return;
+  
+  resizeObserver = new ResizeObserver(() => {
+    // 当容器大小变化时，重新居中地图
+    // PIXI 的 resizeTo 会自动调整画布大小，我们这里处理内容的缩放和位置
+    if (app && worldContainer && mapSprite) {
+      centerWorld(false);
+    }
+  });
+  
+  resizeObserver.observe(host.value);
+};
+
+const centerWorld = (forceFit = false) => {
   if (!app || !worldContainer || !mapSprite) return;
   const { width, height } = app.renderer.screen;
+  
+  if (width === 0 || height === 0) return;
+
   const fitScale = Math.min(width / mapSprite.width, height / mapSprite.height);
-  state.defaultScale = fitScale; // Store the default scale
-  state.scale = fitScale;
+  
+  // 记录之前的缩放状态
+  const wasAtDefault = Math.abs(state.scale - state.defaultScale) < 0.01;
+  
+  // 更新默认缩放比例（最小缩放比例）
+  state.defaultScale = fitScale;
+  
+  // 如果是强制适配，或者之前处于默认缩放状态，或者当前缩放小于新的最小缩放，则自动调整缩放
+  if (forceFit || wasAtDefault || state.scale < fitScale) {
+    state.scale = fitScale;
+  }
+  
   worldContainer.scale.set(state.scale);
   worldContainer.position.set(width / 2, height / 2);
 };
@@ -359,6 +390,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (host.value) {
     host.value.removeEventListener('wheel', onWheel);
+  }
+  
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
   }
   
   // 清理定时器

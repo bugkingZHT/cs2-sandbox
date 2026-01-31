@@ -612,6 +612,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 /* === Header === */
@@ -638,7 +639,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--ds-space-xl);
+  gap: var(--ds-space-md);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .team-horizontal-group {
@@ -647,7 +650,9 @@ onBeforeUnmount(() => {
 }
 
 .player-card-mini {
-  width: 110px;
+  flex: 1;
+  min-width: 60px;
+  max-width: 110px;
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-sm);
@@ -838,11 +843,16 @@ onBeforeUnmount(() => {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-width: 0;
+  width: 100%;
 }
 
 .map-canvas-wrapper {
   flex: 1;
   position: relative;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* === Timeline === */
