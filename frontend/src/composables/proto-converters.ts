@@ -1,5 +1,5 @@
 import * as protobuf from 'protobufjs';
-import type { ReplayMeta, ReplayRound, Frame, PlayerState, ProjectileState, RoundTimeInfo, KillEvent, ProjectileRenderConfig, Point } from '@/types/replay';
+import type { ReplayMeta, ReplayRound, Frame, PlayerState, ProjectileState, RoundTimeInfo, KillEvent, ProjectileRenderConfig, Point, BombFrame } from '@/types/replay';
 
 // Load proto definitions at module level
 let root: protobuf.Root | null = null;
@@ -184,6 +184,19 @@ function protoToFrame(proto: any): Frame {
     projectiles,
     sortedProjs: proto.sortedProjs || [],
     killEvents,
+    bomb: proto.bomb ? protoToBombFrame(proto.bomb) : undefined,
+  };
+}
+
+// Convert protobuf object to BombFrame
+function protoToBombFrame(proto: any): BombFrame {
+  return {
+    x: proto.x || 0,
+    y: proto.y || 0,
+    z: proto.z || 0,
+    isPlanted: proto.isPlanted || false,
+    state: proto.state || '',
+    site: proto.site || '',
   };
 }
 
@@ -353,6 +366,19 @@ function frameToProto(frame: Frame): any {
     killEvents,
     projectiles,
     sortedProjs: frame.sortedProjs || [],
+    bomb: frame.bomb ? bombFrameToProto(frame.bomb) : undefined,
+  };
+}
+
+// Convert BombFrame to protobuf object
+function bombFrameToProto(bomb: BombFrame): any {
+  return {
+    x: bomb.x,
+    y: bomb.y,
+    z: bomb.z,
+    isPlanted: bomb.isPlanted,
+    state: bomb.state,
+    site: bomb.site,
   };
 }
 
