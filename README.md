@@ -4,17 +4,34 @@
 
 ## 快速开始 (Quickstart)
 
-只需两步即可运行本项目：
+### 方式一：生产模式（推荐）
 
-1. **构建项目**：
-   ```bash
-   make all
-   ```
-2. **启动服务**：
-   ```bash
-   make run-server
-   ```
+只需三步即可运行本项目：
+
+```bash
+# 1. 检查环境（可选）
+make check
+
+# 2. 构建所有组件（Proto + WASM + Frontend + Backend）
+make all
+
+# 3. 启动服务器
+make start
+```
+
 启动后，在浏览器访问 `http://localhost:8080`，即可上传 `.dem` 文件并查看回放。
+
+### 方式二：开发模式
+
+适合开发调试，支持热重载：
+
+```bash
+# 一键启动后端 + 前端开发服务器
+make dev-full
+```
+
+- 后端运行在：`http://localhost:8080`
+- 前端运行在：`http://localhost:5173`（支持 HMR 热更新）
 
 ---
 
@@ -22,21 +39,41 @@
 
 本项目提供了完善的 `Makefile` 以简化开发和构建流程。
 
+### 查看所有命令
+
+```bash
+make help
+```
+
 ### 核心命令
 
-- `make help`: 查看所有可用的命令及其说明。
-- `make all`: **推荐使用**。一键清理并重新构建 WASM 模块和后端服务器。
-- `make build-wasm`: 仅编译 Go 源码为 WASM 模块，并同步更新 `wasm_exec.js`。
-- `make build-server`: 仅编译后端 Go 服务器。
-- `make run-server`: 编译并启动后端服务器。
-- `make clean`: 清理所有生成的二进制文件和 WASM 产物。
+| 命令 | 说明 |
+|------|------|
+| `make check` | 检查开发环境（Go, npm, protoc, make） |
+| `make all` | **推荐**。一键清理并重新构建所有组件 |
+| `make start` | 启动服务器（需要先 `make all`） |
+| `make dev-full` | 开发模式：同时运行后端 + 前端，支持热重载 |
+| `make clean` | 清理所有生成的二进制文件 |
+
+### 分阶段构建
+
+| 命令 | 说明 |
+|------|------|
+| `make proto` | 生成 Protobuf 代码（Go + 复制到前端） |
+| `make build-wasm` | 仅编译 WASM 模块 |
+| `make build-frontend` | 仅构建前端 |
+| `make build-server` | 仅编译后端服务器 |
 
 ### 开发常用
 
-- `make run-dev`: 以开发模式直接通过 `go run` 启动服务器。
-- `make build-wasm-dev`: 快速构建 WASM 模块。
-- `make tidy`: 整理 Go 依赖。
-- `make vendor`: 更新 `vendor` 目录，确保依赖离线可用。
+| 命令 | 说明 |
+|------|------|
+| `make dev` | 开发模式运行后端（需要另开终端运行 `make frontend-dev`） |
+| `make frontend-dev` | 开发模式运行前端 |
+| `make frontend-install` | 安装前端依赖 |
+| `make test` | 运行 Go 测试 |
+| `make fmt` | 格式化 Go 代码 |
+| `make tidy` | 整理 Go 依赖 |
 
 ---
 
@@ -68,20 +105,31 @@
 - Go 1.24 或更高版本
 - Make 工具（推荐）
 
+### 浏览器兼容性
+
+本项目使用了现代浏览器技术（OPFS - Origin Private File System），需要以下浏览器版本：
+
+- **Chrome / Edge**: 86 或更高版本 ✅
+- **Safari**: 15.2 或更高版本 ✅  
+- **Firefox**: 111 或更高版本 ✅
+
+> **注意**: 旧版本浏览器可能无法正常运行，建议使用最新版本以获得最佳体验。
+
 ## 功能特性
 
 - **浏览器端解析**：基于 WASM，无需上传 Demo 到服务器，保护隐私且速度快。
 - **2D 视觉呈现**：直观展示选手位置、朝向及存活状态。
 - **播放控制**：支持进度拖动、暂停、倍速播放。
-- **本地缓存**：利用 IndexedDB 缓存解析后的数据，二次加载秒开。
+- **高效存储**：使用 Protocol Buffers 二进制序列化 + OPFS 文件系统，数据体积减少 40-60%，加载速度提升 2-3 倍。
 - **响应式 Canvas**：高性能渲染，适配不同分辨率。
 
 ## 技术栈
 
 - **后端**: Go (Net/HTTP)
-- **前端**: 原生 JavaScript + HTML5 Canvas
+- **前端**: Vue 3 + TypeScript + PixiJS
 - **解析引擎**: Go + WASM ([demoinfocs-golang](https://github.com/markus-wa/demoinfocs-golang))
-- **存储**: IndexedDB
+- **数据序列化**: Protocol Buffers
+- **存储**: OPFS (Origin Private File System)
 
 ## 许可证
 

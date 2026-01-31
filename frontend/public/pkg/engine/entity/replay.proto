@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package entity;
+
+option go_package = "github.com/bugkingzht/cs-demobox/pkg/engine/entity";
+
+message PlayerFramePB {
+  int32 id = 1;
+  string name = 2;
+  int32 team = 3;
+  double x = 4;
+  double y = 5;
+  double z = 6;
+  float yaw = 7;
+  float pitch = 8;
+  bool alive = 9;
+  int32 health = 10;
+  int32 armor = 11;
+  int32 money = 12;
+  bool has_helmet = 13;
+  bool has_defuse_kit = 14;
+  bool is_scoped = 15;
+  float flash_duration = 16;
+  bool is_blinded = 17;
+  repeated int32 inventory = 18;
+  int32 active_weapon = 19;
+  repeated uint64 buttons = 20;
+  int32 kills = 21;
+  int32 assists = 22;
+  int32 deaths = 23;
+  int32 money_spent_total = 24;
+  int32 money_spent_this_round = 25;
+  int32 equipment_value = 26;
+  uint64 steam_id = 27;
+  bool is_bot = 28;
+}
+
+message PointPB {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message ProjectileFramePB {
+  int32 type = 1;
+  double x = 2;
+  double y = 3;
+  double z = 4;
+  string thrower_name = 5;
+  int32 thrower_id = 6;
+  int32 entity_id = 7;
+  repeated PointPB trajectory = 8;
+  bool is_exploded = 9;
+  int64 ttl = 10;
+}
+
+message KillEventPB {
+  int32 killer_id = 1;
+  int32 assistant_id = 2;
+  int32 weapon_id = 3;
+}
+
+message RoundTimeInfoPB {
+  string phase = 1;
+  double time_remaining = 2;
+}
+
+message BombFramePB {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  bool is_planted = 4;
+  string state = 5;
+  string site = 6;
+}
+
+message DroppedEquipmentPB {
+  int32 type = 1;
+  double x = 2;
+  double y = 3;
+  double z = 4;
+}
+
+message FramePB {
+  int64 time_ms = 1;
+  int32 tick = 2;
+  int32 round = 3;
+  RoundTimeInfoPB round_time = 4;
+  map<int32, PlayerFramePB> players = 5;
+  repeated int32 sorted_players = 6;
+  map<int32, KillEventPB> kill_events = 7;
+  map<int32, ProjectileFramePB> projectiles = 8;
+  repeated int32 sorted_projs = 9;
+  repeated DroppedEquipmentPB dropped_equipment = 10;
+  BombFramePB bomb = 11;
+}
+
+message ProjectileRenderConfigPB {
+  double explosion_radius = 1;
+  int64 duration_in_ms = 2;
+  bool can_clear_smoke = 3;
+  bool can_extinguish_fire = 4;
+}
+
+message ReplayMetaPB {
+  string uuid = 1;
+  string uploader_uid = 2;
+  int64 upload_time = 3;
+  map<int32, ProjectileRenderConfigPB> projectile_render = 4;
+  string map_name = 5;
+  string team_ct = 6;
+  string team_t = 7;
+  int32 score_ct = 8;
+  int32 score_t = 9;
+  int32 total_rounds = 10;
+  string file_name = 11;
+  string original_file_path = 12;
+}
+
+message ReplayRoundPB {
+  string uuid = 1;
+  int32 round = 2;
+  repeated FramePB frames = 3;
+}

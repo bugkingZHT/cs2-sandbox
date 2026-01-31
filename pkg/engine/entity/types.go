@@ -245,4 +245,6 @@ type ReplayMeta struct {
 	TotalRounds int `json:"totalRounds"`
 	// 原始上传文件名（不带.dem后缀）
 	FileName string `json:"fileName,omitempty"`
+	// 原始上传文件路径（用于失败检测，解析成功后清除）
+	OriginalFilePath string `json:"originalFilePath,omitempty"`
 }

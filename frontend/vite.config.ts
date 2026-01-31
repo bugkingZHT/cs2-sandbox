@@ -8,6 +8,9 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  optimizeDeps: {
+    include: ['protobufjs'],
+  },
   worker: {
     format: 'iife',
   },

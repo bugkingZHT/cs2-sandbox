@@ -21,4 +21,20 @@ export const DEBUG_CONFIG = {
    * Set to `false` in production to disable this feature.
    */
   enableFrameDataViewer: true,
+
+  /**
+   * Enable OPFS Storage Viewer
+   * 
+   * When enabled, adds a debug button in the Demo Library header.
+   * Clicking this button opens OPFS storage details in a new browser tab.
+   * 
+   * Useful for:
+   * - Inspecting stored replay files
+   * - Debugging storage issues
+   * - Checking file sizes and structure
+   * - Verifying protobuf data integrity
+   * 
+   * Set to `false` in production to disable this feature.
+   */
+  enableOPFSStorageViewer: true,
 };

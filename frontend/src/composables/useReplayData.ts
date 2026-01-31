@@ -1,6 +1,8 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
 import ParserWorker from '@/workers/wasm-parser.worker?worker';
+import { getOPFSStorage } from './opfs-storage';
+import { decodeReplayMeta, encodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
 
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
@@ -20,9 +22,6 @@ interface UseReplayResult {
   deleteReplayById: (id: string) => Promise<void>;
 }
 
-const DB_NAME = 'CS2ReplayDB';
-const META_STORE_NAME = 'replayMeta';
-const ROUND_STORE_NAME = 'replayRounds';
 const LATEST_KEY = 'latest_replay_uuid';
 
 // 单例模式：确保所有组件使用同一个响应式实例
@@ -43,165 +42,105 @@ function createReplayData() {
 
   const abortController = new AbortController();
 
-  let db: IDBDatabase | null = null;
+  // Save meta and rounds to OPFS with protobuf
+  const saveReplayToOPFS = async (meta: ReplayMeta, rounds: ReplayRound[]) => {
+    console.time('[SaveReplayToOPFS] 保存到OPFS耗时');
+    const storage = await getOPFSStorage();
+    
+    // Convert to protobuf and save meta
+    const metaBytes = await encodeReplayMeta(meta);
+    await storage.saveMeta(meta.uuid, metaBytes);
+    
+    // Save each round
+    for (const round of rounds) {
+      const roundBytes = await encodeReplayRound(round);
+      await storage.saveRound(round.uuid, round.round, roundBytes);
+    }
+    
+    // Update latest UUID
+    localStorage.setItem(LATEST_KEY, meta.uuid);
 
-  const initDB = (): Promise<IDBDatabase> => {
-    return new Promise((resolve, reject) => {
-      if (db) return resolve(db);
-      const request = indexedDB.open(DB_NAME, 4); // Upgrade to v4 to handle cleanup
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        db = request.result;
-        resolve(db);
-      };
-      request.onupgradeneeded = (e: any) => {
-        const database = e.target.result;
-        const oldVersion = e.oldVersion;
-        
-        console.log('[IndexedDB] Upgrading from version', oldVersion, 'to 4');
-        
-        // Create meta store if not exists
-        if (!database.objectStoreNames.contains(META_STORE_NAME)) {
-          database.createObjectStore(META_STORE_NAME); // key = UUID
-          console.log('[IndexedDB] Created META_STORE_NAME');
-        }
-        
-        // Create rounds store if not exists
-        // Key is manually specified as uuid_roundID, not using keyPath
-        if (!database.objectStoreNames.contains(ROUND_STORE_NAME)) {
-          database.createObjectStore(ROUND_STORE_NAME); // No keyPath, use explicit keys
-          console.log('[IndexedDB] Created ROUND_STORE_NAME');
-        }
-
-        // Clean up FILE_STORE_NAME if it exists (from v3)
-        if (database.objectStoreNames.contains('replayFiles')) {
-          database.deleteObjectStore('replayFiles');
-          console.log('[IndexedDB] Deleted replayFiles store from v3');
-        }
-      };
-    });
-  };
-
-  // Save meta and rounds to IndexedDB separately
-  const saveReplayToDB = async (meta: ReplayMeta, rounds: ReplayRound[]) => {
-    console.time('[SaveReplayToDB] 保存到IndexedDB耗时');
-    const database = await initDB();
-    return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction([META_STORE_NAME, ROUND_STORE_NAME], 'readwrite');
-      const metaStore = tx.objectStore(META_STORE_NAME);
-      const roundStore = tx.objectStore(ROUND_STORE_NAME);
-      
-      // Save meta data with UUID as key
-      metaStore.put(meta, meta.uuid);
-      
-      // Save each round with composite key: uuid_roundID
-      rounds.forEach(round => {
-        const key = `${round.uuid}_${round.round}`;
-        roundStore.put(round, key);
-      });
-      
-      // Update latest UUID
-      localStorage.setItem(LATEST_KEY, meta.uuid);
-
-      tx.oncomplete = () => {
-        console.timeEnd('[SaveReplayToDB] 保存到IndexedDB耗时');
-        resolve();
-      };
-      tx.onerror = () => reject(tx.error);
-    });
+    console.timeEnd('[SaveReplayToOPFS] 保存到OPFS耗时');
   };
 
   // Load all replay metadata for list display
   const loadAllReplays = async () => {
     console.log('[LoadAllReplays] 开始加载所有回放元数据');
-    const database = await initDB();
-    return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction(META_STORE_NAME, 'readonly');
-      const store = tx.objectStore(META_STORE_NAME);
-      const request = store.getAll();
-      request.onsuccess = () => {
-        const metas = request.result as ReplayMeta[];
-        console.log('[LoadAllReplays] 加载到的元数据数量:', metas.length);
+    const storage = await getOPFSStorage();
+    
+    const uuids = await storage.listAllReplays();
+    console.log('[LoadAllReplays] 找到的UUID数量:', uuids.length);
+    
+    const metas = await Promise.all(
+      uuids.map(async (uuid) => {
+        const metaBytes = await storage.loadMeta(uuid);
+        if (!metaBytes) return null;
+        return await decodeReplayMeta(metaBytes);
+      })
+    );
+    
+    console.log('[LoadAllReplays] 加载到的元数据数量:', metas.filter(m => m !== null).length);
+    
+    // Convert meta to ReplayData for list display
+    replayList.value = metas
+      .filter((m): m is ReplayMeta => m !== null)
+      .map(meta => {
+        // Detect failed parsing: originalFilePath exists (backfill never completed)
+        const hasFailed = !!meta.originalFilePath;
         
-        // Convert meta to ReplayData for list display
-        replayList.value = metas.map(meta => {
-          // Detect failed parsing: originalFilePath exists (backfill never completed)
-          const hasFailed = !!meta.originalFilePath;
-          
-          return {
-            uuid: meta.uuid,
-            id: meta.uuid, // For backward compatibility
-            uploaderUid: meta.uploaderUid,
-            uploadTime: meta.uploadTime,
-            mapName: meta.mapName,
-            teamCT: meta.teamCT,
-            teamT: meta.teamT,
-            scoreCT: meta.scoreCT,
-            scoreT: meta.scoreT,
-            totalRounds: meta.totalRounds,
-            totalFrames: meta.totalFrames || 0,
-            totalDurationMs: meta.totalDurationMs || 0,
-            frames: [], // Not loaded yet
-            projectileRenderConfig: meta.projectileRenderConfig,
-            timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
-            fileName: meta.fileName, // Preserve filename
-            // Parsing state fields
-            isParsing: false,
-            hasFailed: hasFailed,
-            parsingStatus: hasFailed ? `Upload failed: ${meta.originalFilePath}` : undefined,
-          };
-        });
-        
-        resolve();
-      };
-      request.onerror = () => {
-        console.error('[LoadAllReplays] 加载所有回放元数据失败:', request.error);
-        reject(request.error);
-      };
-    });
+        return {
+          uuid: meta.uuid,
+          id: meta.uuid, // For backward compatibility
+          uploaderUid: meta.uploaderUid,
+          uploadTime: meta.uploadTime,
+          mapName: meta.mapName,
+          teamCT: meta.teamCT,
+          teamT: meta.teamT,
+          scoreCT: meta.scoreCT,
+          scoreT: meta.scoreT,
+          totalRounds: meta.totalRounds,
+          totalFrames: meta.totalFrames || 0,
+          totalDurationMs: meta.totalDurationMs || 0,
+          frames: [], // Not loaded yet
+          projectileRenderConfig: meta.projectileRenderConfig,
+          timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
+          fileName: meta.fileName, // Preserve filename
+          // Parsing state fields
+          isParsing: false,
+          hasFailed: hasFailed,
+          parsingStatus: hasFailed ? `Upload failed: ${meta.originalFilePath}` : undefined,
+        };
+      });
   };
 
-  // Load replay meta and all rounds from DB
-  const loadReplayFromDB = async (uuid?: string): Promise<ReplayData | null> => {
-    console.log('[IndexedDB] 开始从数据库加载回放数据...', { uuid, storedUuid: localStorage.getItem(LATEST_KEY) });
-    const database = await initDB();
+  // Load replay meta and first round from OPFS
+  const loadReplayFromOPFS = async (uuid?: string): Promise<ReplayData | null> => {
+    console.log('[OPFS] 开始从数据库加载回放数据...', { uuid, storedUuid: localStorage.getItem(LATEST_KEY) });
+    const storage = await getOPFSStorage();
     const targetUuid = uuid || localStorage.getItem(LATEST_KEY);
-    console.log('[IndexedDB] 目标UUID:', targetUuid);
+    console.log('[OPFS] 目标UUID:', targetUuid);
     if (!targetUuid) {
-      console.log('[IndexedDB] 没有找到目标UUID，返回null');
+      console.log('[OPFS] 没有找到目标UUID，返回null');
       return null;
     }
 
     // Load meta
-    const meta = await new Promise<ReplayMeta | null>((resolve, reject) => {
-      const tx = database.transaction(META_STORE_NAME, 'readonly');
-      const store = tx.objectStore(META_STORE_NAME);
-      const request = store.get(targetUuid);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-
-    if (!meta) {
-      console.log('[IndexedDB] 未找到元数据');
+    const metaBytes = await storage.loadMeta(targetUuid);
+    if (!metaBytes) {
+      console.log('[OPFS] 未找到元数据');
       return null;
     }
+    const meta = await decodeReplayMeta(metaBytes);
 
-    // Load ONLY the first round instead of all rounds
-    const firstRound = await new Promise<ReplayRound | null>((resolve, reject) => {
-      const tx = database.transaction(ROUND_STORE_NAME, 'readonly');
-      const store = tx.objectStore(ROUND_STORE_NAME);
-      const key = `${targetUuid}_1`; // Load round 1
-      const request = store.get(key);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
-
-    if (!firstRound) {
-      console.warn('[IndexedDB] First round not found');
+    // Load ONLY the first round
+    const roundBytes = await storage.loadRound(targetUuid, 1);
+    if (!roundBytes) {
+      console.warn('[OPFS] First round not found');
       return null;
     }
+    const firstRound = await decodeReplayRound(roundBytes);
 
-    console.log('[IndexedDB] Loaded meta and first round (round 1) with', firstRound.frames.length, 'frames');
+    console.log('[OPFS] Loaded meta and first round (round 1) with', firstRound.frames.length, 'frames');
 
     // Sort frames within the first round
     const sortedFrames = firstRound.frames.sort((a, b) => a.timeMs - b.timeMs);
@@ -231,7 +170,7 @@ function createReplayData() {
     console.log('[LoadReplayById] 开始加载回放，UUID:', uuid);
     try {
       // 不设置 loading 状态，避免触发 UI 重渲染
-      const data = await loadReplayFromDB(uuid);
+      const data = await loadReplayFromOPFS(uuid);
       console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
       if (data) {
         console.log('[LoadReplayById] 准备设置回放数据，帧数量:', data.frames?.length);
@@ -251,22 +190,15 @@ function createReplayData() {
   const loadRoundData = async (uuid: string, roundNumber: number) => {
     console.log('[LoadRoundData] Loading round', roundNumber, 'for UUID:', uuid);
     try {
-      const database = await initDB();
-      const key = `${uuid}_${roundNumber}`;
-      
-      const round = await new Promise<ReplayRound | null>((resolve, reject) => {
-        const tx = database.transaction(ROUND_STORE_NAME, 'readonly');
-        const store = tx.objectStore(ROUND_STORE_NAME);
-        const request = store.get(key);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
+      const storage = await getOPFSStorage();
+      const roundBytes = await storage.loadRound(uuid, roundNumber);
 
-      if (!round) {
+      if (!roundBytes) {
         console.warn('[LoadRoundData] Round', roundNumber, 'not found');
         return;
       }
 
+      const round = await decodeReplayRound(roundBytes);
       console.log('[LoadRoundData] Loaded round', roundNumber, 'with', round.frames.length, 'frames');
       
       // Sort and update frames
@@ -286,47 +218,14 @@ function createReplayData() {
 
   const deleteReplayById = async (uuid: string) => {
     console.log('[DeleteReplayById] Starting deletion for UUID:', uuid);
-    const database = await initDB();
-    return new Promise<void>(async (resolve, reject) => {
-      const tx = database.transaction([META_STORE_NAME, ROUND_STORE_NAME], 'readwrite');
-      const metaStore = tx.objectStore(META_STORE_NAME);
-      const roundStore = tx.objectStore(ROUND_STORE_NAME);
-      
-      // Delete meta
-      metaStore.delete(uuid);
-      console.log('[DeleteReplayById] Deleted meta for UUID:', uuid);
-      
-      // Delete all rounds with this UUID by iterating and checking keys
-      const getAllKeysRequest = roundStore.getAllKeys();
-      getAllKeysRequest.onsuccess = () => {
-        const allKeys = getAllKeysRequest.result;
-        // Filter keys that start with uuid_
-        const keysToDelete = allKeys.filter(key => 
-          typeof key === 'string' && key.startsWith(`${uuid}_`)
-        );
-        console.log('[DeleteReplayById] Found', keysToDelete.length, 'round entries to delete');
-        console.log('[DeleteReplayById] Round keys:', keysToDelete);
-        keysToDelete.forEach(key => {
-          roundStore.delete(key);
-          console.log('[DeleteReplayById] Deleted round key:', key);
-        });
-      };
-      
-      tx.oncomplete = async () => {
-        console.log('[DeleteReplayById] Transaction complete, refreshing list');
-        await loadAllReplays();
-        if (localStorage.getItem(LATEST_KEY) === uuid) {
-          localStorage.removeItem(LATEST_KEY);
-          console.log('[DeleteReplayById] Removed from localStorage LATEST_KEY');
-        }
-        console.log('[DeleteReplayById] Deletion complete for UUID:', uuid);
-        resolve();
-      };
-      tx.onerror = () => {
-        console.error('[DeleteReplayById] Transaction error:', tx.error);
-        reject(tx.error);
-      };
-    });
+    const storage = await getOPFSStorage();
+    await storage.deleteReplay(uuid);
+    await loadAllReplays();
+    if (localStorage.getItem(LATEST_KEY) === uuid) {
+      localStorage.removeItem(LATEST_KEY);
+      console.log('[DeleteReplayById] Removed from localStorage LATEST_KEY');
+    }
+    console.log('[DeleteReplayById] Deletion complete for UUID:', uuid);
   };
 
   const estimateBounds = (allFrames: Frame[]): WorldBounds | null => {
@@ -372,29 +271,33 @@ function createReplayData() {
     }, { timeout: 100 });
   };
 
-  // Save only metadata to DB
-  const saveMetaToDB = async (meta: ReplayMeta) => {
-    const database = await initDB();
-    return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction([META_STORE_NAME], 'readwrite');
-      const metaStore = tx.objectStore(META_STORE_NAME);
-      metaStore.put(meta, meta.uuid);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+  // Save only metadata to OPFS
+  const saveMetaToOPFS = async (meta: ReplayMeta) => {
+    console.log('[SaveMetaToOPFS] 📦 Starting meta save:', {
+      uuid: meta.uuid,
+      fileName: meta.fileName,
+      mapName: meta.mapName,
+      hasOriginalFilePath: !!meta.originalFilePath
     });
+    const storage = await getOPFSStorage();
+    const metaBytes = await encodeReplayMeta(meta);
+    console.log(`[SaveMetaToOPFS] 🔄 Encoded to protobuf, size: ${metaBytes.byteLength} bytes`);
+    await storage.saveMeta(meta.uuid, metaBytes);
+    console.log('[SaveMetaToOPFS] ✅ Meta saved successfully');
   };
 
-  // Save single round to DB
-  const saveRoundToDB = async (round: ReplayRound) => {
-    const database = await initDB();
-    return new Promise<void>((resolve, reject) => {
-      const tx = database.transaction([ROUND_STORE_NAME], 'readwrite');
-      const roundStore = tx.objectStore(ROUND_STORE_NAME);
-      const key = `${round.uuid}_${round.round}`;
-      roundStore.put(round, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+  // Save single round to OPFS
+  const saveRoundToOPFS = async (round: ReplayRound) => {
+    console.log(`[SaveRoundToOPFS] 📦 Starting round ${round.round} save:`, {
+      uuid: round.uuid,
+      round: round.round,
+      frameCount: round.frames?.length || 0
     });
+    const storage = await getOPFSStorage();
+    const roundBytes = await encodeReplayRound(round);
+    console.log(`[SaveRoundToOPFS] 🔄 Encoded to protobuf, size: ${roundBytes.byteLength} bytes`);
+    await storage.saveRound(round.uuid, round.round, roundBytes);
+    console.log(`[SaveRoundToOPFS] ✅ Round ${round.round} saved successfully`);
   };
 
   const updateParsingProgress = (progress: number, status: string) => {
@@ -444,14 +347,26 @@ function createReplayData() {
 
       // Step 2: Extract metadata (header only, no frame traversal)
       updateParsingProgress(50, 'Extracting metadata...');
-      const metaJson = await new Promise<string>((resolve, reject) => {
-        (window as any).extractDemoMetadata((res: string, err: string) => {
-          if (err) reject(new Error(err));
-          else resolve(res);
+      console.log('[ParseDemo] 📦 Calling WASM extractDemoMetadata...');
+      const metaBinary = await new Promise<Uint8Array>((resolve, reject) => {
+        (window as any).extractDemoMetadata((res: any, err: string) => {
+          if (err) {
+            console.error('[ParseDemo] ❌ extractDemoMetadata error:', err);
+            reject(new Error(err));
+          } else {
+            console.log('[ParseDemo] ✅ extractDemoMetadata returned binary, size:', res?.byteLength);
+            resolve(res as Uint8Array);
+          }
         });
       });
-      const meta: ReplayMeta = JSON.parse(metaJson);
+      console.log('[ParseDemo] 🔄 Decoding metadata from protobuf...');
+      const meta: ReplayMeta = await decodeReplayMeta(metaBinary);
       demoUuid = meta.uuid;
+      console.log('[ParseDemo] ✅ Metadata decoded successfully:', {
+        uuid: meta.uuid,
+        fileName: meta.fileName,
+        mapName: meta.mapName
+      });
 
       // Save original file path for failure detection
       meta.originalFilePath = file.name;
@@ -459,10 +374,13 @@ function createReplayData() {
       // Save original filename without .dem extension
       meta.fileName = file.name.replace(/\.dem$/i, '');
 
-      // Step 3: Save incomplete meta to DB immediately
+      // Step 3: Save incomplete meta to OPFS immediately
       updateParsingProgress(100, 'Metadata saved!');
-      await saveMetaToDB(meta);
+      console.log('[ParseDemo] 💾 Saving incomplete meta to OPFS...');
+      await saveMetaToOPFS(meta);
+      console.log('[ParseDemo] 🔄 Refreshing replay list...');
       await loadAllReplays(); // Refresh replay list
+      console.log('[ParseDemo] ✅ Meta saved and list refreshed');
 
       // Mark this demo as parsing in the list
       const newDemo = replayList.value.find(d => d.uuid === meta.uuid);
@@ -471,6 +389,7 @@ function createReplayData() {
         newDemo.hasFailed = false; // Clear any previous failure state
         newDemo.parsingProgress = 0;
         newDemo.parsingStatus = 'Starting round parsing...';
+        console.log('[ParseDemo] 🏁 Marked demo as parsing in list');
       }
 
       // Close the global parsing modal - synchronous phase complete
@@ -494,10 +413,10 @@ function createReplayData() {
           const round: ReplayRound = e.data.round;
           workerRounds.push(round);
           
-          // Save round to DB immediately
-          await saveRoundToDB(round);
+          // Save round to OPFS immediately
+          await saveRoundToOPFS(round);
           
-          console.log(`[ParseDemo] Round ${workerRounds.length} saved to DB`);
+          console.log(`[ParseDemo] Round ${workerRounds.length} saved to OPFS`);
           
         } else if (e.data.type === 'PARSING_COMPLETE') {
           try {
@@ -515,7 +434,7 @@ function createReplayData() {
             
             // Remove temporary field after successful parsing
             delete meta.originalFilePath;
-            await saveMetaToDB(meta);
+            await saveMetaToOPFS(meta);
             await loadAllReplays();
             
             // Close parser on main thread

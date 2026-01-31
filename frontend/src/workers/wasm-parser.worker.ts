@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { ReplayRound } from '@/types/replay';
+import { decodeReplayMeta, decodeReplayRound } from '@/composables/proto-converters';
 
 // Declare global types for Go WASM runtime
 declare const Go: any;
@@ -73,10 +74,10 @@ async function initializeWASM() {
 }
 
 // Helper to promisify parseNextRound with tick progress updates
-function parseNextRoundPromise(onTickProgress: (ticks: number) => void): Promise<string | null> {
+function parseNextRoundPromise(onTickProgress: (ticks: number) => void): Promise<Uint8Array | null> {
   return new Promise((resolve, reject) => {
     (self as any).parseNextRound(
-      (res: string | null, err: string) => {
+      (res: any, err: string) => {
         if (err) reject(new Error(err));
         else resolve(res);
       },
@@ -117,7 +118,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       const PROGRESS_UPDATE_INTERVAL = 1000; // Send progress every 1000 ticks
       
       while (true) {
-        const roundJson = await parseNextRoundPromise((parsedTicks: number) => {
+        const roundBinary = await parseNextRoundPromise((parsedTicks: number) => {
           // Send progress updates at intervals to avoid flooding
           if (parsedTicks - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL) {
             const progressMsg: ProgressMessage = {
@@ -129,13 +130,21 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           }
         });
         
-        // If roundJson is null, we've reached EOF
-        if (!roundJson) {
+        // If roundBinary is null, we've reached EOF
+        if (!roundBinary) {
           console.log(`[Worker] EOF reached after ${roundNum - 1} rounds`);
           break;
         }
         
-        const round: ReplayRound = JSON.parse(roundJson);
+        console.log(`[Worker] 📦 Round ${roundNum} binary received, size: ${roundBinary.byteLength} bytes`);
+        
+        // Decode protobuf binary to ReplayRound
+        const round: ReplayRound = await decodeReplayRound(roundBinary as Uint8Array);
+        console.log(`[Worker] ✅ Round ${roundNum} decoded:`, {
+          uuid: round.uuid,
+          round: round.round,
+          frameCount: round.frames.length
+        });
         
         // Override the UUID to match the main thread's metadata UUID
         round.uuid = uuid;
@@ -158,14 +167,19 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       
       // Extract final statistics from the last parsed state
       // Call backfillDemoMeta to get final scores
-      const metaForBackfill = { uuid };
-      const backfillJson = await new Promise<string>((resolve, reject) => {
-        (self as any).backfillDemoMeta(JSON.stringify(metaForBackfill), (res: string, err: string) => {
+      // Create minimal meta binary for backfill
+      const { encodeReplayMeta } = await import('@/composables/proto-converters');
+      const minimalMeta = { uuid } as any;
+      const metaBytes = await encodeReplayMeta(minimalMeta);
+      
+      const backfillBinary = await new Promise<Uint8Array>((resolve, reject) => {
+        (self as any).backfillDemoMeta(metaBytes, (res: any, err: string) => {
           if (err) reject(new Error(err));
           else resolve(res);
         });
       });
-      const backfilledMeta = JSON.parse(backfillJson);
+      
+      const backfilledMeta = await decodeReplayMeta(backfillBinary);
       
       // Send completion message with statistics
       const completeResponse: ParsingCompleteMessage = {

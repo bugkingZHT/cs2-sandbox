@@ -181,34 +181,349 @@ const showCurrentFrameData = () => {
     return;
   }
   
-  // Create a simple HTML page with formatted JSON
+  // Format frame data as JSON
   const frameData = JSON.stringify(currentFrame, null, 2);
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Frame ${props.currentFrameIndex} - Debug Data</title>
-  <style>
-    body {
+  const frameDataEscaped = frameData
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+  
+  // Extract key statistics
+  const playerCount = Object.keys(currentFrame.players || {}).length;
+  const projectileCount = Object.keys(currentFrame.projectiles || {}).length;
+  const killEventCount = Object.keys(currentFrame.killEvents || {}).length;
+  const dataSize = new Blob([frameData]).size;
+  
+  // Create HTML page with modern design (using string concatenation to avoid Vue template issues)
+  const htmlParts = [];
+  htmlParts.push('<!DOCTYPE html>');
+  htmlParts.push('<' + 'html' + '>');
+  htmlParts.push('<' + 'head' + '>');
+  htmlParts.push('  <meta charset="utf-8">');
+  htmlParts.push(`  <title>Frame ${props.currentFrameIndex} - Debug Data | CS2 Demo Viewer</title>`);
+  htmlParts.push('  <' + 'style' + '>');
+  htmlParts.push(`
+    * {
       margin: 0;
-      padding: 20px;
-      background: #1a1a1a;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       color: #e0e0e0;
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
+      padding: 40px 20px;
       line-height: 1.6;
     }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      color: #ffffff;
+      text-align: center;
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+    
+    .stat-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 15px 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 600;
+      color: #4ecca3;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .btn-primary {
+      background: #4ecca3;
+      color: #1a1a2e;
+    }
+    
+    .btn-primary:hover {
+      background: #3dbb8f;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(78, 204, 163, 0.3);
+    }
+    
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e0e0e0;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+    }
+    
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+    
+    .data-container {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 25px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+    }
+    
+    .data-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #0f3460;
+    }
+    
+    .data-header h3 {
+      font-size: 20px;
+      color: #ffffff;
+    }
+    
+    .copy-hint {
+      font-size: 12px;
+      color: #888;
+    }
+    
     pre {
       margin: 0;
       white-space: pre-wrap;
       word-wrap: break-word;
+      font-family: 'Courier New', Monaco, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #e0e0e0;
+      max-height: 70vh;
+      overflow-y: auto;
     }
-  </style>
-</head>
-<body>
-<pre>${frameData}</pre>
-</body>
-</html>`;
+    
+    pre::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    pre::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+    
+    pre::-webkit-scrollbar-thumb {
+      background: rgba(78, 204, 163, 0.3);
+      border-radius: 4px;
+    }
+    
+    pre::-webkit-scrollbar-thumb:hover {
+      background: rgba(78, 204, 163, 0.5);
+    }
+    
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: #4ecca3;
+      color: #1a1a2e;
+      padding: 15px 25px;
+      border-radius: 8px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: none;
+      animation: slideIn 0.3s ease-out;
+      z-index: 1000;
+    }
+    
+    .toast.show {
+      display: block;
+    }
+    
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    
+    .info-banner {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 8px;
+      padding: 15px 20px;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #93c5fd;
+    }
+    
+    .info-banner strong {
+      color: #60a5fa;
+    }
+  `);
+  htmlParts.push('  <' + '/style' + '>');
+  htmlParts.push('<' + '/head' + '>');
+  htmlParts.push('<' + 'body' + '>');
+  htmlParts.push(`
+  <div class="container">
+    <h1>⚡ Frame ${props.currentFrameIndex} - Debug Data</h1>
+    <p class="subtitle">CS2 Demo Viewer - Frame Inspector</p>
+    
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">🕒 Time</div>
+        <div class="stat-value">${(currentFrame.timeMs / 1000).toFixed(2)}s</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">🎮 Tick</div>
+        <div class="stat-value">${currentFrame.tick}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">👥 Players</div>
+        <div class="stat-value">${playerCount}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">💣 Projectiles</div>
+        <div class="stat-value">${projectileCount}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">☠️ Kill Events</div>
+        <div class="stat-value">${killEventCount}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">💾 Data Size</div>
+        <div class="stat-value">${(dataSize / 1024).toFixed(1)} KB</div>
+      </div>
+    </div>
+    
+    <div class="actions">
+      <button class="btn btn-primary" onclick="copyToClipboard()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Copy JSON to Clipboard
+      </button>
+      <button class="btn btn-secondary" onclick="downloadJSON()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Download JSON
+      </button>
+    </div>
+    
+    <div class="data-container">
+      <div class="data-header">
+        <h3>📝 Frame Data</h3>
+        <span class="copy-hint">Click "Copy" button above or select and copy manually</span>
+      </div>
+      <pre id="frameData">${frameDataEscaped}</pre>
+    </div>
+    
+    <div class="info-banner">
+      <strong>💡 Tip:</strong> This data represents the game state at frame ${props.currentFrameIndex}. 
+      You can use this for debugging rendering issues, analyzing player positions, or verifying projectile trajectories.
+    </div>
+  </div>
+  
+  <div class="toast" id="toast">✅ Copied to clipboard!</div>
+  `);
+  htmlParts.push('  <' + 'script' + '>');
+  htmlParts.push(`
+    const frameDataRaw = ${JSON.stringify(frameData)};
+    
+    function copyToClipboard() {
+      navigator.clipboard.writeText(frameDataRaw).then(() => {
+        showToast();
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard. Please select and copy manually.');
+      });
+    }
+    
+    function downloadJSON() {
+      const blob = new Blob([frameDataRaw], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'frame_${props.currentFrameIndex}_data.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Downloaded!');
+    }
+    
+    function showToast(message) {
+      message = message || '✅ Copied to clipboard!';
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2000);
+    }
+  `);
+  htmlParts.push('  <' + '/script' + '>');
+  htmlParts.push('<' + '/body' + '>');
+  htmlParts.push('<' + '/html' + '>');
+  
+  const html = htmlParts.join('\n');
   
   // Open in new window with data URL
   const blob = new Blob([html], { type: 'text/html' });
