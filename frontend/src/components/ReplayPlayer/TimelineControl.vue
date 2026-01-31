@@ -33,14 +33,21 @@
         <div class="round-buttons-grid">
           <template v-for="r in totalRoundsCount" :key="r">
             <div class="round-btn-cell" :class="{ 'active': currentRound === r }">
-              <button class="round-square-btn" @click="seekToRound(r)">
+              <button class="round-square-btn" @click="seekToRound(r)" :class="getFlexDirectionClass(r)">
+                <!-- Icon on top or bottom based on logic -->
                 <img 
-                  v-if="getRoundResultIcon(r)" 
+                  v-if="getRoundResultIcon(r) && shouldIconBeFirst(r)" 
                   :src="getRoundResultIcon(r)!" 
                   class="round-result-icon" 
                   :alt="getRoundResult(r) || ''"
                 />
                 <span class="round-number">{{ r }}</span>
+                <img 
+                  v-if="getRoundResultIcon(r) && !shouldIconBeFirst(r)" 
+                  :src="getRoundResultIcon(r)!" 
+                  class="round-result-icon" 
+                  :alt="getRoundResult(r) || ''"
+                />
               </button>
               <div class="round-underline-static"></div>
             </div>
@@ -746,6 +753,32 @@ const getRoundResultIcon = (roundNumber: number): string | null => {
   return iconPath;
 };
 
+// Determine if icon should be positioned first (above number) based on round and result
+const shouldIconBeFirst = (roundNumber: number): boolean => {
+  const result = getRoundResult(roundNumber);
+  if (!result) return false;
+  
+  const isFirstHalf = roundNumber <= 12;
+  const isTWin = result === 't_win' || result === 'bomb_exploded';
+  const isCTWin = result === 'ct_win' || result === 'bomb_defused';
+  
+  // First half (rounds 1-12):
+  // T win or bomb exploded: number on top, icon on bottom (icon is NOT first)
+  // CT win or bomb defused: number on bottom, icon on top (icon IS first)
+  if (isFirstHalf) {
+    return isTWin; // T wins -> icon first (top)
+  } else {
+    // Second half (rounds 13+): reverse the logic
+    return isCTWin; // CT wins -> icon first (top)
+  }
+};
+
+// Get flex direction class for button layout
+const getFlexDirectionClass = (roundNumber: number): string => {
+  // Always use column direction, order is controlled by shouldIconBeFirst
+  return 'flex-column';
+};
+
 const handleInteraction = (clientX: number, el: HTMLElement) => {
   const rect = el.getBoundingClientRect();
   const pos = Math.max(0, Math.min(rect.width, clientX - rect.left));
@@ -991,11 +1024,16 @@ const formatMs = (ms: number) => {
   height: 14px;
   object-fit: contain;
   flex-shrink: 0;
+  display: block;
 }
 
 .round-number {
   font-size: 10px;
   line-height: 1;
+  height: 14px; /* Same height as icon for equal spacing */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .round-square-btn:hover {
