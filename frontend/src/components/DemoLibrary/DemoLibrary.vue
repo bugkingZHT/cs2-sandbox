@@ -82,6 +82,11 @@
               
               <div class="team-name loser-name">{{ getLoserTeam(demo) }}</div>
             </div>
+
+            <!-- 文件名显示 -->
+            <div v-if="demo.fileName" class="file-name">
+              {{ demo.fileName }}
+            </div>
           </div>
 
           <div class="card-footer">
@@ -584,7 +589,6 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   border-radius: 8px;
   padding: 10px 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 15px;
 }
 
 .team-name {
@@ -644,6 +648,21 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
   font-weight: 500;
+}
+
+.file-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+  text-align: left;
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .delete-btn {

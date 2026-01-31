@@ -106,6 +106,7 @@ export interface ReplayMeta {
   totalDurationMs: number; // Demo 总时长（毫秒，来自 header.PlaybackTime）
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   originalFilePath?: string; // Temporary: file name for failure detection, cleared after backfill
+  fileName?: string; // 原始上传文件名（不带.dem后缀）
 }
 
 // 单个回合的录像数据
@@ -137,6 +138,7 @@ export interface ReplayData {
   // 额外字段用于列表展示
   id?: string;
   timestamp?: number; // 向后兼容，映射到 uploadTime
+  fileName?: string; // 原始上传文件名（不带.dem后缀）
   // 解析状态字段
   isParsing?: boolean; // 是否正在解析
   parsingProgress?: number; // 解析进度 (0-100)

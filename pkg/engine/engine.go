@@ -237,6 +237,7 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		UploadTime:       meta.UploadTime,
 		ProjectileRender: meta.ProjectileRender,
 		MapName:          meta.MapName,
+		FileName:         meta.FileName, // Preserve original filename
 		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
 		TeamT:            gs.TeamTerrorists().ClanName(),
 		// Update these fields with final values

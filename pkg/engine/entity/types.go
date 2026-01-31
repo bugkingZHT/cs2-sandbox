@@ -243,4 +243,6 @@ type ReplayMeta struct {
 	ScoreT int `json:"scoreT"`
 	// 总回合数
 	TotalRounds int `json:"totalRounds"`
+	// 原始上传文件名（不带.dem后缀）
+	FileName string `json:"fileName,omitempty"`
 }

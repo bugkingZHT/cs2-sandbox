@@ -143,6 +143,7 @@ function createReplayData() {
             frames: [], // Not loaded yet
             projectileRenderConfig: meta.projectileRenderConfig,
             timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
+            fileName: meta.fileName, // Preserve filename
             // Parsing state fields
             isParsing: false,
             hasFailed: hasFailed,
@@ -219,6 +220,7 @@ function createReplayData() {
       frames: sortedFrames,
       projectileRenderConfig: meta.projectileRenderConfig,
       timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
+      fileName: meta.fileName, // Preserve filename
     };
 
     return replayData;
@@ -452,6 +454,9 @@ function createReplayData() {
 
       // Save original file path for failure detection
       meta.originalFilePath = file.name;
+      
+      // Save original filename without .dem extension
+      meta.fileName = file.name.replace(/\.dem$/i, '');
 
       // Step 3: Save incomplete meta to DB immediately
       updateParsingProgress(100, 'Metadata saved!');
