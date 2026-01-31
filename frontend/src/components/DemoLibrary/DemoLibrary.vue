@@ -47,8 +47,8 @@
     <!-- Empty State -->
     <div v-else-if="demoList.length === 0" class="ds-empty">
       <div class="ds-empty-icon">📂</div>
-      <h3 class="ds-empty-title">No Demo Files Yet</h3>
-      <p class="ds-empty-description">Click "Upload Demo" to start adding your game recordings</p>
+      <h3 class="ds-empty-title">暂无 Demo 文件</h3>
+      <p class="ds-empty-description">点击"上传"按钮开始解析 Demo</p>
     </div>
 
     <!-- Demo Grid -->
@@ -156,7 +156,7 @@
           <!-- Parsing Overlay -->
           <div v-if="demo.isParsing" class="parsing-overlay-card">
             <div class="parsing-progress-container">
-              <div class="parsing-progress-label">🔄 Parsing Demo</div>
+              <div class="parsing-progress-label">解析中...</div>
               <div class="parsing-progress-bar">
                 <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
               </div>
@@ -735,6 +735,35 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   flex-direction: column;
   background: var(--ds-bg-primary);
   overflow: hidden;
+}
+
+/* === Empty State Centered === */
+.ds-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-lg);
+}
+
+.ds-empty-icon {
+  font-size: 64px;
+  opacity: 0.5;
+}
+
+.ds-empty-title {
+  font-size: var(--ds-text-2xl);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0;
+}
+
+.ds-empty-description {
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-tertiary);
+  margin: 0;
+  text-align: center;
 }
 
 /* === Header Styles === */
