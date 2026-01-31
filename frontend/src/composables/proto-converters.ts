@@ -29,12 +29,20 @@ export async function decodeReplayMeta(bytes: Uint8Array): Promise<ReplayMeta> {
     bytes: Array,
   });
   
+  console.log('[ProtoConverter] Decoded proto object:', {
+    hasRoundResults: !!obj.roundResults,
+    roundResultsCount: obj.roundResults?.length || 0,
+    roundResults: obj.roundResults
+  });
+  
   const result = protoToReplayMeta(obj);
   console.log('[ProtoConverter] ✅ ReplayMeta decoded:', {
     uuid: result.uuid,
     fileName: result.fileName,
     mapName: result.mapName,
-    totalRounds: result.totalRounds
+    totalRounds: result.totalRounds,
+    hasRoundResults: !!result.roundResults,
+    roundResultsCount: result.roundResults?.length || 0
   });
   return result;
 }
@@ -65,10 +73,17 @@ export async function encodeReplayMeta(meta: ReplayMeta): Promise<Uint8Array> {
     uuid: meta.uuid,
     fileName: meta.fileName,
     mapName: meta.mapName,
-    totalRounds: meta.totalRounds
+    totalRounds: meta.totalRounds,
+    hasRoundResults: !!meta.roundResults,
+    roundResultsCount: meta.roundResults?.length || 0,
+    roundResults: meta.roundResults
   });
   const ReplayMetaPB = await getMessageType('ReplayMetaPB');
   const protoObj = replayMetaToProto(meta);
+  console.log('[ProtoConverter] Proto object before encoding:', {
+    hasRoundResults: !!protoObj.roundResults,
+    roundResultsCount: protoObj.roundResults?.length || 0
+  });
   const message = ReplayMetaPB.create(protoObj);
   const result = ReplayMetaPB.encode(message).finish();
   console.log(`[ProtoConverter] ✅ ReplayMeta encoded, output size: ${result.byteLength} bytes`);
@@ -92,7 +107,13 @@ export async function encodeReplayRound(round: ReplayRound): Promise<Uint8Array>
 
 // Convert protobuf object to ReplayMeta
 function protoToReplayMeta(proto: any): ReplayMeta {
-  return {
+  console.log('[ProtoConverter] Converting proto to ReplayMeta:', {
+    hasRoundResults: !!proto.roundResults,
+    roundResultsLength: proto.roundResults?.length || 0,
+    roundResults: proto.roundResults
+  });
+  
+  const meta = {
     uuid: proto.uuid || '',
     uploaderUid: proto.uploaderUid || '',
     uploadTime: proto.uploadTime || 0,
@@ -102,12 +123,19 @@ function protoToReplayMeta(proto: any): ReplayMeta {
     scoreCT: proto.scoreCt || 0,
     scoreT: proto.scoreT || 0,
     totalRounds: proto.totalRounds || 0,
+    roundResults: proto.roundResults?.map((rr: any) => ({
+      round: rr.round || 0,
+      result: rr.result || 'ct_win'
+    })) || [],
     totalFrames: 0, // Not stored in proto, will be computed client-side
     totalDurationMs: 0, // Not stored in proto, will be computed client-side
     fileName: proto.fileName || '',
     projectileRenderConfig: convertProjectileRenderConfig(proto.projectileRender || {}),
     originalFilePath: proto.originalFilePath || '',
   };
+  
+  console.log('[ProtoConverter] Converted meta roundResults:', meta.roundResults);
+  return meta;
 }
 
 // Convert protobuf object to ReplayRound
@@ -249,6 +277,18 @@ function replayMetaToProto(meta: ReplayMeta): any {
     }
   }
 
+  // Convert roundResults to proto format
+  const roundResults = meta.roundResults?.map(rr => ({
+    round: rr.round,
+    result: rr.result
+  })) || [];
+
+  console.log('[ReplayMetaToProto] Converting roundResults:', {
+    hasRoundResults: !!meta.roundResults,
+    count: meta.roundResults?.length || 0,
+    roundResults: meta.roundResults
+  });
+
   return {
     uuid: meta.uuid,
     uploaderUid: meta.uploaderUid,
@@ -260,6 +300,7 @@ function replayMetaToProto(meta: ReplayMeta): any {
     scoreCt: meta.scoreCT,
     scoreT: meta.scoreT,
     totalRounds: meta.totalRounds,
+    roundResults: roundResults, // Add round results to proto object
     fileName: meta.fileName || '',
     originalFilePath: (meta as any).originalFilePath || '',
   };

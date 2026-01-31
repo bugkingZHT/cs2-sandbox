@@ -126,6 +126,8 @@
         :score-t="replay?.scoreT || 0"
         :replay-uuid="replay?.uuid"
         :total-rounds="replay?.totalRounds || 0"
+        :round-results="replay?.roundResults || []"
+        :replay-meta="replay"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"

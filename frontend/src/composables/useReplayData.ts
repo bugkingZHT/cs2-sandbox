@@ -157,11 +157,18 @@ function createReplayData() {
       scoreCT: meta.scoreCT,
       scoreT: meta.scoreT,
       totalRounds: meta.totalRounds,
+      roundResults: meta.roundResults, // Preserve round results
       frames: sortedFrames,
       projectileRenderConfig: meta.projectileRenderConfig,
       timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
       fileName: meta.fileName, // Preserve filename
     };
+
+    console.log('[LoadReplayFromOPFS] ReplayData created with roundResults:', {
+      hasRoundResults: !!replayData.roundResults,
+      roundResultsLength: replayData.roundResults?.length || 0,
+      roundResults: replayData.roundResults
+    });
 
     return replayData;
   };
@@ -423,14 +430,27 @@ function createReplayData() {
             // Phase 3: Update metadata with statistics from worker
             updateDemoParsingProgress(meta.uuid, 95, 'Finalizing metadata...');
             
+            console.log('[ParseDemo] PARSING_COMPLETE received:', {
+              totalRounds: e.data.totalRounds,
+              scoreCT: e.data.scoreCT,
+              scoreT: e.data.scoreT,
+              teamCT: e.data.teamCT,
+              teamT: e.data.teamT,
+              hasRoundResults: !!e.data.roundResults,
+              roundResultsCount: e.data.roundResults?.length || 0,
+              roundResults: e.data.roundResults
+            });
+            
             // Update meta with final statistics from worker
             meta.totalRounds = e.data.totalRounds;
             meta.scoreCT = e.data.scoreCT;
             meta.scoreT = e.data.scoreT;
             meta.teamCT = e.data.teamCT;
             meta.teamT = e.data.teamT;
+            meta.roundResults = e.data.roundResults; // Save round results!
             
-            console.log(`[ParseDemo] Final stats - Rounds: ${meta.totalRounds}, CT: ${meta.teamCT} (${meta.scoreCT}), T: ${meta.teamT} (${meta.scoreT})`);
+            console.log(`[ParseDemo] Final stats - Rounds: ${meta.totalRounds}, CT: ${meta.teamCT} (${meta.scoreCT}), T: ${meta.teamT} (${meta.scoreT}), RoundResults: ${meta.roundResults?.length || 0}`);
+            console.log('[ParseDemo] Meta roundResults before save:', meta.roundResults);
             
             // Remove temporary field after successful parsing
             delete meta.originalFilePath;

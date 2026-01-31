@@ -27,6 +27,7 @@ interface ParsingCompleteMessage {
   scoreT: number;
   teamCT: string;
   teamT: string;
+  roundResults: Array<{ round: number; result: string }>; // Add round results
 }
 
 interface ProgressMessage {
@@ -181,15 +182,24 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       
       const backfilledMeta = await decodeReplayMeta(backfillBinary);
       
-      // Send completion message with statistics
+      console.log('[Worker] Backfilled meta received:', {
+        totalRounds: backfilledMeta.totalRounds,
+        hasRoundResults: !!backfilledMeta.roundResults,
+        roundResultsCount: backfilledMeta.roundResults?.length || 0,
+        roundResults: backfilledMeta.roundResults
+      });
+      
+      // Send completion message with statistics AND round results
       const completeResponse: ParsingCompleteMessage = {
         type: 'PARSING_COMPLETE',
         totalRounds: backfilledMeta.totalRounds || rounds.length,
         scoreCT: backfilledMeta.scoreCT || 0,
         scoreT: backfilledMeta.scoreT || 0,
         teamCT: backfilledMeta.teamCT || '',
-        teamT: backfilledMeta.teamT || ''
+        teamT: backfilledMeta.teamT || '',
+        roundResults: backfilledMeta.roundResults || [] // Include round results
       };
+      console.log('[Worker] Sending PARSING_COMPLETE with roundResults:', completeResponse.roundResults);
       self.postMessage(completeResponse);
       
     } catch (error: any) {

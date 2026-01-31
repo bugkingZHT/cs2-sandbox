@@ -138,6 +138,28 @@ const (
 	RoundPhaseEnd RoundPhase = "end"
 )
 
+// 回合胜负结果类型
+type RoundResult string
+
+const (
+	// CT 胜利（非拆弹获胜）
+	RoundResultCTWin RoundResult = "ct_win"
+	// T 胜利（非爆炸获胜）
+	RoundResultTWin RoundResult = "t_win"
+	// CT 拆弹获胜
+	RoundResultBombDefused RoundResult = "bomb_defused"
+	// T 炸弹爆炸获胜
+	RoundResultBombExploded RoundResult = "bomb_exploded"
+)
+
+// 单回合结果信息
+type RoundResultInfo struct {
+	// 回合编号
+	Round int `json:"round"`
+	// 回合结果
+	Result RoundResult `json:"result"`
+}
+
 // 回合时间信息
 type RoundTimeInfo struct {
 	// 当前回合阶段
@@ -243,6 +265,8 @@ type ReplayMeta struct {
 	ScoreT int `json:"scoreT"`
 	// 总回合数
 	TotalRounds int `json:"totalRounds"`
+	// 每回合胜负结果列表
+	RoundResults []RoundResultInfo `json:"roundResults"`
 	// 原始上传文件名（不带.dem后缀）
 	FileName string `json:"fileName,omitempty"`
 	// 原始上传文件路径（用于失败检测，解析成功后清除）

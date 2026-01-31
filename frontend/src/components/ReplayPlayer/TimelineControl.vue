@@ -33,7 +33,15 @@
         <div class="round-buttons-grid">
           <template v-for="r in totalRoundsCount" :key="r">
             <div class="round-btn-cell" :class="{ 'active': currentRound === r }">
-              <button class="round-square-btn" @click="seekToRound(r)">{{ r }}</button>
+              <button class="round-square-btn" @click="seekToRound(r)">
+                <img 
+                  v-if="getRoundResultIcon(r)" 
+                  :src="getRoundResultIcon(r)!" 
+                  class="round-result-icon" 
+                  :alt="getRoundResult(r) || ''"
+                />
+                <span class="round-number">{{ r }}</span>
+              </button>
               <div class="round-underline-static"></div>
             </div>
             <!-- 12和13号之间的纵向虚线 -->
@@ -117,9 +125,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { DEBUG_CONFIG } from '@/config/debug';
+import type { RoundResultInfo, ReplayData } from '@/types/replay';
 
 const props = defineProps<{
   currentFrameIndex: number;
@@ -136,6 +145,8 @@ const props = defineProps<{
   scoreT: number;
   replayUuid?: string;
   totalRounds?: number;
+  roundResults?: RoundResultInfo[];
+  replayMeta?: ReplayData | null;
 }>();
 
 const emit = defineEmits<{
@@ -146,6 +157,15 @@ const emit = defineEmits<{
   (e: 'dragging-change', value: boolean): void;
   (e: 'load-round', roundNumber: number): void;
 }>();
+
+// Log roundResults when they change
+watch(() => props.roundResults, (newResults) => {
+  console.log('[TimelineControl] roundResults updated:', {
+    hasResults: !!newResults,
+    length: newResults?.length || 0,
+    results: newResults
+  });
+}, { immediate: true });
 
 const isDragging = ref(false);
 const showPowerMenu = ref(false);
@@ -190,11 +210,34 @@ const showCurrentFrameData = () => {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
   
+  // Format meta data as JSON
+  const metaData = props.replayMeta ? JSON.stringify({
+    uuid: props.replayMeta.uuid,
+    uploaderUid: props.replayMeta.uploaderUid,
+    uploadTime: props.replayMeta.uploadTime,
+    mapName: props.replayMeta.mapName,
+    teamCT: props.replayMeta.teamCT,
+    teamT: props.replayMeta.teamT,
+    scoreCT: props.replayMeta.scoreCT,
+    scoreT: props.replayMeta.scoreT,
+    totalRounds: props.replayMeta.totalRounds,
+    roundResults: props.replayMeta.roundResults,
+    fileName: props.replayMeta.fileName,
+  }, null, 2) : 'No meta data available';
+  
+  const metaDataEscaped = metaData
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+  
   // Extract key statistics
   const playerCount = Object.keys(currentFrame.players || {}).length;
   const projectileCount = Object.keys(currentFrame.projectiles || {}).length;
   const killEventCount = Object.keys(currentFrame.killEvents || {}).length;
   const dataSize = new Blob([frameData]).size;
+  const metaSize = new Blob([metaData]).size;
   
   // Create HTML page with modern design (using string concatenation to avoid Vue template issues)
   const htmlParts = [];
@@ -451,30 +494,20 @@ const showCurrentFrameData = () => {
       </div>
     </div>
     
-    <div class="actions">
-      <button class="btn btn-primary" onclick="copyToClipboard()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-        Copy JSON to Clipboard
-      </button>
-      <button class="btn btn-secondary" onclick="downloadJSON()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="7 10 12 15 17 10"></polyline>
-          <line x1="12" y1="15" x2="12" y2="3"></line>
-        </svg>
-        Download JSON
-      </button>
-    </div>
-    
     <div class="data-container">
       <div class="data-header">
         <h3>📝 Frame Data</h3>
-        <span class="copy-hint">Click "Copy" button above or select and copy manually</span>
+        <span class="copy-hint">Frame data information</span>
       </div>
       <pre id="frameData">${frameDataEscaped}</pre>
+    </div>
+    
+    <div class="data-container" style="margin-top: 30px;">
+      <div class="data-header">
+        <h3>🎯 Meta Data</h3>
+        <span class="copy-hint">Replay metadata information</span>
+      </div>
+      <pre id="metaData">${metaDataEscaped}</pre>
     </div>
     
     <div class="info-banner">
@@ -483,14 +516,15 @@ const showCurrentFrameData = () => {
     </div>
   </div>
   
-  <div class="toast" id="toast">✅ Copied to clipboard!</div>
   `);
   htmlParts.push('  <' + 'script' + '>');
   htmlParts.push(`
     const frameDataRaw = ${JSON.stringify(frameData)};
+    const metaDataRaw = ${JSON.stringify(metaData)};
     
     function copyToClipboard() {
-      navigator.clipboard.writeText(frameDataRaw).then(() => {
+      const combined = 'FRAME DATA:\n\n' + frameDataRaw + '\n\n' + 'META DATA:\n\n' + metaDataRaw;
+      navigator.clipboard.writeText(combined).then(() => {
         showToast();
       }).catch(err => {
         console.error('Failed to copy:', err);
@@ -499,11 +533,15 @@ const showCurrentFrameData = () => {
     }
     
     function downloadJSON() {
-      const blob = new Blob([frameDataRaw], { type: 'application/json' });
+      const combined = {
+        frameData: JSON.parse(frameDataRaw),
+        metaData: JSON.parse(metaDataRaw)
+      };
+      const blob = new Blob([JSON.stringify(combined, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'frame_${props.currentFrameIndex}_data.json';
+      a.download = 'frame_${props.currentFrameIndex}_debug_data.json';
       a.click();
       URL.revokeObjectURL(url);
       showToast('Downloaded!');
@@ -678,6 +716,34 @@ const roundMarkers = computed(() => {
 const seekToRound = (round: number) => {
   console.log(`[SeekToRound] Emitting load-round event for round ${round}`);
   emit('load-round', round);
+};
+
+// Get round result for a specific round number
+const getRoundResult = (roundNumber: number) => {
+  if (!props.roundResults || props.roundResults.length === 0) {
+    console.log(`[GetRoundResult] No round results available for round ${roundNumber}`);
+    return null;
+  }
+  const result = props.roundResults.find(rr => rr.round === roundNumber);
+  console.log(`[GetRoundResult] Round ${roundNumber}:`, result ? result.result : 'not found');
+  return result?.result || null;
+};
+
+// Get icon path for round result
+const getRoundResultIcon = (roundNumber: number): string | null => {
+  const result = getRoundResult(roundNumber);
+  if (!result) return null;
+  
+  const iconMap: Record<string, string> = {
+    'ct_win': '/icons/ct_win.svg',
+    't_win': '/icons/t_win.svg',
+    'bomb_defused': '/icons/bomb_defused.svg',
+    'bomb_exploded': '/icons/bomb_exploded.svg'
+  };
+  
+  const iconPath = iconMap[result] || null;
+  console.log(`[GetRoundResultIcon] Round ${roundNumber}: ${result} -> ${iconPath}`);
+  return iconPath;
 };
 
 const handleInteraction = (clientX: number, el: HTMLElement) => {
@@ -912,9 +978,24 @@ const formatMs = (ms: number) => {
   font-size: 11px;
   cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   transition: background var(--ds-transition-base);
+  position: relative;
+}
+
+.round-result-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.round-number {
+  font-size: 10px;
+  line-height: 1;
 }
 
 .round-square-btn:hover {

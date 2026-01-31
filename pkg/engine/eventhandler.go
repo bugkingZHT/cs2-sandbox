@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"log"
+
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
 
@@ -31,6 +33,47 @@ func (b *replayBuilder) registerEventHandlers() {
 	// Register round end handler
 	b.parser.RegisterEventHandler(func(e events.RoundEnd) {
 		b.roundEndTick = b.parser.GameState().IngameTick()
+
+		log.Printf("[RoundEnd] Round %d ended. Winner: %v, BombState: %s", b.currentRound, e.Winner, b.bombState)
+
+		// Determine round result based on winner and bomb state
+		var result entity.RoundResult
+
+		// Check winner team: 2=T, 3=CT
+		if e.Winner == common.TeamCounterTerrorists {
+			// CT won
+			if b.bombState == "defused" {
+				result = entity.RoundResultBombDefused
+			} else {
+				result = entity.RoundResultCTWin
+			}
+		} else if e.Winner == common.TeamTerrorists {
+			// T won
+			if b.bombState == "exploded" {
+				result = entity.RoundResultBombExploded
+			} else {
+				result = entity.RoundResultTWin
+			}
+		} else {
+			// Normally never reach this point, but handle it gracefully
+			log.Printf("[RoundEnd] WARNING: No clear winner (Winner=%v), using fallback logic", e.Winner)
+			// Fallback: if no clear winner, check bomb state
+			if b.bombState == "defused" {
+				result = entity.RoundResultBombDefused
+			} else if b.bombState == "exploded" {
+				result = entity.RoundResultBombExploded
+			} else {
+				// Default to CT win if no clear result
+				result = entity.RoundResultCTWin
+			}
+		}
+
+		// Store round result
+		b.roundResults = append(b.roundResults, entity.RoundResultInfo{
+			Round:  b.currentRound,
+			Result: result,
+		})
+		log.Printf("[RoundEnd] Stored result for round %d: %s (Total results: %d)", b.currentRound, result, len(b.roundResults))
 	})
 
 	// Smoke event handlers

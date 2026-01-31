@@ -37,6 +37,17 @@ func ReplayMetaToProtoPB(meta *ReplayMeta) *ReplayMetaPB {
 		}
 	}
 
+	// Convert round results
+	if meta.RoundResults != nil {
+		protoMeta.RoundResults = make([]*RoundResultInfoPB, len(meta.RoundResults))
+		for i, rr := range meta.RoundResults {
+			protoMeta.RoundResults[i] = &RoundResultInfoPB{
+				Round:  int32(rr.Round),
+				Result: string(rr.Result),
+			}
+		}
+	}
+
 	return protoMeta
 }
 
@@ -253,6 +264,17 @@ func ProtoToReplayMeta(protoMeta *ReplayMetaPB) *ReplayMeta {
 				DurationInMs:      v.DurationInMs,
 				CanClearSmoke:     v.CanClearSmoke,
 				CanExtinguishFire: v.CanExtinguishFire,
+			}
+		}
+	}
+
+	// Convert round results
+	if protoMeta.RoundResults != nil {
+		meta.RoundResults = make([]RoundResultInfo, len(protoMeta.RoundResults))
+		for i, rr := range protoMeta.RoundResults {
+			meta.RoundResults[i] = RoundResultInfo{
+				Round:  int(rr.Round),
+				Result: RoundResult(rr.Result),
 			}
 		}
 	}

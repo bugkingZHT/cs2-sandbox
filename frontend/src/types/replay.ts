@@ -38,6 +38,15 @@ export interface Point {
   z: number;
 }
 
+// 回合胜负结果类型
+export type RoundResult = 'ct_win' | 't_win' | 'bomb_defused' | 'bomb_exploded';
+
+// 单回合结果信息
+export interface RoundResultInfo {
+  round: number;
+  result: RoundResult;
+}
+
 export interface ProjectileState {
   type: string; // EquipmentType
   x: number;
@@ -102,6 +111,7 @@ export interface ReplayMeta {
   scoreCT: number;
   scoreT: number;
   totalRounds: number;
+  roundResults?: RoundResultInfo[]; // 每回合胜负结果列表
   totalFrames: number; // Demo 总帧数（来自 header.PlaybackFrames）
   totalDurationMs: number; // Demo 总时长（毫秒，来自 header.PlaybackTime）
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
@@ -133,6 +143,7 @@ export interface ReplayData {
   scoreCT: number;
   scoreT: number;
   totalRounds: number;
+  roundResults?: RoundResultInfo[]; // 每回合胜负结果列表
   frames: Frame[];
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   // 额外字段用于列表展示

@@ -230,6 +230,16 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 
 	gs := e.parser.GameState()
 
+	log.Printf("[BackfillMeta] Current round: %d, Round results count: %d", e.builder.currentRound, len(e.builder.roundResults))
+	if len(e.builder.roundResults) > 0 {
+		log.Println("[BackfillMeta] Round results details:")
+		for i, rr := range e.builder.roundResults {
+			log.Printf("  [%d] Round %d: %s", i, rr.Round, rr.Result)
+		}
+	} else {
+		log.Println("[BackfillMeta] WARNING: No round results found!")
+	}
+
 	// Create updated meta preserving all original fields
 	updatedMeta := &entity.ReplayMeta{
 		UUID:             meta.UUID,
@@ -241,13 +251,14 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
 		TeamT:            gs.TeamTerrorists().ClanName(),
 		// Update these fields with final values
-		ScoreCT:     gs.TeamCounterTerrorists().Score(),
-		ScoreT:      gs.TeamTerrorists().Score(),
-		TotalRounds: e.builder.currentRound,
+		ScoreCT:      gs.TeamCounterTerrorists().Score(),
+		ScoreT:       gs.TeamTerrorists().Score(),
+		TotalRounds:  e.builder.currentRound,
+		RoundResults: e.builder.roundResults, // Add round results from builder
 	}
 
-	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d",
-		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT)
+	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d, RoundResults=%d",
+		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT, len(updatedMeta.RoundResults))
 	return updatedMeta, nil
 }
 
@@ -290,6 +301,8 @@ type replayBuilder struct {
 	freezeEndTick   int // Tick when freeze time ended
 	bombPlantedTick int // Tick when bomb was planted
 	roundEndTick    int // Tick when round ended
+	// Round results tracking
+	roundResults []entity.RoundResultInfo // Store all round results
 }
 
 func (b *replayBuilder) frameOne() entity.Frame {
