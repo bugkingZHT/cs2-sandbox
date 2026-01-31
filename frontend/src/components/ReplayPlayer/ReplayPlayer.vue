@@ -595,6 +595,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* === Layout === */
 .viewer-layout {
   display: flex;
   flex-direction: column;
@@ -611,48 +612,50 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+/* === Header === */
 .map-header {
-  padding: 8px 16px;
-  border-bottom: 1px solid #333;
+  padding: var(--ds-space-sm) var(--ds-space-lg);
+  border-bottom: 2px solid var(--ds-border-accent);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--ds-bg-secondary);
   height: 60px;
   backdrop-filter: blur(10px);
 }
 
 .header-left {
-  font-size: 13px;
-  color: #aaa;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
   width: 120px;
 }
 
+/* === Top Players Container === */
 .top-players-container {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: var(--ds-space-xl);
 }
 
 .team-horizontal-group {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-space-sm);
 }
 
 .player-card-mini {
   width: 110px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-  padding: 4px 6px;
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-sm);
+  padding: var(--ds-space-xs) var(--ds-space-sm);
   display: flex;
   flex-direction: column;
   gap: 2px;
-  position: relative; /* 为盖章定位 */
+  position: relative;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: all var(--ds-transition-base);
 }
 
 .player-card-mini.is-dead {
@@ -664,7 +667,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  font-size: 11px;
+  font-size: var(--ds-text-xs);
 }
 
 .p-identity {
@@ -676,7 +679,7 @@ onBeforeUnmount(() => {
 
 .p-name {
   font-weight: 600;
-  color: #fff;
+  color: var(--ds-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -684,19 +687,19 @@ onBeforeUnmount(() => {
 
 .p-kda {
   font-size: 9px;
-  color: #888;
+  color: var(--ds-text-tertiary);
   font-weight: 500;
 }
 
 .p-money {
-  color: #4ade80;
+  color: var(--ds-primary);
   font-weight: bold;
 }
 
 .p-status-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-space-xs);
 }
 
 .p-hp-bar {
@@ -710,11 +713,11 @@ onBeforeUnmount(() => {
 
 .hp-fill {
   height: 100%;
-  transition: width 0.3s ease;
+  transition: width var(--ds-transition-base);
 }
 
-.hp-fill.ct { background: #3b82f6; }
-.hp-fill.t { background: #f97316; }
+.hp-fill.ct { background: var(--ds-team-ct); }
+.hp-fill.t { background: var(--ds-team-t); }
 
 .hp-val {
   position: absolute;
@@ -723,7 +726,7 @@ onBeforeUnmount(() => {
   transform: translate(-50%, -50%);
   font-size: 8px;
   font-weight: 800;
-  color: #fff;
+  color: var(--ds-text-primary);
   text-shadow: 0 0 2px #000;
 }
 
@@ -738,31 +741,31 @@ onBeforeUnmount(() => {
   object-fit: contain;
 }
 
-/* 击杀回传 (Kill Feed) 样式 */
+/* === Kill Feed === */
 .kill-feed-container {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: var(--ds-space-xl);
+  right: var(--ds-space-xl);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
-  z-index: 100;
+  gap: var(--ds-space-xs);
+  z-index: var(--ds-z-dropdown);
   pointer-events: none;
 }
 
 .kill-card {
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 4px 12px;
-  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--ds-border-subtle);
+  padding: var(--ds-space-xs) var(--ds-space-md);
+  border-radius: var(--ds-radius-sm);
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: var(--ds-space-sm);
+  font-size: var(--ds-text-sm);
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ds-shadow-lg);
   white-space: nowrap;
 }
 
@@ -770,21 +773,21 @@ onBeforeUnmount(() => {
 .k-killer.t, .k-victim.t { color: #fb923c; }
 
 .k-assist {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
   display: flex;
   align-items: center;
 }
 
 .k-assist .plus {
   margin-right: 2px;
-  color: #aaa;
+  color: var(--ds-text-muted);
   font-size: 9px;
 }
 
 .k-weapon-box {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
+  background: var(--ds-surface-base);
+  padding: 2px var(--ds-space-xs);
   border-radius: 2px;
   display: flex;
   align-items: center;
@@ -797,7 +800,7 @@ onBeforeUnmount(() => {
   filter: brightness(0) invert(1);
 }
 
-/* 动画：从下方入队 */
+/* === Kill Feed Animation === */
 .list-enter-active,
 .list-leave-active {
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -811,21 +814,24 @@ onBeforeUnmount(() => {
   transform: translateX(30px);
 }
 
+/* === Score Pill === */
 .match-score-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
+  gap: var(--ds-space-sm);
+  padding: var(--ds-space-xs) var(--ds-space-md);
+  background: var(--ds-surface-elevated);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-full);
   font-weight: 800;
-  font-size: 18px;
+  font-size: var(--ds-text-xl);
 }
 
 .score-val.ct { color: #60a5fa; }
 .score-val.t { color: #fb923c; }
-.score-divider { color: #555; }
+.score-divider { color: var(--ds-text-tertiary); opacity: 0.5; }
 
+/* === Map Canvas === */
 .map-main {
   flex: 1;
   display: flex;
@@ -837,32 +843,34 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+/* === Timeline === */
 .timeline-panel {
-  height: 160px;
+  height: 100px;
   flex-shrink: 0;
-  padding: 12px;
-  border-top: 1px solid #333;
-  background: rgba(0, 0, 0, 0.3);
+  padding: var(--ds-space-md);
+  border-top: 2px solid var(--ds-border-accent);
+  background: var(--ds-bg-secondary);
 }
 
+/* === Empty State === */
 .empty-state {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000000;
+  background: var(--ds-bg-secondary);
 }
 
 .empty-state-content {
   text-align: center;
-  padding: 40px;
+  padding: var(--ds-space-3xl);
   max-width: 400px;
 }
 
 .empty-icon {
   font-size: 64px;
-  margin-bottom: 20px;
+  margin-bottom: var(--ds-space-xl);
   opacity: 0.6;
   animation: float 3s ease-in-out infinite;
 }
@@ -877,15 +885,15 @@ onBeforeUnmount(() => {
 }
 
 .empty-state-content h3 {
-  font-size: 20px;
+  font-size: var(--ds-text-xl);
   font-weight: 600;
-  color: #e5e7eb;
-  margin-bottom: 12px;
+  color: var(--ds-text-secondary);
+  margin-bottom: var(--ds-space-md);
 }
 
 .empty-state-content p {
-  font-size: 14px;
-  color: #9ca3af;
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-tertiary);
   line-height: 1.6;
 }
 </style>

@@ -714,134 +714,141 @@ const formatMs = (ms: number) => {
 </script>
 
 <style scoped>
+/* === Container === */
 .timeline-widget-container {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px 9px;
+  gap: 2px;
+  padding: 2px 8px;
   background: transparent;
   user-select: none;
 }
 
-/* 上方模块 */
+/* === Round Selection Module === */
 .round-selection-module {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--ds-space-md);
 }
 
+/* === Power Menu === */
 .power-menu-wrapper {
   position: relative;
   flex-shrink: 0;
 }
 
 .power-menu-btn {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
-  color: white;
+  transition: all var(--ds-transition-base);
+  color: var(--ds-text-primary);
 }
 
 .power-menu-btn:hover {
-  background: rgba(120, 120, 120, 0.4);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-strong);
 }
 
 .power-menu-dropdown {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: 4px;
-  background: #1f1f1f;
-  border: 1px solid #444;
-  border-radius: 4px;
+  margin-top: var(--ds-space-xs);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
   min-width: 160px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  z-index: 100;
+  box-shadow: var(--ds-shadow-lg);
+  z-index: var(--ds-z-dropdown);
   overflow: hidden;
 }
 
 .menu-item {
   width: 100%;
-  padding: 10px 14px;
+  padding: var(--ds-space-sm) var(--ds-space-md);
   background: transparent;
   border: none;
-  color: #eee;
-  font-size: 13px;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--ds-space-sm);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--ds-transition-base);
   text-align: left;
 }
 
 .menu-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
 }
 
 .menu-item svg {
   flex-shrink: 0;
-  color: #888;
+  color: var(--ds-text-tertiary);
 }
 
 .menu-item:hover svg {
-  color: #fff;
+  color: var(--ds-text-primary);
 }
 
+/* === Layer Control === */
 .layer-control-btn {
-  width: 122px;
-  height: 40px;
+  width: 110px;
+  height: 32px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 var(--ds-space-sm);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--ds-transition-base);
   flex-shrink: 0;
 }
+
 .layer-control-btn:hover {
-  background: rgba(120, 120, 120, 0.4);
+  background: var(--ds-surface-hover);
 }
+
 .icon-layer {
-  width: 18px;
-  height: 18px;
-  margin-right: 8px;
+  width: 16px;
+  height: 16px;
+  margin-right: var(--ds-space-xs);
 }
+
 .btn-text-small {
-  color: white;
-  font-size: 11px;
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
+/* === Debug Frame Button === */
 .debug-frame-btn-fixed {
-  height: 40px;
+  height: 32px;
   background: rgba(74, 171, 247, 0.15);
   border: 1px solid rgba(74, 171, 247, 0.4);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  gap: 6px;
+  padding: 0 var(--ds-space-sm);
+  gap: var(--ds-space-xs);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--ds-transition-base);
   flex-shrink: 0;
   color: #4dabf7;
-  font-size: 11px;
+  font-size: var(--ds-text-xs);
   font-weight: 600;
-  margin-left: 8px;
+  margin-left: var(--ds-space-sm);
 }
 
 .debug-frame-btn-fixed:hover {
@@ -859,9 +866,10 @@ const formatMs = (ms: number) => {
   flex-shrink: 0;
 }
 
+/* === Round Navigation === */
 .round-nav-wrapper {
   flex: 1;
-  height: 54px;
+  height: 40px;
   background: transparent;
   display: flex;
   align-items: center;
@@ -871,19 +879,19 @@ const formatMs = (ms: number) => {
   overflow-y: hidden;
 }
 
-/* 隐藏滚动条但保留功能 */
 .round-nav-wrapper::-webkit-scrollbar {
   height: 2px;
 }
+
 .round-nav-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ds-border-subtle);
 }
 
 .round-buttons-grid {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 1px; /* 进一步缩小间距 */
+  gap: 1px;
   padding: 0 2px;
 }
 
@@ -892,112 +900,118 @@ const formatMs = (ms: number) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
 }
 
 .round-square-btn {
-  width: 36px; /* 稍微缩小一点 */
-  height: 36px;
+  width: 30px;
+  height: 30px;
   background: transparent;
   border: none;
-  color: white;
-  font-size: 12px;
+  color: var(--ds-text-primary);
+  font-size: 11px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s;
+  transition: background var(--ds-transition-base);
 }
+
 .round-square-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ds-surface-hover);
 }
+
 .round-btn-cell.active .round-square-btn {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--ds-surface-active);
   font-weight: bold;
 }
 
 .round-underline-static {
   width: 100%;
   height: 2px;
-  background: #4a4a4a;
+  background: var(--ds-border-accent);
 }
 
 .v-dashed-divider {
   width: 1px;
   height: 24px;
-  border-left: 1px dashed rgba(255, 255, 255, 0.5);
-  margin: 0 4px;
+  border-left: 1px dashed var(--ds-border-strong);
+  margin: 0 var(--ds-space-xs);
   flex-shrink: 0;
 }
 
-/* 下方模块 */
+/* === Playback Control Module === */
 .playback-control-module {
   display: flex;
-  height: 38px; /* 减小进度条高度 */
-  gap: 10px;
+  height: 32px;
+  gap: var(--ds-space-sm);
 }
 
 .playback-info-box {
-  width: 140px;
-  background: #1f1f1f;
+  width: 130px;
+  background: var(--ds-bg-secondary);
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 var(--ds-space-sm);
   border-radius: 2px;
   flex-shrink: 0;
 }
 
 .circle-play-btn {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: #1f1f1f;
+  background: var(--ds-bg-secondary);
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--ds-transition-base);
   flex-shrink: 0;
 }
+
 .circle-play-btn:hover {
-  background: #3a3a3a;
+  background: var(--ds-surface-hover);
 }
 
 .status-meta {
-  margin-left: 10px;
+  margin-left: var(--ds-space-sm);
   flex: 1;
   position: relative;
 }
 
 .speed-tag {
-  color: white;
-  font-size: 10px;
+  color: var(--ds-text-primary);
+  font-size: 9px;
   position: absolute;
-  top: -4px;
+  top: -2px;
   right: 0;
 }
 
 .time-display {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 4px; /* 从 8px 减小到 4px */
-}
-.time-font {
-  color: white;
-  font-family: 'Courier New', Courier, monospace;
-  font-weight: bold;
-  font-size: 14px;
+  gap: var(--ds-space-xs);
+  margin-top: 2px;
 }
 
+.time-font {
+  color: var(--ds-text-primary);
+  font-family: var(--ds-font-mono);
+  font-weight: bold;
+  font-size: 13px;
+}
+
+/* === Timeline Track === */
 .timeline-track-main {
   flex: 1;
-  background: #1f1f1f;
+  background: rgba(0, 0, 0, 0.5);
   position: relative;
   cursor: pointer;
   overflow: hidden;
   border-radius: 2px;
+  border: 1px solid var(--ds-border-subtle);
 }
 
 .dashed-grid-bg {
@@ -1006,10 +1020,10 @@ const formatMs = (ms: number) => {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: linear-gradient(to right, white 1px, transparent 1px);
-  background-size: 20px 100%; /* 均匀刻度 */
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
+  background-size: 20px 100%;
   background-repeat: repeat-x;
-  opacity: 0.1;
+  opacity: 0.3;
 }
 
 .flat-progress-fill {
@@ -1017,9 +1031,14 @@ const formatMs = (ms: number) => {
   top: 0;
   left: 0;
   height: 100%;
-  background: rgba(255, 255, 255, 0.05);
+  background: linear-gradient(90deg, 
+    rgba(78, 204, 163, 0.3) 0%, 
+    rgba(78, 204, 163, 0.4) 50%, 
+    rgba(78, 204, 163, 0.3) 100%);
+  border-right: 2px solid var(--ds-primary);
 }
 
+/* === Timeline Markers === */
 .decorative-markers {
   position: absolute;
   top: 0;
@@ -1033,21 +1052,21 @@ const formatMs = (ms: number) => {
   top: 0;
   width: 1px;
   height: 100%;
-  background: white;
-  opacity: 0.6; /* 增加透明度让颜色更明显 */
+  background: var(--ds-text-primary);
+  opacity: 0.6;
 }
 
 .mark-line.ct {
-  background: #3b82f6;
+  background: var(--ds-team-ct);
   opacity: 0.8;
 }
 
 .mark-line.t {
-  background: #f97316;
+  background: var(--ds-team-t);
   opacity: 0.8;
 }
 
-/* 炸弹事件标记 */
+/* === Bomb Event Markers === */
 .bomb-event-mark {
   position: absolute;
   top: 0;
@@ -1058,21 +1077,17 @@ const formatMs = (ms: number) => {
   cursor: help;
 }
 
-/* 炸弹安放 - 标准红色 */
 .bomb-event-mark.bomb-planted {
-  background: #ff0000;
-  box-shadow: 0 0 10px rgba(255, 0, 0, 0.7), 0 0 18px rgba(255, 0, 0, 0.4);
-  
+  background: var(--ds-danger);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.7), 0 0 18px rgba(239, 68, 68, 0.4);
 }
 
-/* 炸弹爆炸 - 红色发光 */
 .bomb-event-mark.bomb-exploded {
   background: linear-gradient(180deg, #ff6b6b 0%, #e03131 100%);
   box-shadow: 0 0 12px rgba(255, 107, 107, 0.8), 0 0 20px rgba(255, 107, 107, 0.4);
   animation: bomb-pulse 1.5s ease-in-out infinite;
 }
 
-/* 回合结束 - 橙色 */
 .bomb-event-mark.round-end {
   background: linear-gradient(180deg, #ffa94d 0%, #fd7e14 100%);
   box-shadow: 0 0 8px rgba(255, 169, 77, 0.6);
@@ -1091,26 +1106,27 @@ const formatMs = (ms: number) => {
 
 .mark-icon {
   position: absolute;
-  bottom: 100%; /* 放在进度条之外上方 */
+  bottom: 100%;
   transform: translateX(-50%);
   display: flex;
   pointer-events: none;
-  margin-bottom: 2px; /* 与进度条顶部保持2px间距 */
+  margin-bottom: 2px;
 }
 
 .projectile-svg-icon {
   width: 16px;
   height: 16px;
-  filter: brightness(0) invert(1); /* 统一白色 */
+  filter: brightness(0) invert(1);
 }
 
+/* === Playhead === */
 .playhead-line {
   position: absolute;
   top: 0;
   width: 1px;
   height: 100%;
-  background: white;
+  background: var(--ds-text-primary);
   z-index: 5;
-  box-shadow: none; /* 明确去掉发光 */
+  box-shadow: none;
 }
 </style>

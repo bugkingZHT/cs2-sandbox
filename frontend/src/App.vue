@@ -123,86 +123,91 @@ const onExitReplay = () => {
 </script>
 
 <style scoped>
+/* === App Layout === */
 .app {
   display: flex;
   flex-direction: column;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background-color: #000000;
-  color: #eee;
+  background: var(--ds-bg-primary);
+  color: var(--ds-text-secondary);
 }
 
+/* === Top Bar === */
 .app-top-bar {
-  height: 48px;
-  background: #0a0a0a;
-  border-bottom: 1px solid #333;
+  height: 64px;
+  background: var(--ds-bg-secondary);
+  border-bottom: 2px solid var(--ds-border-accent);
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 0 var(--ds-space-2xl);
   flex-shrink: 0;
-  gap: 32px;
+  gap: var(--ds-space-3xl);
 }
 
 .app-branding {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-space-md);
 }
 
 .app-logo {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 .app-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: var(--ds-text-xl);
+  font-weight: 700;
+  color: var(--ds-text-primary);
   margin: 0;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
 }
 
+/* === Tabs === */
 .app-tabs {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-space-sm);
   flex: 1;
 }
 
 .tab-btn {
-  padding: 8px 16px;
+  padding: var(--ds-space-md) var(--ds-space-xl);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #888;
-  font-size: 13px;
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-base);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--ds-transition-base);
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ds-space-sm);
 }
 
 .tab-btn svg {
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
 }
 
 .tab-btn:hover:not(:disabled) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--ds-text-primary);
+  background: var(--ds-surface-base);
 }
 
 .tab-btn.active {
-  color: #4dabf7;
-  border-bottom-color: #4dabf7;
+  color: var(--ds-primary);
+  border-bottom-color: var(--ds-primary);
 }
 
 .tab-btn.active svg {
-  stroke: #4dabf7;
+  stroke: var(--ds-primary);
 }
 
 .tab-btn:disabled {
@@ -210,6 +215,7 @@ const onExitReplay = () => {
   cursor: not-allowed;
 }
 
+/* === Main Content === */
 .app-main {
   flex: 1;
   display: flex;
@@ -217,43 +223,54 @@ const onExitReplay = () => {
   overflow: hidden;
 }
 
-.toolbar {
-  padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid #333;
-  color: #aaa;
-  font-size: 0.9rem;
-  flex-shrink: 0;
-}
-
+/* === Parsing Modal === */
 .parsing-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--ds-bg-overlay);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: var(--ds-z-modal);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .parsing-modal {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 12px;
-  padding: 32px;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-3xl);
   width: 500px;
   max-width: 90vw;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--ds-shadow-xl);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .parsing-modal h3 {
-  margin: 0 0 24px 0;
-  color: #fff;
+  margin: 0 0 var(--ds-space-xl) 0;
+  color: var(--ds-text-primary);
   text-align: center;
-  font-size: 18px;
+  font-size: var(--ds-text-xl);
   font-weight: 600;
 }
 
@@ -261,14 +278,14 @@ const onExitReplay = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: 32px 0;
+  margin: var(--ds-space-2xl) 0;
 }
 
 .spinner {
   width: 48px;
   height: 48px;
-  border: 4px solid rgba(59, 130, 246, 0.2);
-  border-top-color: #3b82f6;
+  border: 4px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -278,10 +295,10 @@ const onExitReplay = () => {
 }
 
 .parsing-status {
-  margin: 8px 0 0 0;
-  color: #aaa;
+  margin: var(--ds-space-sm) 0 0 0;
+  color: var(--ds-text-tertiary);
   text-align: center;
-  font-size: 14px;
+  font-size: var(--ds-text-base);
   min-height: 24px;
   line-height: 24px;
   animation: fade-in 0.3s ease-in;

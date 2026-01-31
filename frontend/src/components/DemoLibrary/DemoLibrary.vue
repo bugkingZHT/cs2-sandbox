@@ -1,7 +1,11 @@
-<template>
+<<template>
   <div class="demo-library-page">
+    <!-- Modern Header -->
     <div class="library-header">
-      <h2 class="library-title">Counter-Strike</h2>
+      <div class="header-content">
+        <h1 class="library-title">⚡ Counter-Strike 2 Demos</h1>
+        <p class="library-subtitle">Manage and replay your game recordings</p>
+      </div>
       <div class="library-actions">
         <input
           type="file"
@@ -14,171 +18,200 @@
         <!-- OPFS Debug Button -->
         <button 
           v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
-          class="debug-opfs-btn"
+          class="ds-btn ds-btn-secondary ds-btn-icon"
           @click="showOPFSDetails"
           title="View OPFS Storage Details"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
-          <span>OPFS</span>
         </button>
 
-        <button class="upload-btn" @click="triggerFileInput" :disabled="parsing">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="ds-btn ds-btn-primary" @click="triggerFileInput" :disabled="parsing">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          <span>{{ parsing ? '解析中...' : '上传 Demo' }}</span>
+          <span>{{ parsing ? 'Parsing...' : 'Upload Demo' }}</span>
         </button>
       </div>
     </div>
 
-    <div v-if="loading" class="library-loading">
-      <div class="spinner"></div>
-      <p>加载中...</p>
+    <!-- Loading State -->
+    <div v-if="loading" class="ds-empty">
+      <div class="ds-spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
+      <p class="ds-empty-title" style="margin-top: 24px;">Loading...</p>
     </div>
 
-    <div v-else-if="demoList.length === 0" class="library-empty">
-      <div class="empty-icon">·</div>
-      <h3>暂无 Demo 文件</h3>
-      <p>点击"上传 Demo"按钮开始添加</p>
+    <!-- Empty State -->
+    <div v-else-if="demoList.length === 0" class="ds-empty">
+      <div class="ds-empty-icon">📂</div>
+      <h3 class="ds-empty-title">No Demo Files Yet</h3>
+      <p class="ds-empty-description">Click "Upload Demo" to start adding your game recordings</p>
     </div>
 
-    <div v-else class="demo-grid">
-      <div
-        v-for="demo in sortedDemoList"
-        :key="demo.id"
-        class="demo-card"
-        :class="{ 
-          'is-current': demo.id === currentDemoId,
-          'loading': isLoadingDemo && selectedDemoId === demo.id,
-          'is-parsing': demo.isParsing
-        }"
-        @click="selectDemo(demo)"
-      >
-        <!-- 卡片背景图 -->
-        <div class="card-background">
-          <img 
-            v-if="getMapLeftSideImage(demo.mapName)"
-            :src="getMapLeftSideImage(demo.mapName)" 
-            :alt="demo.mapName"
-            @error="onImageError"
-          />
-          <div v-else class="placeholder-bg">
-            <span>{{ demo.mapName }}</span>
-          </div>
-        </div>
-
-        <!-- 基础信息层 (最底层，始终显示) -->
-        <div class="card-overlay">
-          <div class="card-header">
-            <h4 class="map-name">{{ demo.mapName || '未知地图' }}</h4>
-            
-            <!-- 当前选中指示器 - 右上角 -->
-            <div v-if="demo.id === currentDemoId" class="active-indicator">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
+    <!-- Demo Grid -->
+    <div v-else class="demo-grid-container">
+      <div class="demo-grid">
+        <div
+          v-for="demo in sortedDemoList"
+          :key="demo.id"
+          class="demo-card ds-card"
+          :class="{ 
+            'is-current': demo.id === currentDemoId,
+            'loading': isLoadingDemo && selectedDemoId === demo.id,
+            'is-parsing': demo.isParsing
+          }"
+          @click="selectDemo(demo)"
+        >
+          <!-- Card Background -->
+          <div class="card-background">
+            <img 
+              v-if="getMapLeftSideImage(demo.mapName)"
+              :src="getMapLeftSideImage(demo.mapName)" 
+              :alt="demo.mapName"
+              @error="onImageError"
+            />
+            <div v-else class="placeholder-bg">
+              <span>{{ demo.mapName }}</span>
             </div>
           </div>
 
-          <div class="card-content">
-            <div class="match-result">
-              <div class="team-name winner-name">{{ getWinnerTeam(demo) }}</div>
-              
-              <div class="score-block">
-                <div class="score-value winner-score">{{ getWinnerScore(demo) }}</div>
-                <div class="score-separator">:</div>
-                <div class="score-value loser-score">{{ getLoserScore(demo) }}</div>
+          <!-- Card Content Overlay -->
+          <div class="card-overlay">
+            <!-- Top: Map Name + Badge -->
+            <div class="card-top">
+              <div class="map-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span>{{ demo.mapName || 'Unknown Map' }}</span>
               </div>
               
-              <div class="team-name loser-name">{{ getLoserTeam(demo) }}</div>
+              <!-- Current Playing Badge -->
+              <div v-if="demo.id === currentDemoId" class="playing-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span>PLAYING</span>
+              </div>
             </div>
 
-            <!-- 文件名显示 -->
-            <div v-if="demo.fileName" class="file-name">
-              {{ demo.fileName }}
+            <!-- Middle: Match Score -->
+            <div class="card-middle">
+              <div class="score-display">
+                <div class="team-section winner-section">
+                  <div class="team-label">{{ getWinnerTeam(demo) }}</div>
+                  <div class="team-score winner-score">{{ getWinnerScore(demo) }}</div>
+                </div>
+                
+                <div class="score-divider">
+                  <div class="divider-line"></div>
+                  <span class="vs-text">VS</span>
+                  <div class="divider-line"></div>
+                </div>
+                
+                <div class="team-section loser-section">
+                  <div class="team-score loser-score">{{ getLoserScore(demo) }}</div>
+                  <div class="team-label">{{ getLoserTeam(demo) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom: Meta Info -->
+            <div class="card-bottom">
+              <div class="meta-info">
+                <div v-if="demo.fileName" class="info-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                    <polyline points="13 2 13 9 20 9"/>
+                  </svg>
+                  <span>{{ demo.fileName }}</span>
+                </div>
+                <div v-if="demo.uploadTime" class="info-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <span>{{ formatAbsoluteTime(demo.uploadTime) }}</span>
+                </div>
+              </div>
+              
+              <!-- Delete Button -->
+              <button 
+                class="card-delete-btn"
+                @click.stop="confirmDelete(demo)"
+                title="Delete this demo"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
             </div>
           </div>
 
-          <div class="card-footer">
-            <div v-if="demo.uploadTime" class="timestamp">
-              {{ formatAbsoluteTime(demo.uploadTime) }}
+          <!-- Parsing Overlay -->
+          <div v-if="demo.isParsing" class="parsing-overlay-card">
+            <div class="parsing-progress-container">
+              <div class="parsing-progress-label">🔄 Parsing Demo</div>
+              <div class="parsing-progress-bar">
+                <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
+              </div>
+              <div class="parsing-progress-text">{{ demo.parsingProgress || 0 }}%</div>
+            </div>
+            <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Processing...' }}</div>
+          </div>
+
+          <!-- Failed Overlay -->
+          <div v-else-if="demo.hasFailed" class="failed-overlay-card">
+            <div class="failed-content">
+              <div class="failed-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <div class="failed-message">{{ demo.parsingStatus || 'Parsing failed' }}</div>
             </div>
             
-            <!-- 删除按钮 - 右下角 -->
+            <!-- Delete button for failed state -->
             <button 
-              class="delete-btn"
+              class="delete-btn-failed"
               @click.stop="confirmDelete(demo)"
-              title="删除此Demo"
+              title="Delete this demo"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
             </button>
           </div>
         </div>
-
-        <!-- 解析中蒙版 (覆盖在基础信息之上) -->
-        <div v-if="demo.isParsing" class="parsing-overlay-card">
-          <div class="parsing-progress-container">
-            <div class="parsing-progress-bar">
-              <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
-            </div>
-            <div class="parsing-progress-text">{{ demo.parsingProgress || 0 }}%</div>
-          </div>
-          <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Parsing...' }}</div>
-        </div>
-
-        <!-- 失败蒙版 (覆盖在基础信息之上) -->
-        <div v-else-if="demo.hasFailed" class="failed-overlay-card">
-          <div class="failed-content">
-            <div class="failed-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-            </div>
-            <div class="failed-message">{{ demo.parsingStatus || 'Parsing failed' }}</div>
-          </div>
-          
-          <!-- 删除按钮 - 失败蒙版专用 -->
-          <button 
-            class="delete-btn-failed"
-            @click.stop="confirmDelete(demo)"
-            title="删除此Demo"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </button>
-        </div>
       </div>
     </div>
 
-    <!-- 删除确认弹窗 -->
+    <!-- Delete Confirmation Modal -->
     <div v-if="showDeleteModal" class="delete-modal-overlay" @click="cancelDelete">
-      <div class="delete-modal" @click.stop>
+      <div class="delete-modal ds-card ds-card-elevated" @click.stop>
         <div class="modal-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
-        <h3 class="modal-title">确认删除</h3>
+        <h3 class="modal-title">Confirm Deletion</h3>
         <p class="modal-message">
-          确定要删除 <strong>{{ demoToDelete?.mapName || 'Demo' }}</strong> 吗？
+          Are you sure you want to delete <strong>{{ demoToDelete?.mapName || 'this demo' }}</strong>?
         </p>
-        <p class="modal-warning">此操作无法撤销</p>
+        <p class="modal-warning">This action cannot be undone</p>
         <div class="modal-actions">
-          <button class="btn-cancel" @click="cancelDelete">取消</button>
-          <button class="btn-confirm" @click="performDelete">删除</button>
+          <button class="ds-btn ds-btn-secondary" @click="cancelDelete">Cancel</button>
+          <button class="ds-btn ds-btn-danger" @click="performDelete">Delete</button>
         </div>
       </div>
     </div>
@@ -694,185 +727,128 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 </script>
 
 <style scoped>
+/* === Page Layout === */
 .demo-library-page {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #000000;
+  background: var(--ds-bg-primary);
   overflow: hidden;
 }
 
+/* === Header Styles === */
 .library-header {
-  padding: 12px 16px;
+  padding: var(--ds-space-lg) var(--ds-space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--ds-border-subtle);
   flex-shrink: 0;
+  background: var(--ds-bg-secondary);
+  min-height: 60px;
+}
+
+.header-content {
+  flex: 1;
 }
 
 .library-title {
-  font-size: 24px;
+  font-size: var(--ds-text-xl);
   font-weight: 700;
-  color: #ffffff;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-xs) 0;
+  letter-spacing: -0.3px;
+}
+
+.library-subtitle {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
   margin: 0;
 }
 
 .library-actions {
   display: flex;
-  gap: 12px;
-}
-
-.upload-btn {
-  padding: 10px 20px;
-  background: #3b82f6;
-  border: none;
-  border-radius: 6px;
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
+  gap: var(--ds-space-md);
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
 }
 
-.upload-btn:hover:not(:disabled) {
-  background: #2563eb;
-  transform: translateY(-1px);
+.library-actions .ds-btn {
+  padding: var(--ds-space-sm) var(--ds-space-lg);
+  font-size: var(--ds-text-sm);
+  height: 38px;
 }
 
-.upload-btn:disabled {
-  background: #4b5563;
-  cursor: not-allowed;
-  opacity: 0.7;
+.library-actions .ds-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
-/* OPFS Debug Button */
-.debug-opfs-btn {
-  padding: 8px 14px;
-  background: rgba(255, 193, 7, 0.1);
-  border: 1px solid rgba(255, 193, 7, 0.3);
-  border-radius: 6px;
-  color: #ffc107;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.debug-opfs-btn:hover {
-  background: rgba(255, 193, 7, 0.2);
-  border-color: rgba(255, 193, 7, 0.5);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
-}
-
-.debug-opfs-btn svg {
-  flex-shrink: 0;
-}
-
-.library-loading {
+/* === Demo Grid Container === */
+.demo-grid-container {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: #aaa;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #4dabf7;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.library-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #666;
-}
-
-.empty-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.library-empty h3 {
-  font-size: 20px;
-  color: #aaa;
-  margin: 0 0 8px 0;
-}
-
-.library-empty p {
-  font-size: 14px;
-  color: #666;
-  margin: 0;
+  overflow-y: auto;
+  padding: var(--ds-space-3xl) var(--ds-space-xl);
 }
 
 .demo-grid {
-  flex: 1;
-  padding: 24px 32px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  overflow-y: auto;
-  align-content: start;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--ds-space-lg);
+  max-width: 100%;
+  margin: 0 auto;
 }
 
+@media (max-width: 1800px) {
+  .demo-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 1400px) {
+  .demo-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 1000px) {
+  .demo-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .demo-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* === Demo Card Styles === */
 .demo-card {
   position: relative;
-  height: 180px;
-  border-radius: 8px;
+  height: 240px;
+  border-radius: var(--ds-radius-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s ease;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  background: #000;
+  transition: all var(--ds-transition-base);
+  border: 2px solid var(--ds-border-subtle);
+  background: var(--ds-surface-base);
 }
 
 .demo-card:hover {
-  border-color: rgba(59, 130, 246, 0.5);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2);
+  border-color: var(--ds-primary);
+  transform: translateY(-6px);
+  box-shadow: var(--ds-shadow-glow);
 }
 
 .demo-card.is-current {
-  border-color: #3b82f6;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  border-color: var(--ds-success);
+  box-shadow: 0 0 32px rgba(16, 185, 129, 0.5);
 }
 
 .demo-card.loading {
   pointer-events: none;
   opacity: 0.6;
-}
-
-.demo-card.is-parsing {
-  cursor: not-allowed;
-  opacity: 0.95;
-}
-
-.demo-card.is-parsing:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: none;
-  box-shadow: none;
 }
 
 .demo-card.loading::after {
@@ -883,19 +859,31 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   width: 40px;
   height: 40px;
   margin: -20px 0 0 -20px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #3b82f6;
+  border: 3px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-primary);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: ds-spin 0.8s linear infinite;
   z-index: 10;
 }
 
+.demo-card.is-parsing {
+  cursor: not-allowed;
+  opacity: 0.95;
+}
+
+.demo-card.is-parsing:hover {
+  border-color: var(--ds-border-default);
+  transform: none;
+  box-shadow: none;
+}
+
+/* === Card Background === */
 .card-background {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -903,470 +891,511 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  opacity: 0.25;
+  filter: blur(1px) brightness(0.7);
+  transition: all var(--ds-transition-base);
 }
 
 .demo-card:hover .card-background img {
-  transform: scale(1.1);
+  opacity: 0.35;
+  filter: blur(0px) brightness(0.8);
+  transform: scale(1.05);
 }
 
 .placeholder-bg {
   width: 100%;
   height: 100%;
+  background: linear-gradient(135deg, var(--ds-bg-tertiary) 0%, var(--ds-bg-secondary) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  font-size: 16px;
-  color: #666;
-  font-weight: 600;
-}
-
-.card-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.4) 0%,
-    rgba(0, 0, 0, 0.85) 100%
-  );
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  transition: background 0.3s ease;
-  z-index: 1; /* Base layer */
-}
-
-.demo-card:hover .card-overlay {
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.5) 0%,
-    rgba(0, 0, 0, 0.9) 100%
-  );
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.map-name {
-  margin: 0;
-  font-size: 20px;
+  font-size: var(--ds-text-2xl);
   font-weight: 700;
-  color: #fff;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-  letter-spacing: 0.5px;
-}
-
-.match-result {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
-  border-radius: 8px;
-  padding: 10px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.team-name {
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--ds-text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  opacity: 0.95;
+  letter-spacing: 2px;
 }
 
-.winner-name {
-  color: #22c55e;
-  text-align: left;
-}
-
-.loser-name {
-  color: #ef4444;
-  text-align: right;
-}
-
-.score-block {
+/* === Card Overlay === */
+.card-overlay {
+  position: relative;
+  height: 100%;
+  padding: 12px;
   display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: transparent;
+  z-index: 1;
+}
+
+/* === Card Top (Map Name + Badge) === */
+.card-top {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.score-value {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
-  min-width: 28px;
-  text-align: center;
-}
-
-.winner-score {
-  color: #22c55e;
-}
-
-.loser-score {
-  color: #ef4444;
-}
-
-.score-separator {
-  font-size: 16px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.25);
-}
-
-.timestamp {
+.map-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  border-radius: 6px;
+  border: 1px solid var(--ds-border-default);
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: 500;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  max-width: 70%;
+  overflow: hidden;
 }
 
-.file-name {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  font-weight: 500;
-  text-align: left;
-  margin-top: 8px;
-  padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
+.map-badge svg {
+  color: var(--ds-primary);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.map-badge span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playing-badge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid var(--ds-success);
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ds-success);
+  letter-spacing: 0.5px;
+  animation: pulse-badge 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.playing-badge svg {
+  animation: pulse-icon 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+  }
+}
+
+@keyframes pulse-icon {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/* === Card Middle (Score Display) === */
+.card-middle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  min-height: 0;
+}
+
+.score-display {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 8px;
+  border: 1px solid var(--ds-border-default);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.team-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.winner-section {
+  align-items: flex-end;
+}
+
+.loser-section {
+  align-items: flex-start;
+}
+
+.team-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 
-.delete-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 4px;
-  background: rgba(239, 68, 68, 0.8);
-  color: #fff;
+.winner-section .team-label {
+  color: var(--ds-primary);
+}
+
+.loser-section .team-label {
+  color: var(--ds-text-tertiary);
+}
+
+.team-score {
+  font-size: 32px;
+  font-weight: 900;
+  font-family: var(--ds-font-mono);
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.winner-score {
+  color: var(--ds-primary);
+  text-shadow: 0 0 20px rgba(78, 204, 163, 0.4);
+}
+
+.loser-score {
+  color: var(--ds-danger);
+  opacity: 0.7;
+}
+
+.score-divider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+.divider-line {
+  width: 1px;
+  height: 12px;
+  background: var(--ds-border-default);
+}
+
+.vs-text {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ds-text-tertiary);
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+}
+
+/* === Card Bottom (Meta Info) === */
+.card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.meta-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 0;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--ds-text-tertiary);
+  font-weight: 500;
+  opacity: 0.8;
+  min-width: 0;
+}
+
+.info-item svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+  width: 12px;
+  height: 12px;
+}
+
+.info-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.card-delete-btn {
+  padding: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: var(--ds-danger);
   cursor: pointer;
+  transition: all var(--ds-transition-base);
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
-.demo-card:hover .delete-btn {
+.demo-card:hover .card-delete-btn {
   opacity: 1;
 }
 
-.delete-btn:hover {
-  background: #ef4444;
-  transform: scale(1.1);
+.card-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: var(--ds-danger);
+  transform: scale(1.15);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
 }
 
-.active-indicator {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: rgba(34, 197, 94, 0.95);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 12px rgba(34, 197, 94, 0.6);
-  animation: pulse 2s ease-in-out infinite;
-  flex-shrink: 0;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 2px 12px rgba(34, 197, 94, 0.6);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.8);
-    transform: scale(1.05);
-  }
-}
-
-/* 删除确认弹窗样式 */
-.delete-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.delete-modal {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 12px;
-  padding: 32px;
-  width: 420px;
-  max-width: 90vw;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.modal-icon {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 16px;
-}
-
-.modal-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
-  text-align: center;
-  margin: 0 0 16px 0;
-}
-
-.modal-message {
-  font-size: 15px;
-  color: #aaa;
-  text-align: center;
-  margin: 0 0 8px 0;
-  line-height: 1.5;
-}
-
-.modal-message strong {
-  color: #fff;
-  font-weight: 600;
-}
-
-.modal-warning {
-  font-size: 13px;
-  color: #ef4444;
-  text-align: center;
-  margin: 0 0 24px 0;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.btn-cancel,
-.btn-confirm {
-  flex: 1;
-  padding: 12px 24px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-cancel {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.btn-cancel:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-1px);
-}
-
-.btn-confirm {
-  background: #ef4444;
-  color: #fff;
-}
-
-.btn-confirm:hover {
-  background: #dc2626;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-}
-
-.btn-confirm:active {
-  transform: translateY(0);
-}
-
-/* Parsing overlay on card */
+/* === Parsing Overlay === */
 .parsing-overlay-card {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
+  width: 100%;
+  height: 100%;
+  background: rgba(26, 26, 46, 0.95);
+  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 10; /* Above base layer */
-  gap: 12px;
+  gap: var(--ds-space-lg);
+  z-index: 10;
 }
 
 .parsing-progress-container {
   width: 80%;
   display: flex;
   flex-direction: column;
+  gap: var(--ds-space-sm);
   align-items: center;
-  gap: 8px;
+}
+
+.parsing-progress-label {
+  font-size: var(--ds-text-base);
+  font-weight: 600;
+  color: var(--ds-primary);
+  margin-bottom: var(--ds-space-xs);
 }
 
 .parsing-progress-bar {
   width: 100%;
   height: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-full);
   overflow: hidden;
+  border: 1px solid var(--ds-border-subtle);
 }
 
 .parsing-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%);
+  background: linear-gradient(90deg, var(--ds-primary) 0%, var(--ds-secondary) 50%, #60a5fa 100%);
   background-size: 200% 100%;
-  border-radius: 4px;
   transition: width 0.3s ease;
   animation: gradient-flow 2s ease-in-out infinite;
+  border-radius: var(--ds-radius-full);
+  box-shadow: 0 0 10px var(--ds-primary);
+}
+
+@keyframes gradient-flow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .parsing-progress-text {
-  font-size: 14px;
+  font-size: var(--ds-text-lg);
   font-weight: 700;
-  color: #60a5fa;
+  color: var(--ds-text-primary);
   font-variant-numeric: tabular-nums;
 }
 
 .parsing-status-tooltip {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
   text-align: center;
-  padding: 6px 12px;
+  padding: var(--ds-space-xs) var(--ds-space-md);
   background: rgba(0, 0, 0, 0.5);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   max-width: 90%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
-.demo-card.is-parsing:hover .parsing-status-tooltip {
-  opacity: 1;
-}
-
-/* Failed overlay on card */
+/* === Failed Overlay === */
 .failed-overlay-card {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(20, 0, 0, 0.85);
-  backdrop-filter: blur(4px);
+  width: 100%;
+  height: 100%;
+  background: rgba(26, 26, 46, 0.95);
+  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  z-index: 10; /* Above base layer */
-  padding: 16px;
+  justify-content: center;
+  padding: var(--ds-space-xl);
+  z-index: 10;
 }
 
 .failed-content {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
+  gap: var(--ds-space-lg);
 }
 
 .failed-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid rgba(239, 68, 68, 0.5);
-  border-radius: 50%;
-  background: rgba(239, 68, 68, 0.1);
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-10px); }
+  75% { transform: translateX(10px); }
 }
 
 .failed-message {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--ds-text-base);
+  font-weight: 600;
+  color: var(--ds-danger);
   text-align: center;
-  max-width: 80%;
   line-height: 1.4;
 }
 
 .delete-btn-failed {
-  width: 32px;
-  height: 32px;
+  margin-top: var(--ds-space-xl);
+  padding: var(--ds-space-md) var(--ds-space-xl);
+  background: var(--ds-danger);
   border: none;
-  border-radius: 4px;
-  background: rgba(239, 68, 68, 0.8);
-  color: #fff;
+  border-radius: var(--ds-radius-md);
+  color: white;
+  font-weight: 600;
   cursor: pointer;
+  transition: all var(--ds-transition-base);
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  align-self: flex-end;
+  gap: var(--ds-space-sm);
 }
 
 .delete-btn-failed:hover {
-  background: #ef4444;
-  transform: scale(1.1);
+  background: var(--ds-danger-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* === Delete Modal === */
+.delete-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--ds-bg-overlay);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--ds-z-modal);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.delete-modal {
+  max-width: 440px;
+  padding: var(--ds-space-3xl);
+  text-align: center;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-icon {
+  margin-bottom: var(--ds-space-xl);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.modal-title {
+  font-size: var(--ds-text-2xl);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-lg) 0;
+}
+
+.modal-message {
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-secondary);
+  margin: 0 0 var(--ds-space-sm) 0;
+  line-height: 1.6;
+}
+
+.modal-message strong {
+  color: var(--ds-primary);
+}
+
+.modal-warning {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-warning);
+  margin: 0 0 var(--ds-space-xl) 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: var(--ds-space-md);
+  justify-content: center;
 }
 </style>
