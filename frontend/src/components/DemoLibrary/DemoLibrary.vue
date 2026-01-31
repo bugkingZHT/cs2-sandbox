@@ -39,7 +39,8 @@
         class="demo-card"
         :class="{ 
           'is-current': demo.id === currentDemoId,
-          'loading': isLoadingDemo && selectedDemoId === demo.id 
+          'loading': isLoadingDemo && selectedDemoId === demo.id,
+          'is-parsing': demo.isParsing
         }"
         @click="selectDemo(demo)"
       >
@@ -56,30 +57,16 @@
           </div>
         </div>
 
-        <!-- 卡片信息层 -->
+        <!-- 基础信息层 (最底层，始终显示) -->
         <div class="card-overlay">
           <div class="card-header">
             <h4 class="map-name">{{ demo.mapName || '未知地图' }}</h4>
             
-            <div class="header-actions">
-              <!-- 当前选中指示器 -->
-              <div v-if="demo.id === currentDemoId" class="active-indicator">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-              </div>
-
-              <!-- 删除按钮 -->
-              <button 
-                class="delete-btn"
-                @click.stop="confirmDelete(demo)"
-                title="删除此Demo"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-              </button>
+            <!-- 当前选中指示器 - 右上角 -->
+            <div v-if="demo.id === currentDemoId" class="active-indicator">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
             </div>
           </div>
 
@@ -101,7 +88,56 @@
             <div v-if="demo.uploadTime" class="timestamp">
               {{ formatAbsoluteTime(demo.uploadTime) }}
             </div>
+            
+            <!-- 删除按钮 - 右下角 -->
+            <button 
+              class="delete-btn"
+              @click.stop="confirmDelete(demo)"
+              title="删除此Demo"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
           </div>
+        </div>
+
+        <!-- 解析中蒙版 (覆盖在基础信息之上) -->
+        <div v-if="demo.isParsing" class="parsing-overlay-card">
+          <div class="parsing-progress-container">
+            <div class="parsing-progress-bar">
+              <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
+            </div>
+            <div class="parsing-progress-text">{{ demo.parsingProgress || 0 }}%</div>
+          </div>
+          <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Parsing...' }}</div>
+        </div>
+
+        <!-- 失败蒙版 (覆盖在基础信息之上) -->
+        <div v-else-if="demo.hasFailed" class="failed-overlay-card">
+          <div class="failed-content">
+            <div class="failed-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <div class="failed-message">{{ demo.parsingStatus || 'Parsing failed' }}</div>
+          </div>
+          
+          <!-- 删除按钮 - 失败蒙版专用 -->
+          <button 
+            class="delete-btn-failed"
+            @click.stop="confirmDelete(demo)"
+            title="删除此Demo"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -175,7 +211,8 @@ const onFileSelected = (event: Event) => {
 };
 
 const selectDemo = async (demo: ReplayData) => {
-  if (isLoadingDemo.value || !demo.id) return;
+  // Prevent selecting demos that are still parsing or failed
+  if (demo.isParsing || demo.hasFailed || isLoadingDemo.value || !demo.id) return;
   
   isLoadingDemo.value = true;
   selectedDemoId.value = demo.id;
@@ -423,6 +460,17 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   opacity: 0.6;
 }
 
+.demo-card.is-parsing {
+  cursor: not-allowed;
+  opacity: 0.95;
+}
+
+.demo-card.is-parsing:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: none;
+  box-shadow: none;
+}
+
 .demo-card.loading::after {
   content: '';
   position: absolute;
@@ -485,6 +533,7 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   flex-direction: column;
   padding: 16px;
   transition: background 0.3s ease;
+  z-index: 1; /* Base layer */
 }
 
 .demo-card:hover .card-overlay {
@@ -501,12 +550,6 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   align-items: center;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .card-content {
   flex: 1;
   display: flex;
@@ -517,7 +560,8 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 
 .card-footer {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .map-name {
@@ -773,5 +817,138 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 
 .btn-confirm:active {
   transform: translateY(0);
+}
+
+/* Parsing overlay on card */
+.parsing-overlay-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10; /* Above base layer */
+  gap: 12px;
+}
+
+.parsing-progress-container {
+  width: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.parsing-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.parsing-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  animation: gradient-flow 2s ease-in-out infinite;
+}
+
+.parsing-progress-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #60a5fa;
+  font-variant-numeric: tabular-nums;
+}
+
+.parsing-status-tooltip {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.demo-card.is-parsing:hover .parsing-status-tooltip {
+  opacity: 1;
+}
+
+/* Failed overlay on card */
+.failed-overlay-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(20, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10; /* Above base layer */
+  padding: 16px;
+}
+
+.failed-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.failed-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(239, 68, 68, 0.5);
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.failed-message {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  max-width: 80%;
+  line-height: 1.4;
+}
+
+.delete-btn-failed {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.8);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  align-self: flex-end;
+}
+
+.delete-btn-failed:hover {
+  background: #ef4444;
+  transform: scale(1.1);
 }
 </style>

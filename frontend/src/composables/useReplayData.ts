@@ -47,7 +47,7 @@ function createReplayData() {
   const initDB = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
       if (db) return resolve(db);
-      const request = indexedDB.open(DB_NAME, 2); // Increment version for schema change
+      const request = indexedDB.open(DB_NAME, 4); // Upgrade to v4 to handle cleanup
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         db = request.result;
@@ -55,16 +55,27 @@ function createReplayData() {
       };
       request.onupgradeneeded = (e: any) => {
         const database = e.target.result;
+        const oldVersion = e.oldVersion;
+        
+        console.log('[IndexedDB] Upgrading from version', oldVersion, 'to 4');
         
         // Create meta store if not exists
         if (!database.objectStoreNames.contains(META_STORE_NAME)) {
           database.createObjectStore(META_STORE_NAME); // key = UUID
+          console.log('[IndexedDB] Created META_STORE_NAME');
         }
         
         // Create rounds store if not exists
         // Key is manually specified as uuid_roundID, not using keyPath
         if (!database.objectStoreNames.contains(ROUND_STORE_NAME)) {
           database.createObjectStore(ROUND_STORE_NAME); // No keyPath, use explicit keys
+          console.log('[IndexedDB] Created ROUND_STORE_NAME');
+        }
+
+        // Clean up FILE_STORE_NAME if it exists (from v3)
+        if (database.objectStoreNames.contains('replayFiles')) {
+          database.deleteObjectStore('replayFiles');
+          console.log('[IndexedDB] Deleted replayFiles store from v3');
         }
       };
     });
@@ -112,23 +123,32 @@ function createReplayData() {
         console.log('[LoadAllReplays] 加载到的元数据数量:', metas.length);
         
         // Convert meta to ReplayData for list display
-        replayList.value = metas.map(meta => ({
-          uuid: meta.uuid,
-          id: meta.uuid, // For backward compatibility
-          uploaderUid: meta.uploaderUid,
-          uploadTime: meta.uploadTime,
-          mapName: meta.mapName,
-          teamCT: meta.teamCT,
-          teamT: meta.teamT,
-          scoreCT: meta.scoreCT,
-          scoreT: meta.scoreT,
-          totalRounds: meta.totalRounds,
-          totalFrames: meta.totalFrames || 0,
-          totalDurationMs: meta.totalDurationMs || 0,
-          frames: [], // Not loaded yet
-          projectileRenderConfig: meta.projectileRenderConfig,
-          timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
-        }));
+        replayList.value = metas.map(meta => {
+          // Detect failed parsing: originalFilePath exists (backfill never completed)
+          const hasFailed = !!meta.originalFilePath;
+          
+          return {
+            uuid: meta.uuid,
+            id: meta.uuid, // For backward compatibility
+            uploaderUid: meta.uploaderUid,
+            uploadTime: meta.uploadTime,
+            mapName: meta.mapName,
+            teamCT: meta.teamCT,
+            teamT: meta.teamT,
+            scoreCT: meta.scoreCT,
+            scoreT: meta.scoreT,
+            totalRounds: meta.totalRounds,
+            totalFrames: meta.totalFrames || 0,
+            totalDurationMs: meta.totalDurationMs || 0,
+            frames: [], // Not loaded yet
+            projectileRenderConfig: meta.projectileRenderConfig,
+            timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
+            // Parsing state fields
+            isParsing: false,
+            hasFailed: hasFailed,
+            parsingStatus: hasFailed ? `Upload failed: ${meta.originalFilePath}` : undefined,
+          };
+        });
         
         resolve();
       };
@@ -262,6 +282,7 @@ function createReplayData() {
   };
 
   const deleteReplayById = async (uuid: string) => {
+    console.log('[DeleteReplayById] Starting deletion for UUID:', uuid);
     const database = await initDB();
     return new Promise<void>(async (resolve, reject) => {
       const tx = database.transaction([META_STORE_NAME, ROUND_STORE_NAME], 'readwrite');
@@ -270,6 +291,7 @@ function createReplayData() {
       
       // Delete meta
       metaStore.delete(uuid);
+      console.log('[DeleteReplayById] Deleted meta for UUID:', uuid);
       
       // Delete all rounds with this UUID by iterating and checking keys
       const getAllKeysRequest = roundStore.getAllKeys();
@@ -279,17 +301,28 @@ function createReplayData() {
         const keysToDelete = allKeys.filter(key => 
           typeof key === 'string' && key.startsWith(`${uuid}_`)
         );
-        keysToDelete.forEach(key => roundStore.delete(key));
+        console.log('[DeleteReplayById] Found', keysToDelete.length, 'round entries to delete');
+        console.log('[DeleteReplayById] Round keys:', keysToDelete);
+        keysToDelete.forEach(key => {
+          roundStore.delete(key);
+          console.log('[DeleteReplayById] Deleted round key:', key);
+        });
       };
       
       tx.oncomplete = async () => {
+        console.log('[DeleteReplayById] Transaction complete, refreshing list');
         await loadAllReplays();
         if (localStorage.getItem(LATEST_KEY) === uuid) {
           localStorage.removeItem(LATEST_KEY);
+          console.log('[DeleteReplayById] Removed from localStorage LATEST_KEY');
         }
+        console.log('[DeleteReplayById] Deletion complete for UUID:', uuid);
         resolve();
       };
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => {
+        console.error('[DeleteReplayById] Transaction error:', tx.error);
+        reject(tx.error);
+      };
     });
   };
 
@@ -367,6 +400,15 @@ function createReplayData() {
     statusMsg.value = status;
   };
 
+  // Update parsing progress for a specific demo in the list
+  const updateDemoParsingProgress = (uuid: string, progress: number, status: string) => {
+    const demo = replayList.value.find(d => d.uuid === uuid);
+    if (demo) {
+      demo.parsingProgress = Math.min(100, Math.max(0, progress));
+      demo.parsingStatus = status;
+    }
+  };
+
   const parseDemo = async (file: File) => {
     // Check if WASM functions are available
     if (typeof (window as any).initDemoParser !== 'function') {
@@ -377,6 +419,8 @@ function createReplayData() {
     parsing.value = true;
     parsingProgress.value = 0;
     error.value = null;
+
+    let demoUuid: string | null = null;
 
     try {
       const buffer = await file.arrayBuffer();
@@ -389,13 +433,14 @@ function createReplayData() {
       const estimatedTotalTicks = Math.round(fileSizeMB * 360.8);
       console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks}`);
 
+      // ============ SYNCHRONOUS PHASE: Meta extraction ============
       // Step 1: Initialize parser
       updateParsingProgress(5, 'Initializing parser...');
       const initError = (window as any).initDemoParser(bytes);
       if (initError) throw new Error(initError);
 
       // Step 2: Extract metadata (header only, no frame traversal)
-      updateParsingProgress(10, 'Extracting metadata...');
+      updateParsingProgress(50, 'Extracting metadata...');
       const metaJson = await new Promise<string>((resolve, reject) => {
         (window as any).extractDemoMetadata((res: string, err: string) => {
           if (err) reject(new Error(err));
@@ -403,78 +448,118 @@ function createReplayData() {
         });
       });
       const meta: ReplayMeta = JSON.parse(metaJson);
+      demoUuid = meta.uuid;
+
+      // Save original file path for failure detection
+      meta.originalFilePath = file.name;
 
       // Step 3: Save incomplete meta to DB immediately
-      updateParsingProgress(15, 'Saving metadata...');
+      updateParsingProgress(100, 'Metadata saved!');
       await saveMetaToDB(meta);
       await loadAllReplays(); // Refresh replay list
 
-      // Step 4: Parse rounds incrementally with tick-based progress estimation
-      const rounds: ReplayRound[] = [];
-      let roundNum = 1;
-
-      while (true) {
-        const roundJson = await new Promise<string | null>((resolve, reject) => {
-          (window as any).parseNextRound(
-            (res: string | null, err: string) => {
-              if (err) reject(new Error(err));
-              else resolve(res);
-            },
-            (parsedFramesStr: string) => {
-              // Status callback receives total parsed frames as a string
-              // But we use estimated ticks for progress calculation
-              const parsedFrames = parseInt(parsedFramesStr, 10);
-              if (!isNaN(parsedFrames) && estimatedTotalTicks > 0) {
-                // Assume frame count approximates tick count for progress
-                // Calculate progress: 15% (initial setup) + 80% (parsing) = 95% total
-                const parsingProgress = Math.min(80, (parsedFrames / estimatedTotalTicks) * 80);
-                const progress = 15 + parsingProgress;
-                updateParsingProgress(
-                  Math.floor(Math.min(95, progress)), 
-                  `Parsing (${parsedFrames.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`
-                );
-              }
-            }
-          );
-        });
-
-        if (!roundJson) break; // EOF reached
-
-        const round: ReplayRound = JSON.parse(roundJson);
-        rounds.push(round);
-
-        // Save round to DB immediately after parsing
-        await saveRoundToDB(round);
-
-        roundNum++;
+      // Mark this demo as parsing in the list
+      const newDemo = replayList.value.find(d => d.uuid === meta.uuid);
+      if (newDemo) {
+        newDemo.isParsing = true;
+        newDemo.hasFailed = false; // Clear any previous failure state
+        newDemo.parsingProgress = 0;
+        newDemo.parsingStatus = 'Starting round parsing...';
       }
 
-      // Step 5: Backfill metadata with final round count and scores
-      updateParsingProgress(95, 'Finalizing metadata...');
-      const updatedMetaJson = await new Promise<string>((resolve, reject) => {
-        (window as any).backfillDemoMeta(JSON.stringify(meta), (res: string, err: string) => {
-          if (err) reject(new Error(err));
-          else resolve(res);
-        });
-      });
-      const finalMeta: ReplayMeta = JSON.parse(updatedMetaJson);
+      // Close the global parsing modal - synchronous phase complete
+      parsing.value = false;
+      parsingProgress.value = 0;
 
-      // Step 6: Update meta in DB with final values
-      await saveMetaToDB(finalMeta);
-      await loadAllReplays(); // Refresh replay list with backfilled meta
+      // ============ ASYNCHRONOUS PHASE: Round parsing + Backfill ============
+      (async () => {
+        try {
+          const rounds: ReplayRound[] = [];
+          let roundNum = 1;
 
-      // Step 7: Close parser and cleanup
-      (window as any).closeDemoParser();
+          while (true) {
+            const roundJson = await new Promise<string | null>((resolve, reject) => {
+              (window as any).parseNextRound(
+                (res: string | null, err: string) => {
+                  if (err) reject(new Error(err));
+                  else resolve(res);
+                },
+                (parsedFramesStr: string) => {
+                  // Status callback receives total parsed frames as a string
+                  const parsedFrames = parseInt(parsedFramesStr, 10);
+                  if (!isNaN(parsedFrames) && estimatedTotalTicks > 0) {
+                    // Calculate progress: 0-90% for parsing
+                    const parsingProgress = Math.min(90, (parsedFrames / estimatedTotalTicks) * 90);
+                    const status = `Parsing rounds (${parsedFrames.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
+                    updateDemoParsingProgress(meta.uuid, Math.floor(parsingProgress), status);
+                  }
+                }
+              );
+            });
 
-      // Step 8: Load complete replay for display
-      updateParsingProgress(100, 'Parsing complete!');
-      await loadReplayById(finalMeta.uuid);
+            if (!roundJson) break; // EOF reached
 
-      statusMsg.value = `解析完成：${file.name}`;
+            const round: ReplayRound = JSON.parse(roundJson);
+            rounds.push(round);
+
+            // Save round to DB immediately after parsing
+            await saveRoundToDB(round);
+
+            roundNum++;
+          }
+
+          // Step 5: Backfill metadata with final round count and scores
+          updateDemoParsingProgress(meta.uuid, 95, 'Finalizing metadata...');
+          const updatedMetaJson = await new Promise<string>((resolve, reject) => {
+            (window as any).backfillDemoMeta(JSON.stringify(meta), (res: string, err: string) => {
+              if (err) reject(new Error(err));
+              else resolve(res);
+            });
+          });
+          const finalMeta: ReplayMeta = JSON.parse(updatedMetaJson);
+
+          // Step 6: Update meta in DB with final values and clear originalFilePath
+          delete finalMeta.originalFilePath; // Remove temporary field after successful backfill
+          await saveMetaToDB(finalMeta);
+          await loadAllReplays(); // Refresh replay list with backfilled meta
+
+          // Step 7: Close parser and cleanup
+          (window as any).closeDemoParser();
+
+          // Step 8: Mark parsing complete
+          updateDemoParsingProgress(meta.uuid, 100, 'Parsing complete!');
+          const completedDemo = replayList.value.find(d => d.uuid === meta.uuid);
+          if (completedDemo) {
+            completedDemo.isParsing = false;
+            completedDemo.parsingProgress = 100;
+            completedDemo.parsingStatus = 'Complete';
+          }
+
+          console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
+        } catch (e: any) {
+          console.error('[ParseDemo] Background parsing failed:', e);
+          const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
+          if (failedDemo) {
+            failedDemo.isParsing = false;
+            failedDemo.hasFailed = true;
+            failedDemo.parsingStatus = `Error: ${e.message || String(e)}`;
+          }
+          (window as any).closeDemoParser(); // Cleanup on error
+        }
+      })();
+
+      statusMsg.value = `后台解析中: ${file.name}`;
     } catch (e: any) {
       error.value = `解析失败: ${e.message || String(e)}`;
+      if (demoUuid) {
+        const failedDemo = replayList.value.find(d => d.uuid === demoUuid);
+        if (failedDemo) {
+          failedDemo.isParsing = false;
+          failedDemo.hasFailed = true;
+          failedDemo.parsingStatus = `Error: ${e.message || String(e)}`;
+        }
+      }
       (window as any).closeDemoParser(); // Cleanup on error
-    } finally {
       parsing.value = false;
     }
   };

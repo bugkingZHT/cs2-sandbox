@@ -54,14 +54,11 @@
     <!-- 解析进度弹窗 -->
     <div v-if="parsing" class="parsing-overlay">
       <div class="parsing-modal">
-        <h3>正在解析 Demo 文件</h3>
+        <h3>正在提取 Demo 元数据</h3>
         
-        <!-- 进度条 -->
-        <div class="progress-container">
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: `${parsingProgress}%` }"></div>
-          </div>
-          <div class="progress-text">{{ parsingProgress }}%</div>
+        <!-- 转圈动画 -->
+        <div class="spinner-container">
+          <div class="spinner"></div>
         </div>
         
         <!-- 状态文字 -->
@@ -85,7 +82,7 @@ const {
   loading,
   parseDemo,
   loadReplayById,
-  deleteReplayById
+  deleteReplayById,
 } = useReplayData();
 
 const currentPage = ref<'library' | 'player'>('library');
@@ -102,19 +99,22 @@ const onSelectDemo = async (demoId: string) => {
   currentDemoId.value = demoId;
   await loadReplayById(demoId);
   
-  // Auto-switch to player page
+  // Switch to player page
   currentPage.value = 'player';
 };
 
 const onDeleteDemo = async (demoId: string) => {
+  console.log('[App] Deleting demo:', demoId);
   await deleteReplayById(demoId);
   if (currentDemoId.value === demoId) {
     currentDemoId.value = null;
   }
+  console.log('[App] Demo deleted successfully:', demoId);
 };
 
 const onUploadDemo = async (file: File) => {
   await parseDemo(file);
+  // No auto-navigation after upload, user must click card to view
 };
 
 const onExitReplay = () => {
@@ -257,79 +257,24 @@ const onExitReplay = () => {
   font-weight: 600;
 }
 
-.progress-container {
-  margin: 24px 0;
+.spinner-container {
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 16px;
+  margin: 32px 0;
 }
 
-.progress-bar {
-  flex: 1;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  overflow: hidden;
-  position: relative;
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(59, 130, 246, 0.2);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, 
-    #2563eb 0%, 
-    #3b82f6 50%,
-    #60a5fa 100%
-  );
-  background-size: 200% 100%;
-  border-radius: 6px;
-  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-  animation: gradient-flow 3s ease-in-out infinite;
-}
-
-@keyframes gradient-flow {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-.progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.3) 50%,
-    transparent 100%
-  );
-  animation: shimmer 2s infinite;
-  transform: translateX(-100%);
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
-}
-
-.progress-text {
-  min-width: 50px;
-  text-align: right;
-  color: #60a5fa;
-  font-weight: 700;
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .parsing-status {
