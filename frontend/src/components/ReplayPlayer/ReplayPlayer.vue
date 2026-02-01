@@ -711,9 +711,8 @@ onBeforeUnmount(() => {
 }
 
 .player-card-mini {
-  flex: 1;
-  min-width: 130px;
-  max-width: 180px;
+  flex: 0 0 140px;
+  width: 140px;
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-sm);
@@ -742,7 +741,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: 100px;
+  max-width: 90px;
 }
 
 .p-name {
