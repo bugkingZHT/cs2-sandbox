@@ -86,7 +86,24 @@
         <div class="status-meta">
           <div class="speed-tag">{{ playbackSpeed }}x</div>
           <div class="time-display">
-            <svg class="icon-stopwatch" width="14" height="14" viewBox="0 0 24 24" fill="none" :stroke="roundTimeColor" stroke-width="2">
+            <!-- Show C4 icon when bomb is planted -->
+            <img 
+              v-if="currentRoundTime.phase === 'planted'" 
+              src="/utility/c4.svg" 
+              class="icon-c4" 
+              alt="C4"
+            />
+            <!-- Show clock icon for other phases -->
+            <svg 
+              v-else
+              class="icon-stopwatch" 
+              width="14" 
+              height="14" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              :stroke="roundTimeColor" 
+              stroke-width="2"
+            >
               <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
             </svg>
             <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
@@ -136,6 +153,21 @@
               </div>
             </div>
             
+            <!-- 回合结束标记 -->
+            <div 
+              v-else-if="bm.event === 'roundend' && bm.result"
+              class="round-end-marker"
+              :class="getRoundEndClass(bm.result)"
+              :style="{ left: `${bm.offset}%` }"
+              :title="getRoundEndTitle(bm.result)"
+            >
+              <div class="round-end-line"></div>
+              <div class="round-end-icon-wrapper">
+                <img :src="getRoundEndIcon(bm.result)" class="round-end-icon" :alt="bm.result" />
+              </div>
+            </div>
+            
+            <!-- 其他事件 (爆炸或无结果) -->
             <div 
               v-else
               class="bomb-event-mark" 
@@ -148,9 +180,6 @@
             ></div>
           </template>
         </div>
-
-        <!-- 当前位置指示器 -->
-        <div class="playhead-line" :style="{ left: `${(roundRelativeTimeMs / roundDurationMs) * 100}%` }"></div>
       </div>
     </div>
   </div>
@@ -720,7 +749,7 @@ const killMarkers = computed(() => {
 // 计算炸弹事件标记（安放和爆炸）
 const bombEventMarkers = computed(() => {
   if (!props.roundFrames || props.roundDurationMs === 0) return [];
-  const markers: { offset: number; event: 'planted' | 'exploded' | 'roundend' }[] = [];
+  const markers: { offset: number; event: 'planted' | 'exploded' | 'roundend'; result?: string }[] = [];
   
   let bombPlantedFound = false;
   let bombExplodedFound = false;
@@ -747,7 +776,10 @@ const bombEventMarkers = computed(() => {
     // 检测回合结束时刻（roundTime.phase 变为 'end'）
     if (!roundEndFound && f.roundTime && f.roundTime.phase === 'end') {
       roundEndFound = true;
-      markers.push({ offset, event: 'roundend' });
+      // Get round result from roundResults
+      const roundNumber = currentRound.value;
+      const roundResult = getRoundResult(roundNumber);
+      markers.push({ offset, event: 'roundend', result: roundResult || undefined });
     }
   });
   
@@ -815,6 +847,38 @@ const getRoundResultIcon = (roundNumber: number): string | null => {
   const iconPath = iconMap[result] || null;
   console.log(`[GetRoundResultIcon] Round ${roundNumber}: ${result} -> ${iconPath}`);
   return iconPath;
+};
+
+// Get icon path for round end marker based on result
+const getRoundEndIcon = (result: string): string => {
+  const iconMap: Record<string, string> = {
+    'ct_win': '/icons/ct_win.svg',
+    't_win': '/icons/t_win.svg',
+    'bomb_defused': '/icons/bomb_defused.svg',
+    'bomb_exploded': '/icons/bomb_exploded.svg'
+  };
+  return iconMap[result] || '/icons/ct_win.svg';
+};
+
+// Get CSS class for round end marker based on result
+const getRoundEndClass = (result: string): string => {
+  if (result === 'ct_win' || result === 'bomb_defused') {
+    return 'ct-win';
+  } else if (result === 't_win' || result === 'bomb_exploded') {
+    return 't-win';
+  }
+  return '';
+};
+
+// Get title for round end marker
+const getRoundEndTitle = (result: string): string => {
+  const titleMap: Record<string, string> = {
+    'ct_win': 'CT Win',
+    't_win': 'T Win',
+    'bomb_defused': 'Bomb Defused',
+    'bomb_exploded': 'Bomb Exploded'
+  };
+  return titleMap[result] || 'Round End';
 };
 
 // Determine if icon should be positioned first (above number) based on round and result
@@ -1181,6 +1245,13 @@ const formatMs = (ms: number) => {
   margin-top: 2px;
 }
 
+.icon-c4 {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(47%) sepia(82%) saturate(3091%) hue-rotate(335deg) brightness(101%) contrast(98%);
+}
+
 .time-font {
   color: var(--ds-text-primary);
   font-family: var(--ds-font-mono);
@@ -1319,9 +1390,9 @@ const formatMs = (ms: number) => {
   height: 100%;
   left: 0;
   width: 2px;
-  background-color: var(--ds-team-t);
+  background-color: rgba(255, 255, 255, 0.8);
   transform: translateX(-50%);
-  box-shadow: 0 0 4px rgba(249, 115, 22, 0.5);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
 }
 
 .bomb-icon-wrapper {
@@ -1373,6 +1444,61 @@ const formatMs = (ms: number) => {
   }
 }
 
+/* === Round End Markers === */
+.round-end-marker {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 6;
+  pointer-events: auto;
+  cursor: help;
+}
+
+.round-end-line {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  left: 0;
+  width: 2px;
+  background-color: rgba(255, 255, 255, 0.8);
+  transform: translateX(-50%);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+}
+
+.round-end-icon-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid white;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
+
+.round-end-marker.ct-win .round-end-icon-wrapper {
+  background: var(--ds-team-ct);
+}
+
+.round-end-marker.t-win .round-end-icon-wrapper {
+  background: var(--ds-team-t);
+}
+
+.round-end-icon {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 1px rgba(0,0,0,0.5));
+}
+
 .mark-icon {
   position: absolute;
   bottom: 100%;
@@ -1388,14 +1514,4 @@ const formatMs = (ms: number) => {
   filter: brightness(0) invert(1);
 }
 
-/* === Playhead === */
-.playhead-line {
-  position: absolute;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background: var(--ds-text-primary);
-  z-index: 5;
-  box-shadow: none;
-}
 </style>

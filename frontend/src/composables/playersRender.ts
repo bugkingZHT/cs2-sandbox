@@ -1,6 +1,6 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Frame, PlayerState } from '@/types/replay';
-import { isUtilityItem } from '@/config/equipment';
+import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
 
 /**
  * Player Render Module
@@ -24,6 +24,7 @@ export const PLAYER_STYLE = {
 export interface PlayerSprite {
   graphics: Graphics;
   label: Text;
+  weaponIcon: Sprite | null;
   targetX: number;
   targetY: number;
   currentX: number;
@@ -39,6 +40,9 @@ export const HARD_CUT_THRESHOLD = 5; // If frame jump > this, use hard cut inste
 
 // Player sprite map for tracking all players
 const playerSpriteMap = new Map<number, PlayerSprite>();
+
+// Texture cache for weapon icons
+const weaponTextureCache: Record<string, Texture> = {};
 
 // Animation state
 let animationFrameId: number | null = null;
@@ -145,6 +149,7 @@ const createPlayerSprite = (
   const playerSprite: PlayerSprite = {
     graphics: g,
     label: label,
+    weaponIcon: null,
     targetX: mapPos.x,
     targetY: mapPos.y,
     currentX: mapPos.x,
@@ -266,6 +271,65 @@ const drawPlayerGraphics = (
   playerSprite.label.y = playerSprite.currentY + radius + 2;
 };
 
+// Update weapon icon for player (grenades and C4 only)
+const updateWeaponIcon = async (
+  playerSprite: PlayerSprite,
+  player: PlayerState,
+  ctx: RenderContext,
+) => {
+  const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
+  
+  // Only show icons for grenades (501-506) and C4 (404)
+  const shouldShowIcon = player.alive && ((activeWeaponId >= 501 && activeWeaponId <= 506) || activeWeaponId === 404);
+  
+  if (!shouldShowIcon) {
+    // Remove existing icon if present
+    if (playerSprite.weaponIcon) {
+      ctx.playerLayer.removeChild(playerSprite.weaponIcon);
+      playerSprite.weaponIcon.destroy();
+      playerSprite.weaponIcon = null;
+    }
+    return;
+  }
+  
+  // Get weapon file name
+  const fileName = EQUIPMENT_ID_MAP[activeWeaponId];
+  if (!fileName) return;
+  
+  const assetPath = `/utility/${fileName}.svg`;
+  
+  try {
+    // Load texture from cache or fetch
+    let texture = weaponTextureCache[assetPath];
+    if (!texture) {
+      texture = await Assets.load(assetPath);
+      weaponTextureCache[assetPath] = texture;
+    }
+    
+    // Create or update sprite
+    if (!playerSprite.weaponIcon) {
+      playerSprite.weaponIcon = new Sprite(texture);
+      playerSprite.weaponIcon.anchor.set(0.5);
+      playerSprite.weaponIcon.width = 14;
+      playerSprite.weaponIcon.height = 14;
+      ctx.playerLayer.addChild(playerSprite.weaponIcon);
+    } else {
+      playerSprite.weaponIcon.texture = texture;
+    }
+    
+    // Position icon at player center
+    playerSprite.weaponIcon.x = playerSprite.currentX;
+    playerSprite.weaponIcon.y = playerSprite.currentY;
+    
+    // Display icon in white color (not semi-transparent)
+    playerSprite.weaponIcon.tint = 0xffffff;
+    playerSprite.weaponIcon.alpha = 1.0;
+    
+  } catch (error) {
+    console.warn(`[Player] Failed to load weapon icon: ${assetPath}`, error);
+  }
+};
+
 // Main draw function for players
 export const drawPlayersForFrame = (options: {
   frame: Frame | undefined;
@@ -343,6 +407,9 @@ export const drawPlayersForFrame = (options: {
 
       // Redraw player graphics
       drawPlayerGraphics(playerSprite, player);
+      
+      // Update weapon icon (grenades and C4) - non-blocking
+      updateWeaponIcon(playerSprite, player, ctx);
     }
   }
 
@@ -352,6 +419,10 @@ export const drawPlayersForFrame = (options: {
     if (!currentPlayers.has(playerId)) {
       playerLayer.removeChild(sprite.graphics);
       playerLayer.removeChild(sprite.label);
+      if (sprite.weaponIcon) {
+        playerLayer.removeChild(sprite.weaponIcon);
+        sprite.weaponIcon.destroy();
+      }
       sprite.graphics.destroy();
       sprite.label.destroy();
       toRemove.push(playerId);

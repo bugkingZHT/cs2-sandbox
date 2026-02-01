@@ -1,130 +1,152 @@
 <template>
   <div class="viewer-layout">
+    <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
-      <header class="map-header">
-        <div class="top-players-container">
-          <!-- CT 阵营 -->
-          <div class="team-horizontal-group ct">
-            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-mini" :class="{ 'is-dead': !p.alive }">
-              <div class="player-main-info">
-                <div class="p-identity">
-                  <span class="p-name">{{ p.name }}</span>
-                  <span class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</span>
+      <!-- 空状态提示 -->
+      <div v-if="!replay || !frames || frames.length === 0" class="empty-state">
+        <div class="empty-state-content">
+          <div class="empty-icon">·</div>
+          <h3>暂无回放数据</h3>
+          <p>请从 Demo 库选择文件</p>
+        </div>
+      </div>
+      
+      <!-- 地图画布 -->
+      <div v-else class="map-canvas-wrapper">
+        <MapCanvas 
+          :frames="frames" 
+          :bounds="bounds" 
+          :current-frame-index="currentFrameIndex"
+          :is-playing="isPlaying"
+          :is-dragging="isDraggingTimeline"
+          :map-name="replay?.mapName"
+          :projectile-configs="replay?.projectileRenderConfig"
+        />
+
+        <!-- 击杀回传 (Kill Feed) -->
+        <div class="kill-feed-container">
+          <TransitionGroup name="list">
+            <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
+              <div class="kill-card">
+                <span class="k-killer" :class="getTeamClass(k.killerId)">{{ playerNameMap[k.killerId] || 'Unknown' }}</span>
+                <span v-if="k.assistantId" class="k-assist" :class="getTeamClass(k.assistantId)">
+                  <span class="plus">+</span>
+                  {{ playerNameMap[k.assistantId] }}
+                </span>
+                <div class="k-weapon-box">
+                  <img :src="getWeaponIconPath(k.weaponId)" class="k-weapon-icon" @error="onWeaponIconError" />
                 </div>
+                <span class="k-victim" :class="getTeamClass(k.victimId)">{{ playerNameMap[k.victimId] || 'Unknown' }}</span>
+              </div>
+            </div>
+          </TransitionGroup>
+        </div>
+
+        <!-- Player Cards Panel (Top Left) -->
+        <div class="players-panel top-left">
+          <!-- First Half (1-12): T Team on top, Second Half (13+): CT Team on top -->
+          
+          <!-- First Team (T for rounds 1-12, CT for rounds 13+) -->
+          <div v-if="currentRound <= 12" class="team-cards-container t">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
+              <div class="player-info-row">
+                <span class="p-name">{{ p.name }}</span>
                 <span class="p-money">${{ p.money }}</span>
               </div>
-              <div class="p-status-row">
-                <div class="p-hp-bar">
-                  <div class="hp-fill ct" :style="{ width: hpPercentage(p.health) + '%' }"></div>
-                  <span class="hp-val">{{ Math.round(p.health || 0) }}</span>
-                </div>
-                <div class="p-equipment-icons">
-                  <img 
-                    v-if="p.activeWeapon && !isGrenadeOrBomb(p.activeWeapon)"
-                    :src="getWeaponIconPath(p.activeWeapon)" 
-                    class="weapon-mini"
-                    @error="onWeaponIconError"
-                  />
-                  <div class="p-utility-list">
-                    <img 
-                      v-for="(item, idx) in getPlayerUtility(p)" 
-                      :key="idx"
-                      :src="getWeaponIconPath(item)" 
-                      class="utility-mini"
-                      :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
-                      @error="onWeaponIconError"
-                    />
-                  </div>
-                </div>
+              <div class="p-stats-row">
+                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
+                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              </div>
+              <!-- All Equipment -->
+              <div class="p-all-equipment">
+                <img 
+                  v-for="(item, idx) in getAllEquipment(p)" 
+                  :key="idx"
+                  :src="getWeaponIconPath(item)" 
+                  class="equipment-icon"
+                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :title="getEquipmentName(item)"
+                  @error="onWeaponIconError"
+                />
+              </div>
+            </div>
+          </div>
+          <div v-else class="team-cards-container ct">
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
+              <div class="player-info-row">
+                <span class="p-name">{{ p.name }}</span>
+                <span class="p-money">${{ p.money }}</span>
+              </div>
+              <div class="p-stats-row">
+                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
+                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              </div>
+              <!-- All Equipment -->
+              <div class="p-all-equipment">
+                <img 
+                  v-for="(item, idx) in getAllEquipment(p)" 
+                  :key="idx"
+                  :src="getWeaponIconPath(item)" 
+                  class="equipment-icon"
+                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :title="getEquipmentName(item)"
+                  @error="onWeaponIconError"
+                />
               </div>
             </div>
           </div>
 
-          <!-- 分数/分界 -->
-          <div class="match-score-pill">
-            <span class="score-val ct">{{ replay?.scoreCT || 0 }}</span>
-            <span class="score-divider">:</span>
-            <span class="score-val t">{{ replay?.scoreT || 0 }}</span>
-          </div>
+          <!-- Team Divider -->
+          <div class="team-divider"></div>
 
-          <!-- T 阵营 -->
-          <div class="team-horizontal-group t">
-            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-mini" :class="{ 'is-dead': !p.alive }">
-              <div class="player-main-info">
-                <div class="p-identity">
-                  <span class="p-name">{{ p.name }}</span>
-                  <span class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</span>
-                </div>
+          <!-- Second Team (CT for rounds 1-12, T for rounds 13+) -->
+          <div v-if="currentRound <= 12" class="team-cards-container ct">
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
+              <div class="player-info-row">
+                <span class="p-name">{{ p.name }}</span>
                 <span class="p-money">${{ p.money }}</span>
               </div>
-              <div class="p-status-row">
-                <div class="p-hp-bar">
-                  <div class="hp-fill t" :style="{ width: hpPercentage(p.health) + '%' }"></div>
-                  <span class="hp-val">{{ Math.round(p.health || 0) }}</span>
-                </div>
-                <div class="p-equipment-icons">
-                  <img 
-                    v-if="p.activeWeapon && !isGrenadeOrBomb(p.activeWeapon)"
-                    :src="getWeaponIconPath(p.activeWeapon)" 
-                    class="weapon-mini"
-                    @error="onWeaponIconError"
-                  />
-                  <div class="p-utility-list">
-                    <img 
-                      v-for="(item, idx) in getPlayerUtility(p)" 
-                      :key="idx"
-                      :src="getWeaponIconPath(item)" 
-                      class="utility-mini"
-                      :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
-                      @error="onWeaponIconError"
-                    />
-                  </div>
-                </div>
+              <div class="p-stats-row">
+                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
+                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              </div>
+              <!-- All Equipment -->
+              <div class="p-all-equipment">
+                <img 
+                  v-for="(item, idx) in getAllEquipment(p)" 
+                  :key="idx"
+                  :src="getWeaponIconPath(item)" 
+                  class="equipment-icon"
+                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :title="getEquipmentName(item)"
+                  @error="onWeaponIconError"
+                />
               </div>
             </div>
           </div>
-        </div>
-      </header>
-
-      <div class="map-main">
-        <!-- 空状态提示 -->
-        <div v-if="!replay || !frames || frames.length === 0" class="empty-state">
-          <div class="empty-state-content">
-            <div class="empty-icon">·</div>
-            <h3>暂无回放数据</h3>
-            <p>请从 Demo 库选择文件</p>
-          </div>
-        </div>
-        
-        <!-- 地图画布 -->
-        <div v-else class="map-canvas-wrapper">
-          <MapCanvas 
-            :frames="frames" 
-            :bounds="bounds" 
-            :current-frame-index="currentFrameIndex"
-            :is-playing="isPlaying"
-            :is-dragging="isDraggingTimeline"
-            :map-name="replay?.mapName"
-            :projectile-configs="replay?.projectileRenderConfig"
-          />
-
-          <!-- 击杀回传 (Kill Feed) -->
-          <div class="kill-feed-container">
-            <TransitionGroup name="list">
-              <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
-                <div class="kill-card">
-                  <span class="k-killer" :class="getTeamClass(k.killerId)">{{ playerNameMap[k.killerId] || 'Unknown' }}</span>
-                  <span v-if="k.assistantId" class="k-assist">
-                    <span class="plus">+</span>
-                    {{ playerNameMap[k.assistantId] }}
-                  </span>
-                  <div class="k-weapon-box">
-                    <img :src="getWeaponIconPath(k.weaponId)" class="k-weapon-icon" @error="onWeaponIconError" />
-                  </div>
-                  <span class="k-victim" :class="getTeamClass(k.victimId)">{{ playerNameMap[k.victimId] || 'Unknown' }}</span>
-                </div>
+          <div v-else class="team-cards-container t">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
+              <div class="player-info-row">
+                <span class="p-name">{{ p.name }}</span>
+                <span class="p-money">${{ p.money }}</span>
               </div>
-            </TransitionGroup>
+              <div class="p-stats-row">
+                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
+                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              </div>
+              <!-- All Equipment -->
+              <div class="p-all-equipment">
+                <img 
+                  v-for="(item, idx) in getAllEquipment(p)" 
+                  :key="idx"
+                  :src="getWeaponIconPath(item)" 
+                  class="equipment-icon"
+                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :title="getEquipmentName(item)"
+                  @error="onWeaponIconError"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -180,6 +202,16 @@ const playbackSpeed = ref(1);
 const isDraggingTimeline = ref(false);
 const wasPlayingBeforeDrag = ref(false);
 
+// Pre-built kill list for current round (optimized for display)
+interface KillEventWithFrame {
+  frameIndex: number;
+  victimId: number;
+  killerId: number;
+  assistantId: number;
+  weaponId: string;
+}
+const roundKillList = ref<KillEventWithFrame[]>([]);
+
 let lastTimestamp = 0;
 let rafId: number | null = null;
 
@@ -213,7 +245,35 @@ const checkUrlFrameId = () => {
         currentPlaybackTimeMs.value = frames.value[targetFrame].timeMs;
       }
     }
-  }
+  };
+};
+
+// Build kill list from frames (called when round data is loaded)
+const buildKillList = (framesArray: Frame[]) => {
+  const killList: KillEventWithFrame[] = [];
+  const seenVictims = new Set<number>();
+  
+  framesArray.forEach((frame, frameIndex) => {
+    if (frame.killEvents) {
+      for (const victimIdStr in frame.killEvents) {
+        const victimId = parseInt(victimIdStr);
+        if (!seenVictims.has(victimId)) {
+          seenVictims.add(victimId);
+          const killEvent = frame.killEvents[victimId];
+          killList.push({
+            frameIndex,
+            victimId,
+            killerId: killEvent.killerId,
+            assistantId: killEvent.assistantId,
+            weaponId: killEvent.weaponId
+          });
+        }
+      }
+    }
+  });
+  
+  roundKillList.value = killList;
+  console.log(`[ReplayPlayer] Built kill list with ${killList.length} events`);
 };
 
 // 监听 replay 和 frames 的变化
@@ -233,6 +293,9 @@ watch(
       isPlaying.value = false;
       cancelAnimation();
       lastTimestamp = 0;
+      
+      // Build kill list for the round
+      buildKillList(data.frames);
       
       // Check URL for frameId after data is loaded
       checkUrlFrameId();
@@ -270,27 +333,77 @@ const currentFrame = computed<Frame | null>(() => {
 });
 
 const teamCTPlayers = computed<PlayerState[]>(() => {
-  if (!currentFrame.value?.players) return [];
+  const frame = currentFrame.value;
+  if (!frame?.players) return [];
   
   // Use pre-sorted player IDs from engine
-  const sortedPlayerIds = currentFrame.value.sortedPlayers || Object.keys(currentFrame.value.players).map(Number);
+  const sortedPlayerIds = frame.sortedPlayers || Object.keys(frame.players).map(Number);
   
   // Filter and return CT players in sorted order
+  // Create new objects with explicit property spreading to ensure reactivity
   return sortedPlayerIds
-    .map(id => currentFrame.value!.players[id])
-    .filter(p => p && p.team === 3);
+    .map(id => frame.players[id])
+    .filter(p => p && p.team === 3)
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      team: p.team,
+      x: p.x,
+      y: p.y,
+      alive: p.alive,
+      yaw: p.yaw,
+      health: p.health,
+      armor: p.armor,
+      money: p.money,
+      kills: p.kills,
+      assists: p.assists,
+      deaths: p.deaths,
+      inventory: p.inventory,
+      activeWeapon: p.activeWeapon,
+      hasHelmet: p.hasHelmet,
+      hasDefuseKit: p.hasDefuseKit,
+      isScoped: p.isScoped,
+      flashDuration: p.flashDuration,
+      isBlinded: p.isBlinded,
+      buttons: p.buttons
+    }));
 });
 
 const teamTPlayers = computed<PlayerState[]>(() => {
-  if (!currentFrame.value?.players) return [];
+  const frame = currentFrame.value;
+  if (!frame?.players) return [];
   
   // Use pre-sorted player IDs from engine
-  const sortedPlayerIds = currentFrame.value.sortedPlayers || Object.keys(currentFrame.value.players).map(Number);
+  const sortedPlayerIds = frame.sortedPlayers || Object.keys(frame.players).map(Number);
   
   // Filter and return T players in sorted order
+  // Create new objects with explicit property spreading to ensure reactivity
   return sortedPlayerIds
-    .map(id => currentFrame.value!.players[id])
-    .filter(p => p && p.team === 2);
+    .map(id => frame.players[id])
+    .filter(p => p && p.team === 2)
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      team: p.team,
+      x: p.x,
+      y: p.y,
+      alive: p.alive,
+      yaw: p.yaw,
+      health: p.health,
+      armor: p.armor,
+      money: p.money,
+      kills: p.kills,
+      assists: p.assists,
+      deaths: p.deaths,
+      inventory: p.inventory,
+      activeWeapon: p.activeWeapon,
+      hasHelmet: p.hasHelmet,
+      hasDefuseKit: p.hasDefuseKit,
+      isScoped: p.isScoped,
+      flashDuration: p.flashDuration,
+      isBlinded: p.isBlinded,
+      buttons: p.buttons
+    }));
 });
 
 // 计算所有玩家 ID 到名称的映射，用于击杀信息显示
@@ -319,32 +432,21 @@ const currentRoundFrames = computed(() => {
   return safeFrames.value.filter(f => f.round === currentRound.value);
 });
 
-// 计算当前回合按时间顺序排列的击杀列表
+// 计算当前回合按时间顺序排列的击杀列表（最多显示 100 个，先进先出）
+// 优化版本：使用预构建的 roundKillList，只需比较 frameIndex
 const currentRoundKills = computed(() => {
-  if (!currentFrame.value?.killEvents) return [];
+  const currentIdx = currentFrameIndex.value;
   
-  const killsInOrder: any[] = [];
-  const seenVictims = new Set<number>();
-  const currentEvents = currentFrame.value.killEvents;
+  // 过滤出 frameIndex <= currentFrameIndex 的击杀事件
+  const visibleKills = roundKillList.value.filter(kill => kill.frameIndex <= currentIdx);
   
-  // 遍历当前回合的所有帧，直到当前帧，按出现顺序记录击杀
-  for (const f of currentRoundFrames.value) {
-    if (f.timeMs > (currentFrame.value?.timeMs || 0)) break;
-    if (f.killEvents) {
-      for (const victimIdStr in f.killEvents) {
-        const victimId = parseInt(victimIdStr);
-        // 只有当前帧中存在的击杀才显示
-        if (!seenVictims.has(victimId) && currentEvents[victimId]) {
-          seenVictims.add(victimId);
-          killsInOrder.push({
-            victimId,
-            ...f.killEvents[victimId]
-          });
-        }
-      }
-    }
+  // 限制最多显示 100 个击杀事件（FIFO 队列：保留最新的 100 个）
+  const MAX_KILL_FEED_SIZE = 100;
+  if (visibleKills.length > MAX_KILL_FEED_SIZE) {
+    return visibleKills.slice(-MAX_KILL_FEED_SIZE);
   }
-  return killsInOrder;
+  
+  return visibleKills;
 });
 
 // 获取玩家阵营对应的 CSS 类
@@ -494,6 +596,38 @@ const hpPercentage = (health: number | null | undefined) => {
   return Math.max(0, Math.min(100, health));
 };
 
+// Get card background style with health-based progress bar
+const getCardBackgroundStyle = (player: PlayerState, team: 'ct' | 't') => {
+  if (!player.alive) return {}; // Dead players don't show progress
+  
+  const healthPercent = hpPercentage(player.health);
+  
+  // Team colors - more subtle, matching DemoLib style
+  const colors = {
+    ct: {
+      start: 'rgba(59, 130, 246, 0.15)',   // Subtle blue
+      end: 'rgba(59, 130, 246, 0.25)',
+      dark: 'rgba(0, 0, 0, 0.7)'
+    },
+    t: {
+      start: 'rgba(249, 115, 22, 0.15)',   // Subtle orange
+      end: 'rgba(249, 115, 22, 0.25)',
+      dark: 'rgba(0, 0, 0, 0.7)'
+    }
+  };
+  
+  const teamColors = colors[team];
+  
+  // Create gradient: team color for health portion, dark for remaining
+  return {
+    background: `linear-gradient(to right, 
+      ${teamColors.start} 0%, 
+      ${teamColors.end} ${healthPercent}%, 
+      ${teamColors.dark} ${healthPercent}%, 
+      ${teamColors.dark} 100%)`
+  };
+};
+
 const getWeaponIconPath = (weaponId: any) => {
   if (weaponId === undefined || weaponId === null) return '/weapons/default.svg';
   
@@ -502,8 +636,8 @@ const getWeaponIconPath = (weaponId: any) => {
   
   if (!fileName) return '/weapons/default.svg';
 
-  // 只有手雷、C4和刀在 utility 目录下，其他武器都在 weapons 目录下
-  const isUtilityFolder = (id >= 501 && id <= 506) || id === 404 || id === 405;
+  // 只有手雷和C4在 utility 目录下，其他武器（包括刀）都在 weapons 目录下
+  const isUtilityFolder = (id >= 501 && id <= 506) || id === 404;
   const folder = isUtilityFolder ? 'utility' : 'weapons';
   return `/${folder}/${fileName}.svg`;
 };
@@ -534,6 +668,19 @@ const getPlayerUtility = (player: PlayerState) => {
   return player.inventory
     .filter(id => isGrenadeOrBomb(id))
     .sort((a, b) => Number(b) - Number(a)); // Sort by ID descending typically puts C4/Flash/Smoke in common orders
+};
+
+// Get all equipment for a player (weapons + utilities + knife)
+const getAllEquipment = (player: PlayerState) => {
+  if (!player.inventory) return [];
+  return player.inventory; // Show all equipment including knife
+};
+
+// Get equipment name for tooltip
+const getEquipmentName = (equipmentId: string): string => {
+  const id = Number(equipmentId);
+  const fileName = EQUIPMENT_ID_MAP[id];
+  return fileName || 'Unknown';
 };
 
 // Load specific round data from IndexedDB
@@ -639,6 +786,7 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+/* === Map Panel === */
 .map-panel {
   flex: 1;
   display: flex;
@@ -647,161 +795,140 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-/* === Header === */
-.map-header {
-  padding: var(--ds-space-sm) var(--ds-space-lg);
-  border-bottom: 2px solid var(--ds-border-accent);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--ds-bg-secondary);
-  height: 80px;
-  backdrop-filter: blur(10px);
+/* === Player Panels (Bottom Corners) === */
+.players-panel {
+  position: absolute;
+  z-index: var(--ds-z-dropdown);
+  pointer-events: none;
 }
 
-.header-left {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-tertiary);
-  width: 120px;
-}
-
-/* === Top Players Container === */
-.top-players-container {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ds-space-md);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.team-horizontal-group {
-  display: flex;
-  gap: var(--ds-space-sm);
-}
-
-.player-card-mini {
-  flex: 1;
-  min-width: 130px;
-  max-width: 180px;
-  background: var(--ds-surface-base);
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--ds-radius-sm);
-  padding: var(--ds-space-sm);
+.players-panel.top-left {
+  top: 50%; /* Vertical center */
+  left: var(--ds-space-md);
+  transform: translateY(-50%); /* Center adjustment */
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  position: relative;
-  overflow: hidden;
-  transition: all var(--ds-transition-base);
+  gap: 0;
 }
 
-.player-card-mini.is-dead {
-  opacity: 0.6;
+.team-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* Reduced gap between cards */
+  padding: 6px; /* Reduced padding */
+  pointer-events: auto;
+}
+
+.team-divider {
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(255, 255, 255, 0.2) 20%,
+    rgba(255, 255, 255, 0.2) 80%,
+    transparent 100%
+  );
+  margin: 4px 6px; /* Reduced margin to match padding */
+}
+
+.player-card-bottom {
+  width: 170px; /* Enough for 9 equipment icons */
+  min-height: 52px; /* Tighter height calculation */
+  max-height: 52px;
+  background: rgba(0, 0, 0, 0.7); /* Darker, matching DemoLib cards */
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(200, 200, 200, 0.3); /* 2px gray-white border */
+  border-radius: var(--ds-radius-sm);
+  padding: 4px 8px; /* Further reduced top/bottom padding */
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* Further reduced gap */
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); /* Deeper shadow like DemoLib */
+  position: relative;
+  overflow: hidden;
+}
+
+/* Remove team-specific border styling - all cards use same gray-white border */
+.player-card-bottom.is-dead {
+  opacity: 0.5;
   filter: grayscale(0.8);
 }
 
-.player-main-info {
+.player-info-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  font-size: var(--ds-text-xs);
-}
-
-.p-identity {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 100px;
+  align-items: center;
+  line-height: 1; /* Tight line height */
 }
 
 .p-name {
   font-weight: 700;
-  font-size: var(--ds-text-sm);
+  font-size: 12px; /* Slightly smaller */
   color: var(--ds-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.p-kda {
-  font-size: 11px;
-  color: var(--ds-text-tertiary);
-  font-weight: 500;
+  max-width: 100px; /* Adjusted for wider card */
+  line-height: 1; /* Tight line height */
 }
 
 .p-money {
   color: var(--ds-primary);
   font-weight: bold;
+  font-size: 10px; /* Smaller */
+  line-height: 1; /* Tight line height */
+  opacity: 0.9; /* Slightly dimmed */
 }
 
-.p-status-row {
+.p-kda {
+  font-size: 9px; /* Smaller */
+  color: var(--ds-text-tertiary);
+  font-weight: 500;
+  line-height: 1; /* Tight line height */
+  opacity: 0.8; /* Slightly dimmed */
+}
+
+.p-stats-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: var(--ds-space-xs);
+  margin: 0; /* Remove any margin */
+  line-height: 1; /* Tight line height */
 }
 
-.p-hp-bar {
-  flex: 1;
-  min-width: 50px;
-  height: 14px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 3px;
-  position: relative;
-  overflow: hidden;
-}
-
-.hp-fill {
-  height: 100%;
-  transition: width var(--ds-transition-base);
-}
-
-.hp-fill.ct { background: var(--ds-team-ct); }
-.hp-fill.t { background: var(--ds-team-t); }
-
-.hp-val {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 10px;
-  font-weight: 900;
+.p-hp-text {
+  font-size: 12px; /* Slightly smaller */
+  font-weight: 700;
   color: var(--ds-text-primary);
-  text-shadow: 0 0 2px #000;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  line-height: 1; /* Tight line height */
 }
 
-.p-equipment-icons {
+/* === Equipment Display === */
+.p-all-equipment {
   display: flex;
+  flex-wrap: wrap;
+  gap: 2px; /* Reduced gap for tighter spacing */
+  min-height: 18px; /* Match icon height */
+  padding: 0; /* Remove padding for tighter layout */
   align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
 }
 
-.p-utility-list {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.weapon-mini {
-  width: 24px;
-  height: 12px;
+.equipment-icon {
+  width: 18px;
+  height: 18px;
   object-fit: contain;
+  opacity: 0.6;
+  transition: all var(--ds-transition-base);
+  filter: brightness(0.8);
+  padding: 1px; /* Reduced padding */
 }
 
-.utility-mini {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-  opacity: 0.7;
-  filter: grayscale(1) brightness(1.5);
-}
-
-.utility-mini.is-active {
+.equipment-icon.is-active {
   opacity: 1;
   filter: none;
-  transform: scale(1.2);
+  transform: scale(1.15); /* Slightly reduced scale */
 }
 
 /* === Kill Feed === */
@@ -827,19 +954,22 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: var(--ds-space-sm);
   font-size: var(--ds-text-sm);
-  font-weight: 700;
   box-shadow: var(--ds-shadow-lg);
   white-space: nowrap;
 }
 
-.k-killer.ct, .k-victim.ct { color: #60a5fa; }
-.k-killer.t, .k-victim.t { color: #fb923c; }
+.k-killer, .k-victim {
+  font-weight: 700;
+}
+
+.k-killer.ct, .k-victim.ct, .k-assist.ct { color: #60a5fa; }
+.k-killer.t, .k-victim.t, .k-assist.t { color: #fb923c; }
 
 .k-assist {
   font-size: var(--ds-text-xs);
-  color: var(--ds-text-tertiary);
   display: flex;
   align-items: center;
+  font-weight: 400;
 }
 
 .k-assist .plus {
@@ -868,31 +998,25 @@ onBeforeUnmount(() => {
 .list-leave-active {
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
 .list-enter-from {
   opacity: 0;
   transform: translateY(20px);
 }
+
 .list-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateY(-30px); /* 向上消失 */
 }
 
-/* === Score Pill === */
-.match-score-pill {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-md);
-  padding: var(--ds-space-xs) var(--ds-space-lg);
-  background: var(--ds-surface-elevated);
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--ds-radius-full);
-  font-weight: 800;
-  font-size: 32px;
+.list-leave-active {
+  position: absolute; /* 让离开的元素脱离文档流，其他元素可以平滑上移 */
+  width: 100%;
 }
 
-.score-val.ct { color: #60a5fa; }
-.score-val.t { color: #fb923c; }
-.score-divider { color: var(--ds-text-tertiary); opacity: 0.5; }
+.list-move {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* 平滑移动到新位置 */
+}
 
 /* === Map Canvas === */
 .map-main {

@@ -341,9 +341,9 @@ function createReplayData() {
       
       // Calculate estimated total ticks based on file size
       // Known ratio: 365MB = 131,735 ticks
-      // Ratio: ~360.8 ticks per MB
+      // Ratio: ~360.8 ticks per MB （or less）
       const fileSizeMB = file.size / (1024 * 1024);
-      const estimatedTotalTicks = Math.round(fileSizeMB * 360.8);
+      const estimatedTotalTicks = Math.round(fileSizeMB * 360);
       console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks}`);
 
       // ============ SYNCHRONOUS PHASE: Meta extraction ============
@@ -410,9 +410,9 @@ function createReplayData() {
       // Setup message handler
       worker.onmessage = async (e: MessageEvent) => {
         if (e.data.type === 'PROGRESS') {
-          // Update progress based on ticks (0-90% for parsing phase)
+          // Update progress based on ticks (0-95% for parsing phase)
           const parsedTicks = e.data.parsedTicks;
-          const progress = Math.min(90, (parsedTicks / estimatedTotalTicks) * 90);
+          const progress = Math.min(95, (parsedTicks / estimatedTotalTicks) * 95);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
           updateDemoParsingProgress(meta.uuid, Math.floor(progress), status);
           
@@ -428,7 +428,7 @@ function createReplayData() {
         } else if (e.data.type === 'PARSING_COMPLETE') {
           try {
             // Phase 3: Update metadata with statistics from worker
-            updateDemoParsingProgress(meta.uuid, 95, 'Finalizing metadata...');
+            updateDemoParsingProgress(meta.uuid, 97, 'Finalizing metadata...');
             
             console.log('[ParseDemo] PARSING_COMPLETE received:', {
               totalRounds: e.data.totalRounds,
