@@ -61,4 +61,4 @@ __debug_bin
 test/manifests/*
 !test/manifests/.gitkeep
 frontend/public/backGroundMap.zip
-frontend/public/backGroundMap/inferno.psd
+*.psd

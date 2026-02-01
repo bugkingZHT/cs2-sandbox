@@ -116,6 +116,7 @@ const ensureApp = async () => {
     resizeTo: host.value,
     backgroundAlpha: 0,
     antialias: true,
+    preserveDrawingBuffer: true,
     resolution: window.devicePixelRatio || 1,
     autoDensity: true,
   });
@@ -336,6 +337,11 @@ const drawPlayersForFrame = () => {
     });
   }
 };
+
+// 暴露获取 Canvas 方法供截图使用
+defineExpose({
+  getCanvas: () => app?.canvas || null
+});
 
 watch(
   () => props.currentFrameIndex,
