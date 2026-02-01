@@ -75,14 +75,28 @@
     <div class="playback-control-module">
       <!-- 左侧控制区 -->
       <div class="playback-info-box">
-        <button class="circle-play-btn" @click="$emit('toggle-play')">
-          <svg v-if="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-          </svg>
-          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <path d="M8 5V19L19 12L8 5Z"/>
-          </svg>
-        </button>
+        <div class="controls-stack">
+          <button 
+            class="brush-btn" 
+            :class="{ 'active': isDrawingMode }"
+            @click="$emit('toggle-drawing')"
+            title="屏幕编辑"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+              <path d="M2 2l5 5"/>
+            </svg>
+          </button>
+          <button class="circle-play-btn" @click="$emit('toggle-play')">
+            <svg v-if="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <path d="M8 5V19L19 12L8 5Z"/>
+            </svg>
+          </button>
+        </div>
         <div class="status-meta">
           <div class="speed-tag">{{ playbackSpeed }}x</div>
           <div class="time-display">
@@ -208,11 +222,13 @@ const props = defineProps<{
   totalRounds?: number;
   roundResults?: RoundResultInfo[];
   replayMeta?: ReplayData | null;
+  isDrawingMode?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'seek-seconds', value: number): void;
   (e: 'toggle-play'): void;
+  (e: 'toggle-drawing'): void;
   (e: 'update-speed', value: number): void;
   (e: 'exit-replay'): void;
   (e: 'dragging-change', value: boolean): void;
@@ -1204,6 +1220,44 @@ const formatMs = (ms: number) => {
   padding: 0 var(--ds-space-sm);
   border-radius: 2px;
   flex-shrink: 0;
+  position: relative;
+}
+
+.controls-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 10;
+}
+
+.brush-btn {
+  position: absolute;
+  bottom: 100%;
+  margin-bottom: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  color: var(--ds-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+}
+
+.brush-btn:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-strong);
+}
+
+.brush-btn.active {
+  background: var(--ds-primary);
+  color: #fff;
+  border-color: var(--ds-primary);
 }
 
 .circle-play-btn {

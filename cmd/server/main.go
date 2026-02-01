@@ -10,7 +10,7 @@ import (
 func main() {
 	// Determine the static directory path
 	staticDir := utils.GetStaticDir()
-
+	staticDir = "E:/2DPlayer/cs-demobox/web/static"
 	fs := http.FileServer(http.Dir(staticDir))
 	http.Handle("/", fs)
 

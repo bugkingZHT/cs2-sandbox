@@ -170,8 +170,10 @@
         :total-rounds="replay?.totalRounds || 0"
         :round-results="replay?.roundResults || []"
         :replay-meta="replay"
+        :is-drawing-mode="isDrawingMode"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
+        @toggle-drawing="onToggleDrawing"
         @update-speed="onUpdateSpeed"
         @exit-replay="emit('exit-replay')"
         @dragging-change="isDraggingTimeline = $event"
@@ -185,6 +187,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
+import DrawingBoard from './DrawingBoard.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import type { Frame, PlayerState, ReplayData } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
@@ -211,6 +214,8 @@ interface KillEventWithFrame {
   weaponId: string;
 }
 const roundKillList = ref<KillEventWithFrame[]>([]);
+const isDrawingMode = ref(false);
+const mapCanvasRef = ref<any>(null);
 
 let lastTimestamp = 0;
 let rafId: number | null = null;
@@ -571,10 +576,25 @@ const togglePlay = () => {
   if (!hasFrames) {
     return;
   }
+  
+  // If we are in drawing mode, close it when playing
+  if (isDrawingMode.value) {
+    isDrawingMode.value = false;
+  }
+
   isPlaying.value = !isPlaying.value;
   if (isPlaying.value) {
     startAnimation();
   } else {
+    cancelAnimation();
+  }
+};
+
+const onToggleDrawing = () => {
+  isDrawingMode.value = !isDrawingMode.value;
+  if (isDrawingMode.value && isPlaying.value) {
+    // Pause when entering drawing mode
+    isPlaying.value = false;
     cancelAnimation();
   }
 };
