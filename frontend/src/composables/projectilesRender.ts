@@ -1,6 +1,37 @@
-import { Assets, Container, Graphics, Sprite } from 'pixi.js';
-import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig } from '@/types/replay';
+import { Assets, Container, Graphics, Sprite, ColorMatrixFilter, Texture } from 'pixi.js';
+import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig, BombFrame, RoundTimeInfo, DroppedEquipment } from '@/types/replay';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
+
+/**
+ * 缓存已加载的纹理，避免在渲染循环中重复发起网络请求或进行异步解析
+ */
+const textureCache: Record<string, Texture> = {};
+
+/**
+ * 掉落道具出现时间缓存，用于实现掉落动画
+ */
+const droppedAppearanceCache = new Map<string, number>();
+let lastFrameTime = 0;
+
+/**
+ * 预加载所有投掷物和 C4 的 SVG 图标
+ * 在 MapCanvas 挂载时调用一次即可
+ */
+export const preloadProjectileAssets = async () => {
+  const assetsToLoad = Object.values(PROJECTILE_ASSETS);
+  // 同时确保 C4 路径也在其中 (虽然 PROJECTILE_ASSETS 已经包含了 C4)
+  const uniqueAssets = Array.from(new Set([...assetsToLoad, '/utility/c4.svg']));
+  
+  for (const path of uniqueAssets) {
+    if (!textureCache[path]) {
+      try {
+        textureCache[path] = await Assets.load(path);
+      } catch (err) {
+        console.error(`[Assets] 预加载失败: ${path}`, err);
+      }
+    }
+  }
+};
 
 /**
  * Projectile Renderer Module
@@ -88,6 +119,7 @@ interface RenderContext {
   players: PlayerState[];
   worldToMap: (x: number, y: number) => { x: number; y: number };
   configs?: Record<number, ProjectileRenderConfig>;
+  timeMs?: number;
 }
 
 // 获取投掷物类型Key
@@ -247,7 +279,10 @@ const drawIcon = async (
   const assetPath = PROJECTILE_ASSETS[typeKey];
 
   try {
-    const texture = await Assets.load(assetPath);
+    // 优先从缓存获取纹理，如果不存在则加载（Assets.load 自带缓存但异步调用仍有微小开销）
+    const texture = textureCache[assetPath] || await Assets.load(assetPath);
+    if (!textureCache[assetPath]) textureCache[assetPath] = texture;
+    
     const sprite = new Sprite(texture);
     const baseSize = 20;
     
@@ -276,6 +311,81 @@ const drawIcon = async (
     projectileLayer.addChild(sprite);
   } catch (error) {
     console.warn('[投掷物] 加载图标失败:', assetPath, error);
+  }
+};
+
+/**
+ * 绘制掉落的投掷物图标（原色 + 偏移 + 掉落动画）
+ */
+const drawDroppedIcon = async (
+  eq: DroppedEquipment,
+  typeKey: string,
+  ctx: RenderContext,
+  scale: number = 0.6,
+) => {
+  const { worldToMap, projectileLayer, timeMs = 0 } = ctx;
+  const assetPath = PROJECTILE_ASSETS[typeKey];
+
+  if (!assetPath) return;
+
+  // 1. 计算确定性随机偏移，避免与尸体中心重合
+  // 使用坐标作为种子，保证同一个道具在同一个位置的偏移是一致的
+  const seed = (Math.floor(eq.x) * 1000) + Math.floor(eq.y) + Number(eq.type);
+  const pseudoRandom = (s: number) => {
+    const x = Math.sin(s) * 10000;
+    return x - Math.floor(x);
+  };
+  
+  const angle = pseudoRandom(seed) * Math.PI * 2;
+  const dist = 12 + pseudoRandom(seed + 1) * 8; // 偏移 12-20 像素
+  const offsetX = Math.cos(angle) * dist;
+  const offsetY = Math.sin(angle) * dist;
+
+  // 2. 动画逻辑：记录初次出现时间
+  const itemKey = `${eq.type}_${Math.floor(eq.x)}_${Math.floor(eq.y)}`;
+  
+  // 如果时间倒退（如拖动进度条），清理缓存重新开始动画
+  if (timeMs < lastFrameTime - 500) {
+    droppedAppearanceCache.clear();
+  }
+  lastFrameTime = timeMs;
+
+  if (!droppedAppearanceCache.has(itemKey)) {
+    droppedAppearanceCache.set(itemKey, timeMs);
+  }
+  
+  const firstSeen = droppedAppearanceCache.get(itemKey) || timeMs;
+  const elapsed = timeMs - firstSeen;
+  const animDuration = 400; // 400ms 掉落动画
+  const progress = Math.min(1, elapsed / animDuration);
+  
+  // 3. 渲染
+  try {
+    const texture = textureCache[assetPath] || await Assets.load(assetPath);
+    if (!textureCache[assetPath]) textureCache[assetPath] = texture;
+    
+    const sprite = new Sprite(texture);
+    const baseSize = 20;
+    
+    // 动画效果：从上方掉落，从大变小
+    const dropHeight = 25 * (1 - progress); // 从 25px 高度掉落
+    const animScale = scale * (progress + 0.4 * (1 - progress)); // 略微从大变小
+    
+    sprite.width = baseSize * animScale;
+    sprite.height = baseSize * animScale;
+    sprite.anchor.set(0.5);
+
+    const mapPos = worldToMap(eq.x, eq.y);
+    sprite.x = mapPos.x + offsetX;
+    sprite.y = mapPos.y + offsetY - dropHeight; // Y 轴负方向是上方
+
+    // 渐显效果
+    sprite.alpha = 0.4 + 0.6 * progress;
+    sprite.tint = 0xffffff;
+
+    projectileLayer.addChild(sprite);
+  } catch (error) {
+    console.warn('[投掷物] 加载掉落图标失败:', assetPath, error);
   }
 };
 
@@ -525,6 +635,8 @@ export const drawProjectilesForFrame = async (options: {
   worldToMap: (x: number, y: number) => { x: number; y: number };
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs from engine
+  droppedEquipment?: DroppedEquipment[];
+  timeMs?: number;
 }) => {
   const {
     projectiles,
@@ -534,53 +646,183 @@ export const drawProjectilesForFrame = async (options: {
     worldToMap,
     projectileConfigs,
     sortedProjs,
+    droppedEquipment,
+    timeMs,
   } = options;
 
-  if (!projectileLayer || !mapSprite || !projectiles) return;
+  if (!projectileLayer || !mapSprite) return;
 
   const ctx: RenderContext = {
     projectileLayer,
     players,
     worldToMap,
     configs: projectileConfigs,
+    timeMs,
   };
 
-  // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
-  const projIds = sortedProjs || Object.keys(projectiles).map(Number);
+  // 1. 渲染正在运行的投掷物 (Projectiles)
+  if (projectiles) {
+    // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
+    const projIds = sortedProjs || Object.keys(projectiles).map(Number);
 
-  for (const entityId of projIds) {
-    const proj = projectiles[entityId];
-    if (!proj) continue; // Skip if projectile not found
-    
-    // Filter out projectiles with negative TTL - don't display any information
-    if (proj.ttl !== undefined && proj.ttl < 0) {
-      continue;
-    }
-    
-    const typeId = Number(proj.type);
-    const typeKey = getProjectileTypeKey(typeId);
+    for (const entityId of projIds) {
+      const proj = projectiles[entityId];
+      if (!proj) continue; // Skip if projectile not found
+      
+      // Filter out projectiles with negative TTL - don't display any information
+      if (proj.ttl !== undefined && proj.ttl < 0) {
+        continue;
+      }
+      
+      const typeId = Number(proj.type);
+      const typeKey = getProjectileTypeKey(typeId);
 
-    switch (typeKey) {
-      case 'Smoke':
-        await renderSmoke(proj, typeKey, ctx);
-        break;
-      case 'Molotov':
-      case 'Incendiary':
-        await renderFire(proj, typeKey, ctx);
-        break;
-      case 'HE':
-        await renderHE(proj, typeKey, ctx);
-        break;
-      case 'Flash':
-        await renderFlash(proj, typeKey, ctx);
-        break;
-      case 'Decoy':
-        await renderDecoy(proj, typeKey, ctx);
-        break;
-      default:
-        await renderDefault(proj, typeKey, ctx);
-        break;
+      switch (typeKey) {
+        case 'Smoke':
+          await renderSmoke(proj, typeKey, ctx);
+          break;
+        case 'Molotov':
+        case 'Incendiary':
+          await renderFire(proj, typeKey, ctx);
+          break;
+        case 'HE':
+          await renderHE(proj, typeKey, ctx);
+          break;
+        case 'Flash':
+          await renderFlash(proj, typeKey, ctx);
+          break;
+        case 'Decoy':
+          await renderDecoy(proj, typeKey, ctx);
+          break;
+        default:
+          await renderDefault(proj, typeKey, ctx);
+          break;
+      }
     }
   }
+
+  // 渲染掉落的投掷物 (Dropped Equipment)
+  if (droppedEquipment) {
+    for (const de of droppedEquipment) {
+      const typeId = Number(de.type);
+      // 只渲染投掷物 (501-506)
+      if (typeId >= 501 && typeId <= 506) {
+        const typeKey = getProjectileTypeKey(typeId);
+        await drawDroppedIcon(de, typeKey, ctx);
+      }
+    }
+  }
+};
+
+/**
+ * 渲染已安放的 C4 炸弹
+ * 特点：红色图标，外圈环形倒计时
+ */
+export const drawBombForFrame = async (options: {
+  bomb: BombFrame | undefined;
+  roundTime: RoundTimeInfo | undefined;
+  projectileLayer: Container | null;
+  worldToMap: (x: number, y: number) => { x: number; y: number };
+}) => {
+  const { bomb, roundTime, projectileLayer, worldToMap } = options;
+  if (!bomb || !projectileLayer) return;
+
+  // 只有在已安放（planted）、正在拆除（defusing）或已爆炸（exploded）时显示
+  // 'planting' 状态时 C4 还在玩家手里，不在这里渲染
+  if (!['planted', 'defusing', 'exploded'].includes(bomb.state)) return;
+
+  const mapPos = worldToMap(bomb.x, bomb.y);
+  const bombContainer = new Container();
+  bombContainer.x = mapPos.x;
+  bombContainer.y = mapPos.y;
+  
+  // 1. 渲染图标 (红色 c4.svg)
+  try {
+    const assetPath = '/utility/c4.svg';
+    const texture = textureCache[assetPath] || await Assets.load(assetPath);
+    if (!textureCache[assetPath]) textureCache[assetPath] = texture;
+    
+    const sprite = new Sprite(texture);
+    
+    sprite.width = 24;
+    sprite.height = 24;
+    sprite.anchor.set(0.5);
+    
+    // 设置为红色：使用 ColorMatrixFilter 或者简单的 tint
+    // 由于 SVG 可能是黑白的，tint 可能不够，但通常 c4.svg 是简单的路径
+    sprite.tint = 0xff0000; 
+    
+    // 如果 tint 效果不好，可以考虑加一个发光
+    bombContainer.addChild(sprite);
+  } catch (error) {
+    console.warn('[C4渲染] 加载图标失败:', error);
+  }
+
+  // 2. 渲染环形倒计时 (仅在 planted 或 defusing 状态)
+  if ((bomb.state === 'planted' || bomb.state === 'defusing') && roundTime) {
+    const explosionG = new Graphics();
+    
+    // 计算进度：CSGO/CS2 默认下包后 40 秒爆炸
+    // 后端传来的 timeRemaining 是剩余秒数
+    const BOMB_TIME = 40; 
+    const progress = Math.max(0, Math.min(1, roundTime.timeRemaining / BOMB_TIME));
+    
+    // 环形进度条半径
+    const ringRadius = 18;
+    const startAngle = -Math.PI / 2;
+    // 顺时针减少或增加？通常倒计时是减少
+    const endAngle = startAngle + progress * Math.PI * 2;
+
+    // 背景环 (深色)
+    explosionG.circle(0, 0, ringRadius).stroke({ width: 4, color: 0x000000, alpha: 0.5 });
+    
+    // 进度环 (根据状态改变颜色：正常红色，正在拆除蓝色？或者统一橙色)
+    const ringColor = bomb.state === 'defusing' ? 0x4dabf7 : 0xff922b;
+    
+    if (progress > 0) {
+      const startX = Math.cos(startAngle) * ringRadius;
+      const startY = Math.sin(startAngle) * ringRadius;
+      
+      explosionG.moveTo(startX, startY)
+                .arc(0, 0, ringRadius, startAngle, endAngle, false)
+                .stroke({ width: 4, color: ringColor, alpha: 1.0 });
+    }
+    
+    bombContainer.addChild(explosionG);
+  }
+
+  // 3. 处理爆炸范围展示 (仅在爆炸后的短时间内显示，例如 3 秒)
+  if (bomb.state === 'exploded' && roundTime) {
+    const EXPLOSION_SHOW_DURATION = 3.0; // 爆炸范围显示时长（秒）
+    // 计算从爆炸开始经过的时间
+    // 注意：roundTime.timeRemaining 在爆炸后通常为负数或从某个值开始倒数，
+    // 这里我们简单地通过 phase 为 'end' 且 timeRemaining 的绝对值来判断
+    const timeSinceExploded = Math.abs(roundTime.timeRemaining);
+
+    if (timeSinceExploded < EXPLOSION_SHOW_DURATION) {
+      const explosionG = new Graphics();
+      
+      // 爆炸伤害范围
+      const gameExplosionRadius = 1200; 
+      const pixelRadius = calculatePixelRadius(gameExplosionRadius, { x: bomb.x, y: bomb.y }, worldToMap);
+      
+      // 随时间衰减的透明度
+      const fadeAlpha = 1 - (timeSinceExploded / EXPLOSION_SHOW_DURATION);
+      
+      // 绘制巨大的伤害范围圆圈
+      explosionG.circle(0, 0, pixelRadius)
+                .fill({ color: 0xff0000, alpha: 0.15 * fadeAlpha })
+                .stroke({ width: 2, color: 0xff0000, alpha: 0.4 * fadeAlpha });
+      
+      // 绘制中心爆点核心
+      const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
+      explosionG.circle(0, 0, 40 + pulse * 20)
+                .fill({ color: 0xff0000, alpha: 0.4 * pulse * fadeAlpha });
+                
+      bombContainer.addChild(explosionG);
+    }
+  }
+
+  projectileLayer.addChild(bombContainer);
 };
 

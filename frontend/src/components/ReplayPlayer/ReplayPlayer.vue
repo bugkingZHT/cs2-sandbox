@@ -20,11 +20,21 @@
                 </div>
                 <div class="p-equipment-icons">
                   <img 
-                    v-if="p.activeWeapon"
+                    v-if="p.activeWeapon && !isGrenadeOrBomb(p.activeWeapon)"
                     :src="getWeaponIconPath(p.activeWeapon)" 
                     class="weapon-mini"
                     @error="onWeaponIconError"
                   />
+                  <div class="p-utility-list">
+                    <img 
+                      v-for="(item, idx) in getPlayerUtility(p)" 
+                      :key="idx"
+                      :src="getWeaponIconPath(item)" 
+                      class="utility-mini"
+                      :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                      @error="onWeaponIconError"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -54,11 +64,21 @@
                 </div>
                 <div class="p-equipment-icons">
                   <img 
-                    v-if="p.activeWeapon"
+                    v-if="p.activeWeapon && !isGrenadeOrBomb(p.activeWeapon)"
                     :src="getWeaponIconPath(p.activeWeapon)" 
                     class="weapon-mini"
                     @error="onWeaponIconError"
                   />
+                  <div class="p-utility-list">
+                    <img 
+                      v-for="(item, idx) in getPlayerUtility(p)" 
+                      :key="idx"
+                      :src="getWeaponIconPath(item)" 
+                      class="utility-mini"
+                      :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                      @error="onWeaponIconError"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -504,6 +524,18 @@ const onUpdateSpeed = (value: number) => {
   playbackSpeed.value = value;
 };
 
+const isGrenadeOrBomb = (weaponId: any) => {
+  const id = Number(weaponId);
+  return (id >= 501 && id <= 506) || id === 404;
+};
+
+const getPlayerUtility = (player: PlayerState) => {
+  if (!player.inventory) return [];
+  return player.inventory
+    .filter(id => isGrenadeOrBomb(id))
+    .sort((a, b) => Number(b) - Number(a)); // Sort by ID descending typically puts C4/Flash/Smoke in common orders
+};
+
 // Load specific round data from IndexedDB
 const loadRoundData = async (roundNumber: number) => {
   if (!replay.value?.uuid) {
@@ -623,7 +655,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   background: var(--ds-bg-secondary);
-  height: 60px;
+  height: 80px;
   backdrop-filter: blur(10px);
 }
 
@@ -651,15 +683,15 @@ onBeforeUnmount(() => {
 
 .player-card-mini {
   flex: 1;
-  min-width: 60px;
-  max-width: 110px;
+  min-width: 130px;
+  max-width: 180px;
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-sm);
-  padding: var(--ds-space-xs) var(--ds-space-sm);
+  padding: var(--ds-space-sm);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   position: relative;
   overflow: hidden;
   transition: all var(--ds-transition-base);
@@ -680,12 +712,13 @@ onBeforeUnmount(() => {
 .p-identity {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  max-width: 70px;
+  gap: 2px;
+  max-width: 100px;
 }
 
 .p-name {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: var(--ds-text-sm);
   color: var(--ds-text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -693,7 +726,7 @@ onBeforeUnmount(() => {
 }
 
 .p-kda {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--ds-text-tertiary);
   font-weight: 500;
 }
@@ -711,9 +744,10 @@ onBeforeUnmount(() => {
 
 .p-hp-bar {
   flex: 1;
-  height: 10px;
+  min-width: 50px;
+  height: 14px;
   background: rgba(0, 0, 0, 0.3);
-  border-radius: 2px;
+  border-radius: 3px;
   position: relative;
   overflow: hidden;
 }
@@ -731,8 +765,8 @@ onBeforeUnmount(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 8px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 900;
   color: var(--ds-text-primary);
   text-shadow: 0 0 2px #000;
 }
@@ -740,12 +774,34 @@ onBeforeUnmount(() => {
 .p-equipment-icons {
   display: flex;
   align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.p-utility-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .weapon-mini {
-  width: 18px;
-  height: 9px;
+  width: 24px;
+  height: 12px;
   object-fit: contain;
+}
+
+.utility-mini {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  opacity: 0.7;
+  filter: grayscale(1) brightness(1.5);
+}
+
+.utility-mini.is-active {
+  opacity: 1;
+  filter: none;
+  transform: scale(1.2);
 }
 
 /* === Kill Feed === */
@@ -825,13 +881,13 @@ onBeforeUnmount(() => {
 .match-score-pill {
   display: flex;
   align-items: center;
-  gap: var(--ds-space-sm);
-  padding: var(--ds-space-xs) var(--ds-space-md);
+  gap: var(--ds-space-md);
+  padding: var(--ds-space-xs) var(--ds-space-lg);
   background: var(--ds-surface-elevated);
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-full);
   font-weight: 800;
-  font-size: var(--ds-text-xl);
+  font-size: 32px;
 }
 
 .score-val.ct { color: #60a5fa; }

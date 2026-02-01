@@ -1,5 +1,5 @@
 import * as protobuf from 'protobufjs';
-import type { ReplayMeta, ReplayRound, Frame, PlayerState, ProjectileState, RoundTimeInfo, KillEvent, ProjectileRenderConfig, Point } from '@/types/replay';
+import type { ReplayMeta, ReplayRound, Frame, PlayerState, ProjectileState, RoundTimeInfo, KillEvent, ProjectileRenderConfig, Point, BombFrame, DroppedEquipment } from '@/types/replay';
 
 // Load proto definitions at module level
 let root: protobuf.Root | null = null;
@@ -184,6 +184,25 @@ function protoToFrame(proto: any): Frame {
     projectiles,
     sortedProjs: proto.sortedProjs || [],
     killEvents,
+    droppedEquipment: (proto.droppedEquipment || []).map((de: any) => ({
+      type: String(de.type || 0),
+      x: de.x || 0,
+      y: de.y || 0,
+      z: de.z || 0,
+    })),
+    bomb: proto.bomb ? protoToBombFrame(proto.bomb) : undefined,
+  };
+}
+
+// Convert protobuf object to BombFrame
+function protoToBombFrame(proto: any): BombFrame {
+  return {
+    x: proto.x || 0,
+    y: proto.y || 0,
+    z: proto.z || 0,
+    isPlanted: proto.isPlanted || false,
+    state: proto.state || '',
+    site: proto.site || '',
   };
 }
 
@@ -353,6 +372,25 @@ function frameToProto(frame: Frame): any {
     killEvents,
     projectiles,
     sortedProjs: frame.sortedProjs || [],
+    droppedEquipment: (frame.droppedEquipment || []).map(de => ({
+      type: Number(de.type),
+      x: de.x,
+      y: de.y,
+      z: de.z,
+    })),
+    bomb: frame.bomb ? bombFrameToProto(frame.bomb) : undefined,
+  };
+}
+
+// Convert BombFrame to protobuf object
+function bombFrameToProto(bomb: BombFrame): any {
+  return {
+    x: bomb.x,
+    y: bomb.y,
+    z: bomb.z,
+    isPlanted: bomb.isPlanted,
+    state: bomb.state,
+    site: bomb.site,
   };
 }
 

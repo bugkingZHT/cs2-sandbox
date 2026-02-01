@@ -99,27 +99,52 @@
         <!-- 进度填充（平面化） -->
         <div class="flat-progress-fill" :style="{ width: `${(roundRelativeTimeMs / roundDurationMs) * 100}%` }"></div>
 
-        <!-- 动态视觉标记：道具投掷 -->
+        <!-- 动态视觉标记 -->
         <div class="decorative-markers">
-          <template v-for="m in throwMarkers" :key="m.id">
+          <!-- 1. 击杀事件 (竖线) -->
+          <template v-for="m in killMarkers" :key="`kill-${m.victimId}`">
             <div 
-              class="mark-line" 
+              class="kill-marker" 
               :class="{ 'ct': m.team === 3, 't': m.team === 2 }"
               :style="{ left: `${m.offset}%` }"
+              :title="m.team === 3 ? 'CT Kill' : 'T Kill'"
+            ></div>
+          </template>
+
+          <!-- 2. 道具投掷 (下沿三角) -->
+          <template v-for="m in throwMarkers" :key="`throw-${m.id}`">
+            <div 
+              class="throw-marker" 
+              :class="{ 'ct': m.team === 3, 't': m.team === 2 }"
+              :style="{ left: `${m.offset}%` }"
+              :title="`${m.team === 3 ? 'CT' : 'T'} Throw`"
             ></div>
           </template>
           
-          <!-- 炸弹事件标记 -->
+          <!-- 3. 炸弹/回合事件标记 -->
           <template v-for="(bm, idx) in bombEventMarkers" :key="`bomb-${idx}`">
+            <!-- 下包完成线 -->
             <div 
+              v-if="bm.event === 'planted'"
+              class="bomb-planted-marker" 
+              :style="{ left: `${bm.offset}%` }"
+              title="Bomb Planted"
+            >
+              <div class="bomb-line"></div>
+              <div class="bomb-icon-wrapper">
+                <img src="/utility/c4.svg" class="bomb-svg-img" alt="C4" />
+              </div>
+            </div>
+            
+            <div 
+              v-else
               class="bomb-event-mark" 
               :class="{ 
-                'bomb-planted': bm.event === 'planted', 
                 'bomb-exploded': bm.event === 'exploded',
                 'round-end': bm.event === 'roundend'
               }"
               :style="{ left: `${bm.offset}%` }"
-              :title="bm.event === 'planted' ? 'Bomb Planted' : bm.event === 'exploded' ? 'Bomb Exploded' : 'Round End'"
+              :title="bm.event === 'exploded' ? 'Bomb Exploded' : 'Round End'"
             ></div>
           </template>
         </div>
@@ -630,13 +655,11 @@ const throwMarkers = computed(() => {
 
   props.roundFrames.forEach(f => {
     if (f.projectiles && Object.keys(f.projectiles).length > 0) {
-      // projectiles is now a Record<number, ProjectileState>, iterate through values
       Object.values(f.projectiles).forEach((p: any) => {
         if (!seenIds.has(p.entityID)) {
           seenIds.add(p.entityID);
           const relTime = f.timeMs - props.roundStartTimeMs;
           
-          // Find thrower by player ID from players map (direct lookup)
           const thrower = f.players?.[p.throwerID] || null;
           const team = thrower ? thrower.team : 0;
 
@@ -645,6 +668,47 @@ const throwMarkers = computed(() => {
             type: p.type,
             id: p.entityID,
             team: team
+          });
+        }
+      });
+    }
+  });
+  return markers;
+});
+
+// 计算击杀标记
+const killMarkers = computed(() => {
+  if (!props.roundFrames || props.roundDurationMs === 0) return [];
+  const markers: { offset: number; team: number; victimId: number }[] = [];
+  const seenVictims = new Set<number>();
+
+  props.roundFrames.forEach(f => {
+    if (f.killEvents && Object.keys(f.killEvents).length > 0) {
+      Object.entries(f.killEvents).forEach(([victimIdStr, kill]: [string, any]) => {
+        const victimId = parseInt(victimIdStr);
+        if (!seenVictims.has(victimId)) {
+          seenVictims.add(victimId);
+          const relTime = f.timeMs - props.roundStartTimeMs;
+          
+          let killerTeam = 0;
+          if (kill.killerId !== 0) {
+            const killer = f.players?.[kill.killerId];
+            if (killer) {
+              killerTeam = killer.team;
+            } else {
+              for (const rf of props.roundFrames) {
+                if (rf.players?.[kill.killerId]) {
+                  killerTeam = rf.players[kill.killerId].team;
+                  break;
+                }
+              }
+            }
+          }
+
+          markers.push({
+            offset: (relTime / props.roundDurationMs) * 100,
+            team: killerTeam,
+            victimId: victimId
           });
         }
       });
@@ -1064,10 +1128,12 @@ const formatMs = (ms: number) => {
   display: flex;
   height: 32px;
   gap: var(--ds-space-sm);
+  align-items: center;
 }
 
 .playback-info-box {
   width: 130px;
+  height: 100%;
   background: var(--ds-bg-secondary);
   display: flex;
   align-items: center;
@@ -1125,10 +1191,11 @@ const formatMs = (ms: number) => {
 /* === Timeline Track === */
 .timeline-track-main {
   flex: 1;
+  height: 100%;
   background: rgba(0, 0, 0, 0.5);
   position: relative;
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 2px;
   border: 1px solid var(--ds-border-subtle);
 }
@@ -1166,6 +1233,44 @@ const formatMs = (ms: number) => {
   height: 100%;
 }
 
+.kill-marker {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  z-index: 4;
+}
+
+.kill-marker.ct {
+  background: var(--ds-team-ct);
+  opacity: 0.8;
+}
+
+.kill-marker.t {
+  background: var(--ds-team-t);
+  opacity: 0.8;
+}
+
+.throw-marker {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 6px solid;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+
+.throw-marker.ct {
+  border-bottom-color: var(--ds-team-ct);
+}
+
+.throw-marker.t {
+  border-bottom-color: var(--ds-team-t);
+}
+
 .mark-line {
   position: absolute;
   top: 0;
@@ -1194,6 +1299,51 @@ const formatMs = (ms: number) => {
   z-index: 3;
   pointer-events: auto;
   cursor: help;
+}
+
+.bomb-planted-marker {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.bomb-line {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  left: 0;
+  width: 2px;
+  background-color: var(--ds-team-t);
+  transform: translateX(-50%);
+  box-shadow: 0 0 4px rgba(249, 115, 22, 0.5);
+}
+
+.bomb-icon-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--ds-team-t);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid white;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
+
+.bomb-svg-img {
+  width: 12px;
+  height: 12px;
+  filter: drop-shadow(0 0 1px rgba(0,0,0,0.5));
 }
 
 .bomb-event-mark.bomb-planted {

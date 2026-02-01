@@ -73,6 +73,15 @@ export interface KillEvent {
   weaponId: string;
 }
 
+export interface BombFrame {
+  x: number;
+  y: number;
+  z: number;
+  isPlanted: boolean;
+  state: string; // planting, defusing, planted, exploded, defused
+  site: string;
+}
+
 // 回合阶段
 export type RoundPhase = 'freezetime' | 'normal' | 'planted' | 'end';
 
@@ -88,6 +97,13 @@ export interface RoundTimeInfo {
   timeRemaining: number;
 }
 
+export interface DroppedEquipment {
+  type: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface Frame {
   timeMs: number;
   tick: number;
@@ -98,6 +114,8 @@ export interface Frame {
   projectiles?: Record<number, ProjectileState>;
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs for rendering order
   killEvents?: Record<number, KillEvent>;
+  droppedEquipment?: DroppedEquipment[];
+  bomb?: BombFrame;
 }
 
 // 录像元数据（地图整体信息）
