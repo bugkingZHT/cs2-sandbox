@@ -3,7 +3,7 @@
     <!-- Modern Header -->
     <div class="library-header">
       <div class="header-content">
-        <h1 class="library-title">⚡ Counter-Strike 2 Demos</h1>
+        <h1 class="library-title">Counter-Strike 2 Demos</h1>
         <p class="library-subtitle">Manage and replay your game recordings</p>
       </div>
       <div class="library-actions">
@@ -14,18 +14,44 @@
           @change="onFileSelected"
           style="display: none"
         />
-        
-        <!-- OPFS Debug Button -->
-        <button 
-          v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
-          class="ds-btn ds-btn-secondary ds-btn-icon"
-          @click="showOPFSDetails"
-          title="View OPFS Storage Details"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-        </button>
+
+        <!-- Storage Quota Icon Button -->
+        <div class="quota-btn-container">
+          <button class="quota-btn" title="Storage Usage">
+            <svg width="20" height="20" viewBox="0 0 1024 1024" fill="currentColor">
+              <path d="M478.037333 853.674667c-176.469333 0-320.170667-143.701333-320.170666-320.170667S301.397333 213.333333 478.037333 213.333333v-68.266666C263.850667 145.066667 89.6 319.317333 89.6 533.504s174.250667 388.437333 388.437333 388.437333c212.821333 0 387.072-173.226667 388.266667-386.048l-68.266667-0.341333c-1.024 175.445333-144.554667 318.122667-320 318.122667z"/>
+              <path d="M520.704 94.208v398.506667h395.946667c0-0.853333 0.170667-1.536 0.170666-2.389334 0-218.794667-177.322667-396.117333-396.117333-396.117333z m68.266667 330.24V169.642667c126.976 26.965333 226.816 127.658667 252.928 254.805333H588.970667z"/>
+            </svg>
+          </button>
+          
+          <!-- Hover Tooltip -->
+          <div class="quota-tooltip">
+            <div class="quota-tooltip-header">
+              <span class="quota-tooltip-title">本地存储空间</span>
+            </div>
+            <div class="quota-tooltip-body">
+              <div class="quota-info-row">
+                <span class="quota-label">已使用:</span>
+                <span class="quota-value">{{ storageUsedText }}</span>
+              </div>
+              <div class="quota-info-row">
+                <span class="quota-label">可用总量:</span>
+                <span class="quota-value">{{ storageQuotaText }}</span>
+              </div>
+              <div class="quota-progress-bar">
+                <div 
+                  class="quota-progress-fill" 
+                  :class="{ 
+                    'storage-warning': storageUsagePercent >= 80 && storageUsagePercent < 95,
+                    'storage-critical': storageUsagePercent >= 95
+                  }"
+                  :style="{ width: `${storageUsagePercent}%` }"
+                ></div>
+              </div>
+              <div class="quota-percentage">{{ storageUsagePercent }}%</div>
+            </div>
+          </div>
+        </div>
 
         <button class="ds-btn ds-btn-primary" @click="triggerFileInput" :disabled="parsing">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -219,12 +245,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import type { ReplayData } from '@/types/replay';
 import { MAP_CONFIGS } from '@/config/map-config';
 import { useReplayData } from '@/composables/useReplayData';
-import { DEBUG_CONFIG } from '@/config/debug';
-import { getOPFSStorage } from '@/composables/opfs-storage';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -244,6 +268,52 @@ const isLoadingDemo = ref(false);
 const selectedDemoId = ref<string | null>(null);
 const showDeleteModal = ref(false);
 const demoToDelete = ref<ReplayData | null>(null);
+
+// Storage quota tracking
+const storageUsed = ref(0);
+const storageQuota = ref(0);
+const storageUsagePercent = computed(() => {
+  if (storageQuota.value === 0) return 0;
+  return Math.min(100, Math.round((storageUsed.value / storageQuota.value) * 100));
+});
+
+const storageUsedText = computed(() => {
+  const mb = storageUsed.value / (1024 * 1024);
+  if (mb < 1024) {
+    return `${mb.toFixed(1)} MB`;
+  }
+  return `${(mb / 1024).toFixed(2)} GB`;
+});
+
+const storageQuotaText = computed(() => {
+  const mb = storageQuota.value / (1024 * 1024);
+  if (mb < 1024) {
+    return `${mb.toFixed(1)} MB`;
+  }
+  return `${(mb / 1024).toFixed(2)} GB`;
+});
+
+// Fetch storage quota
+const updateStorageQuota = async () => {
+  if ('storage' in navigator && 'estimate' in navigator.storage) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      storageUsed.value = estimate.usage || 0;
+      storageQuota.value = estimate.quota || 0;
+    } catch (error) {
+      console.warn('[Storage Quota] Failed to fetch storage estimate:', error);
+    }
+  }
+};
+
+// Update storage quota on mount and when demo list changes
+onMounted(() => {
+  updateStorageQuota();
+});
+
+watch(() => props.demoList.length, () => {
+  updateStorageQuota();
+});
 
 const sortedDemoList = computed(() => {
   return [...props.demoList].sort((a, b) => {
@@ -296,362 +366,6 @@ const performDelete = () => {
     emit('delete-demo', demoToDelete.value.id);
   }
   cancelDelete();
-};
-
-// OPFS Debug functionality
-const showOPFSDetails = async () => {
-  if (!DEBUG_CONFIG.enableOPFSStorageViewer) return;
-  
-  try {
-    const storage = await getOPFSStorage();
-    const files = await storage.debugListAllFiles();
-    
-    // Get storage usage
-    let storageInfo = '';
-    if ('storage' in navigator && 'estimate' in navigator.storage) {
-      const estimate = await navigator.storage.estimate();
-      const usedMB = ((estimate.usage || 0) / (1024 * 1024)).toFixed(2);
-      const quotaMB = ((estimate.quota || 0) / (1024 * 1024)).toFixed(2);
-      const usagePercent = ((estimate.usage || 0) / (estimate.quota || 1) * 100).toFixed(2);
-      
-      storageInfo = `
-        <div class="storage-info">
-          <h3>💾 Storage Usage</h3>
-          <div class="info-row">
-            <span class="label">Used:</span>
-            <span class="value">${usedMB} MB</span>
-          </div>
-          <div class="info-row">
-            <span class="label">Quota:</span>
-            <span class="value">${quotaMB} MB</span>
-          </div>
-          <div class="info-row">
-            <span class="label">Usage:</span>
-            <span class="value">${usagePercent}%</span>
-          </div>
-        </div>
-      `;
-    }
-    
-    // Get storage path
-    const userAgent = navigator.userAgent.toLowerCase();
-    const platform = navigator.platform.toLowerCase();
-    
-    let browser = 'Unknown';
-    let browserVersion = 'Unknown';
-    if (userAgent.includes('edg/')) {
-      browser = 'Edge';
-      const match = userAgent.match(/edg\/(\d+\.\d+\.\d+\.\d+)/);
-      browserVersion = match ? match[1] : 'Unknown';
-    } else if (userAgent.includes('chrome') && !userAgent.includes('edg')) {
-      browser = 'Chrome';
-      const match = userAgent.match(/chrome\/(\d+\.\d+\.\d+\.\d+)/);
-      browserVersion = match ? match[1] : 'Unknown';
-    } else if (userAgent.includes('safari') && !userAgent.includes('chrome')) {
-      browser = 'Safari';
-      const match = userAgent.match(/version\/(\d+\.\d+(\.\d+)?)/);
-      browserVersion = match ? match[1] : 'Unknown';
-    } else if (userAgent.includes('firefox')) {
-      browser = 'Firefox';
-      const match = userAgent.match(/firefox\/(\d+\.\d+(\.\d+)?)/);
-      browserVersion = match ? match[1] : 'Unknown';
-    }
-    
-    let os = 'Unknown';
-    let osVersion = '';
-    let basePath = '';
-    
-    if (platform.includes('mac') || userAgent.includes('mac os')) {
-      os = 'macOS';
-      const match = userAgent.match(/mac os x (\d+[._]\d+([._]\d+)?)/i);
-      if (match) {
-        osVersion = match[1].replace(/_/g, '.');
-      }
-      if (browser === 'Chrome') basePath = '~/Library/Application Support/Google/Chrome/Default/File System/';
-      else if (browser === 'Edge') basePath = '~/Library/Application Support/Microsoft Edge/Default/File System/';
-      else if (browser === 'Safari') basePath = '~/Library/Safari/LocalStorage/';
-      else if (browser === 'Firefox') basePath = '~/Library/Application Support/Firefox/Profiles/{profile}/storage/default/{origin}/idb/';
-    } else if (platform.includes('win') || userAgent.includes('windows')) {
-      os = 'Windows';
-      const match = userAgent.match(/windows nt (\d+\.\d+)/);
-      if (match) {
-        const ntVersion = match[1];
-        // Map NT version to Windows version
-        const versionMap: Record<string, string> = {
-          '10.0': '10/11',
-          '6.3': '8.1',
-          '6.2': '8',
-          '6.1': '7',
-        };
-        osVersion = versionMap[ntVersion] || ntVersion;
-      }
-      if (browser === 'Chrome') basePath = '%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\File System\\';
-      else if (browser === 'Edge') basePath = '%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\File System\\';
-      else if (browser === 'Firefox') basePath = '%APPDATA%\\Mozilla\\Firefox\\Profiles\\{profile}\\storage\\default\\{origin}\\idb\\';
-    } else if (platform.includes('linux') || userAgent.includes('linux')) {
-      os = 'Linux';
-      // Linux version detection is complex, skip for now
-      if (browser === 'Chrome') basePath = '~/.config/google-chrome/Default/File System/';
-      else if (browser === 'Edge') basePath = '~/.config/microsoft-edge/Default/File System/';
-      else if (browser === 'Firefox') basePath = '~/.mozilla/firefox/{profile}/storage/default/{origin}/idb/';
-    }
-    
-    const pathInfo = basePath ? `
-      <div class="storage-path">
-        <h3>📍 Physical Storage Path (Estimated)</h3>
-        <div class="info-row">
-          <span class="label">Browser:</span>
-          <span class="value">${browser} ${browserVersion}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">OS:</span>
-          <span class="value">${os}${osVersion ? ' ' + osVersion : ''}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">User Agent:</span>
-          <span class="value" style="font-size: 12px; word-break: break-all;">${navigator.userAgent}</span>
-        </div>
-        <div class="info-row full-width">
-          <span class="label">Path:</span>
-          <code class="path-value">${basePath}</code>
-        </div>
-        <div class="warning">
-          ⚠️ This path is an estimation. OPFS data is stored in indexed/encrypted format.
-        </div>
-      </div>
-    ` : '';
-    
-    // Build file list HTML
-    let fileListHtml = '<div class="file-list"><h3>📁 OPFS File Structure</h3>';
-    
-    if (files.length === 0) {
-      fileListHtml += '<p class="empty-state">❌ No files found in OPFS</p>';
-    } else {
-      fileListHtml += `<p class="total-count">Total: ${files.length} replay(s)</p>`;
-      
-      files.forEach(({ uuid, files: fileList }) => {
-        fileListHtml += `
-          <div class="replay-item">
-            <div class="replay-uuid">📦 UUID: <code>${uuid}</code></div>
-            <ul class="file-items">
-        `;
-        
-        fileList.forEach(file => {
-          fileListHtml += `<li>📄 ${file}</li>`;
-        });
-        
-        fileListHtml += '</ul></div>';
-      });
-    }
-    
-    fileListHtml += '</div>';
-    
-    // Create HTML page
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>OPFS Storage Details - CS Demo Viewer</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      color: #e0e0e0;
-      padding: 40px 20px;
-      line-height: 1.6;
-    }
-    
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    
-    h1 {
-      font-size: 32px;
-      margin-bottom: 10px;
-      color: #ffffff;
-      text-align: center;
-    }
-    
-    .subtitle {
-      text-align: center;
-      color: #888;
-      margin-bottom: 40px;
-      font-size: 14px;
-    }
-    
-    h3 {
-      font-size: 20px;
-      margin-bottom: 15px;
-      color: #ffffff;
-      border-bottom: 2px solid #0f3460;
-      padding-bottom: 8px;
-    }
-    
-    .storage-info,
-    .storage-path,
-    .file-list {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 12px;
-      padding: 25px;
-      margin-bottom: 30px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    
-    .info-row:last-child {
-      border-bottom: none;
-    }
-    
-    .info-row.full-width {
-      flex-direction: column;
-      gap: 8px;
-    }
-    
-    .label {
-      font-weight: 600;
-      color: #aaa;
-    }
-    
-    .value {
-      color: #4ecca3;
-      font-weight: 500;
-    }
-    
-    code {
-      background: rgba(0, 0, 0, 0.3);
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
-      color: #ffa07a;
-    }
-    
-    .path-value {
-      display: block;
-      word-break: break-all;
-      padding: 12px;
-      background: rgba(0, 0, 0, 0.4);
-    }
-    
-    .warning {
-      margin-top: 15px;
-      padding: 12px;
-      background: rgba(255, 165, 0, 0.1);
-      border-left: 3px solid #ffa500;
-      border-radius: 4px;
-      font-size: 13px;
-      color: #ffb84d;
-    }
-    
-    .total-count {
-      color: #4ecca3;
-      margin-bottom: 20px;
-      font-weight: 500;
-    }
-    
-    .empty-state {
-      text-align: center;
-      padding: 40px;
-      color: #666;
-      font-size: 16px;
-    }
-    
-    .replay-item {
-      margin-bottom: 25px;
-      padding: 15px;
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 8px;
-      border-left: 3px solid #4ecca3;
-    }
-    
-    .replay-uuid {
-      font-weight: 600;
-      margin-bottom: 10px;
-      color: #fff;
-    }
-    
-    .file-items {
-      list-style: none;
-      padding-left: 20px;
-    }
-    
-    .file-items li {
-      padding: 6px 0;
-      color: #ccc;
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-    }
-    
-    .console-hint {
-      background: rgba(255, 193, 7, 0.1);
-      border: 1px solid rgba(255, 193, 7, 0.3);
-      border-radius: 8px;
-      padding: 20px;
-      margin-top: 30px;
-    }
-    
-    .console-hint h4 {
-      color: #ffc107;
-      margin-bottom: 10px;
-    }
-    
-    .console-hint code {
-      display: block;
-      margin: 8px 0;
-      padding: 8px 12px;
-      background: rgba(0, 0, 0, 0.4);
-      color: #4ecca3;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🗂️ OPFS Storage Details</h1>
-    <p class="subtitle">CS2 Demo Viewer - Protobuf Binary Storage</p>
-    
-    ${storageInfo}
-    ${pathInfo}
-    ${fileListHtml}
-    
-    <div class="console-hint">
-      <h4>💡 Console Commands for Advanced Debugging:</h4>
-      <code>await window.debugOPFS.listFiles()</code>
-      <code>await window.debugOPFS.downloadFile(uuid, 'meta.pb')</code>
-      <code>await window.debugOPFS.downloadFile(uuid, 'round_1.pb')</code>
-      <code>await window.debugOPFS.getStorageUsage()</code>
-      <code>window.debugOPFS.showStoragePath()</code>
-    </div>
-  </div>
-</body>
-</html>`;
-    
-    // Open in new window
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    
-    if (win) {
-      win.addEventListener('load', () => {
-        URL.revokeObjectURL(url);
-      });
-    }
-  } catch (error) {
-    console.error('[OPFS Debug] Failed to show storage details:', error);
-    alert('Failed to load OPFS details. See console for details.');
-  }
 };
 
 const getMapLeftSideImage = (mapName: string | undefined): string | undefined => {
@@ -811,6 +525,157 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 .library-actions .ds-btn svg {
   width: 16px;
   height: 16px;
+}
+
+/* === Storage Quota Button Styles === */
+.quota-btn-container {
+  position: relative;
+}
+
+.quota-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quota-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--ds-primary);
+  color: var(--ds-primary);
+  transform: translateY(-1px);
+}
+
+.quota-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Quota Tooltip */
+.quota-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: rgba(20, 20, 30, 0.98);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.quota-btn-container:hover .quota-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.quota-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  right: 8px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid rgba(20, 20, 30, 0.98);
+}
+
+.quota-tooltip-header {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.quota-tooltip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.quota-tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quota-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.quota-label {
+  color: var(--ds-text-tertiary);
+  font-weight: 500;
+}
+
+.quota-value {
+  color: var(--ds-text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-full);
+  overflow: hidden;
+  border: 1px solid var(--ds-border-subtle);
+  margin-top: 4px;
+}
+
+.quota-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ds-primary) 0%, var(--ds-secondary) 100%);
+  transition: width 0.3s ease, background 0.3s ease;
+  border-radius: var(--ds-radius-full);
+  box-shadow: 0 0 8px rgba(78, 204, 163, 0.3);
+}
+
+.quota-progress-fill.storage-warning {
+  background: linear-gradient(90deg, #f59e0b 0%, #fb923c 100%);
+  box-shadow: 0 0 8px rgba(251, 146, 60, 0.4);
+}
+
+.quota-progress-fill.storage-critical {
+  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  animation: pulse-critical 2s ease-in-out infinite;
+}
+
+@keyframes pulse-critical {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.quota-percentage {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ds-text-tertiary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
 }
 
 /* === Demo Grid Container === */
