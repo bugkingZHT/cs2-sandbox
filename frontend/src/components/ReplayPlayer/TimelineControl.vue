@@ -2,30 +2,16 @@
   <div class="timeline-widget-container">
     <!-- 一、上方：回合选择进度条 -->
     <div class="round-selection-module">
-      <!-- 左侧电源菜单按钮 -->
-      <div class="power-menu-wrapper">
+      <!-- 左侧画笔按钮 -->
+      <div class="brush-tool-wrapper">
         <button 
-          class="power-menu-btn" 
-          @click="togglePowerMenu"
-          title="控制菜单"
+          class="brush-tool-btn" 
+          :class="{ 'active': isDrawingMode }"
+          @click="$emit('toggle-drawing')"
+          title="屏幕编辑"
         >
-          <svg class="icon-power" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
-            <line x1="12" y1="2" x2="12" y2="12"/>
-          </svg>
+          <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
         </button>
-        
-        <!-- 下拉菜单 -->
-        <div v-if="showPowerMenu" class="power-menu-dropdown" @click.stop>
-          <button class="menu-item" @click="exitReplay">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            <span>退出回放</span>
-          </button>
-        </div>
       </div>
 
       <!-- 核心进度条主体 -->
@@ -76,18 +62,6 @@
       <!-- 左侧控制区 -->
       <div class="playback-info-box">
         <div class="controls-stack">
-          <button 
-            class="brush-btn" 
-            :class="{ 'active': isDrawingMode }"
-            @click="$emit('toggle-drawing')"
-            title="屏幕编辑"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-              <path d="M2 2l5 5"/>
-            </svg>
-          </button>
           <button class="circle-play-btn" @click="$emit('toggle-play')">
             <svg v-if="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="white">
               <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
@@ -245,28 +219,6 @@ watch(() => props.roundResults, (newResults) => {
 }, { immediate: true });
 
 const isDragging = ref(false);
-const showPowerMenu = ref(false);
-
-// Toggle power menu
-const togglePowerMenu = () => {
-  showPowerMenu.value = !showPowerMenu.value;
-};
-
-// Exit replay and return to library
-const exitReplay = () => {
-  showPowerMenu.value = false;
-  emit('exit-replay');
-};
-
-// Close power menu when clicking outside
-const handleClickOutside = () => {
-  showPowerMenu.value = false;
-};
-
-// Add click listener to close menu when clicking outside
-if (typeof window !== 'undefined') {
-  document.addEventListener('click', handleClickOutside);
-}
 
 // Debug: show current frame data
 const showCurrentFrameData = () => {
@@ -971,19 +923,23 @@ const formatMs = (ms: number) => {
 .round-selection-module {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--ds-space-md);
 }
 
-/* === Power Menu === */
-.power-menu-wrapper {
-  position: relative;
+/* === Brush Tool Button === */
+.brush-tool-wrapper {
   flex-shrink: 0;
+  width: 130px; /* 与 playback-info-box 宽度一致 */
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 var(--ds-space-sm); /* 与 playback-info-box 的 padding 一致 */
 }
 
-.power-menu-btn {
+.brush-tool-btn {
   width: 32px;
   height: 32px;
-  background: transparent;
+  background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-sm);
   display: flex;
@@ -994,53 +950,20 @@ const formatMs = (ms: number) => {
   color: var(--ds-text-primary);
 }
 
-.power-menu-btn:hover {
+.brush-tool-btn:hover {
   background: var(--ds-surface-hover);
   border-color: var(--ds-border-strong);
 }
 
-.power-menu-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: var(--ds-space-xs);
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--ds-radius-sm);
-  min-width: 160px;
-  box-shadow: var(--ds-shadow-lg);
-  z-index: var(--ds-z-dropdown);
-  overflow: hidden;
+.brush-tool-btn.active {
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: white;
 }
 
-.menu-item {
-  width: 100%;
-  padding: var(--ds-space-sm) var(--ds-space-md);
-  background: transparent;
-  border: none;
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-text-sm);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-sm);
-  cursor: pointer;
-  transition: background var(--ds-transition-base);
-  text-align: left;
-}
-
-.menu-item:hover {
-  background: var(--ds-surface-hover);
-  color: var(--ds-text-primary);
-}
-
-.menu-item svg {
-  flex-shrink: 0;
-  color: var(--ds-text-tertiary);
-}
-
-.menu-item:hover svg {
-  color: var(--ds-text-primary);
+.brush-tool-btn.active:hover {
+  background: var(--ds-primary-hover);
+  border-color: var(--ds-primary-hover);
 }
 
 /* === Layer Control === */
@@ -1091,7 +1014,6 @@ const formatMs = (ms: number) => {
   color: #4dabf7;
   font-size: var(--ds-text-xs);
   font-weight: 600;
-  margin-left: var(--ds-space-sm);
 }
 
 .debug-frame-btn-fixed:hover {
@@ -1111,7 +1033,7 @@ const formatMs = (ms: number) => {
 
 /* === Round Navigation === */
 .round-nav-wrapper {
-  flex: 1;
+  flex: 1; /* 与 timeline-track-main 一样的 flex 布局 */
   height: 40px;
   background: transparent;
   display: flex;
@@ -1229,35 +1151,6 @@ const formatMs = (ms: number) => {
   align-items: center;
   position: relative;
   z-index: 10;
-}
-
-.brush-btn {
-  position: absolute;
-  bottom: 100%;
-  margin-bottom: 12px;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--ds-radius-sm);
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  color: var(--ds-text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-}
-
-.brush-btn:hover {
-  background: var(--ds-surface-hover);
-  color: var(--ds-text-primary);
-  border-color: var(--ds-border-strong);
-}
-
-.brush-btn.active {
-  background: var(--ds-primary);
-  color: #fff;
-  border-color: var(--ds-primary);
 }
 
 .circle-play-btn {

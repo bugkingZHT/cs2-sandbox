@@ -31,21 +31,17 @@
           @click="mode = 'brush'"
           title="画笔"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-            <path d="M2 2l5 5"/>
-            <path d="M11 11l1 1"/>
-          </svg>
+          <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
         </button>
         <button 
           class="tool-btn" 
-          :class="{ 'selected': mode === 'rect' }" 
-          @click="mode = 'rect'"
-          title="框选"
+          :class="{ 'selected': mode === 'arrow' }" 
+          @click="mode = 'arrow'"
+          title="箭头"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="7" y1="17" x2="17" y2="7"/>
+            <polyline points="11 7 17 7 17 13"/>
           </svg>
         </button>
       </div>
@@ -76,7 +72,12 @@
             <polyline points="17 21 17 13 7 13 7 21"/>
             <polyline points="7 3 7 8 15 8"/>
           </svg>
-          <span>保存</span>
+        </button>
+        <button class="tool-btn copy-btn" @click="copyToClipboard" title="复制到剪切板">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
         </button>
         <button class="tool-btn close-btn" @click="$emit('close')" title="退出">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -104,9 +105,9 @@ const emit = defineEmits<{
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const ctx = ref<CanvasRenderingContext2D | null>(null);
 const isDrawing = ref(false);
-const currentColor = ref('#ff4d4f');
-const mode = ref<'brush' | 'rect'>('brush');
-const colors = ['#ff4d4f', '#52c41a', '#1890ff', '#fadb14', '#ffffff', '#000000'];
+const currentColor = ref('#ffffff');
+const mode = ref<'brush' | 'arrow'>('brush');
+const colors = ['#ffffff', '#ff4d4f', '#52c41a', '#1890ff', '#fadb14'];
 
 // History for undo
 const history = ref<ImageData[]>([]);
@@ -146,7 +147,7 @@ const startDrawing = (e: MouseEvent) => {
     ctx.value.moveTo(startPos.x, startPos.y);
     ctx.value.strokeStyle = currentColor.value;
   } else {
-    // For rect, save the current canvas state to restore while dragging
+    // For arrow, save the current canvas state to restore while dragging
     tempImageData = ctx.value.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height);
   }
 };
@@ -161,13 +162,46 @@ const draw = (e: MouseEvent) => {
   if (mode.value === 'brush') {
     ctx.value.lineTo(x, y);
     ctx.value.stroke();
-  } else if (mode.value === 'rect') {
-    // Restore and draw rect
+  } else if (mode.value === 'arrow') {
+    // Restore and draw arrow
     if (tempImageData) {
       ctx.value.putImageData(tempImageData, 0, 0);
     }
     ctx.value.strokeStyle = currentColor.value;
-    ctx.value.strokeRect(startPos.x, startPos.y, x - startPos.x, y - startPos.y);
+    
+    // Draw arrow line
+    const dx = x - startPos.x;
+    const dy = y - startPos.y;
+    const angle = Math.atan2(dy, dx);
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    // Draw main line
+    ctx.value.beginPath();
+    ctx.value.moveTo(startPos.x, startPos.y);
+    ctx.value.lineTo(x, y);
+    ctx.value.stroke();
+    
+    // Draw arrowhead as two lines (not filled)
+    const headLength = Math.min(20, length * 0.3); // Arrow head length
+    const headAngle = Math.PI / 6; // 30 degrees
+    
+    // Left line of arrowhead
+    ctx.value.beginPath();
+    ctx.value.moveTo(x, y);
+    ctx.value.lineTo(
+      x - headLength * Math.cos(angle - headAngle),
+      y - headLength * Math.sin(angle - headAngle)
+    );
+    ctx.value.stroke();
+    
+    // Right line of arrowhead
+    ctx.value.beginPath();
+    ctx.value.moveTo(x, y);
+    ctx.value.lineTo(
+      x - headLength * Math.cos(angle + headAngle),
+      y - headLength * Math.sin(angle + headAngle)
+    );
+    ctx.value.stroke();
   }
 };
 
@@ -262,6 +296,82 @@ const save = () => {
   link.download = `drawing-${new Date().getTime()}.png`;
   link.href = canvasRef.value.toDataURL('image/png');
   link.click();
+};
+
+const copyToClipboard = async () => {
+  if (!canvasRef.value) return;
+  
+  const drawingCanvas = canvasRef.value;
+  
+  // Use the provided function to get the background canvas
+  let bgCanvas: HTMLCanvasElement | null = null;
+  if (props.getBackgroundCanvas) {
+    bgCanvas = props.getBackgroundCanvas();
+  }
+  
+  // Fallback to querySelector if prop method fails
+  if (!bgCanvas) {
+    const parent = drawingCanvas.parentElement;
+    bgCanvas = parent?.querySelector('.map-canvas-element canvas') as HTMLCanvasElement;
+  }
+  
+  console.log('[DrawingBoard] Copying to clipboard...', { 
+    hasBgCanvas: !!bgCanvas, 
+    bgWidth: bgCanvas?.width, 
+    bgHeight: bgCanvas?.height,
+    drawWidth: drawingCanvas.width,
+    drawHeight: drawingCanvas.height,
+    dpr: window.devicePixelRatio
+  });
+  
+  try {
+    let blobToCopy: Blob | null = null;
+    
+    if (bgCanvas) {
+      const tempCanvas = document.createElement('canvas');
+      // Important: Use background canvas's physical dimensions to ensure content is captured
+      const targetWidth = bgCanvas.width;
+      const targetHeight = bgCanvas.height;
+      
+      tempCanvas.width = targetWidth;
+      tempCanvas.height = targetHeight;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      if (tempCtx) {
+        // 1. Fill with background color in case of transparency
+        tempCtx.fillStyle = '#000000';
+        tempCtx.fillRect(0, 0, targetWidth, targetHeight);
+        
+        // 2. Draw background (PIXI canvas)
+        tempCtx.drawImage(bgCanvas, 0, 0);
+        
+        // 3. Draw drawings (scaled to match physical pixels)
+        tempCtx.drawImage(drawingCanvas, 0, 0, targetWidth, targetHeight);
+        
+        // Convert to blob
+        blobToCopy = await new Promise<Blob | null>((resolve) => {
+          tempCanvas.toBlob((blob) => resolve(blob), 'image/png');
+        });
+      }
+    } else {
+      // Fallback to just copying the drawing if background canvas not found
+      blobToCopy = await new Promise<Blob | null>((resolve) => {
+        drawingCanvas.toBlob((blob) => resolve(blob), 'image/png');
+      });
+    }
+    
+    if (blobToCopy) {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blobToCopy })
+      ]);
+      console.log('[DrawingBoard] Image copied to clipboard successfully');
+      // You can add a toast notification here if needed
+    }
+  } catch (error) {
+    console.error('[DrawingBoard] Failed to copy to clipboard:', error);
+    // Fallback: show alert or notification
+    alert('复制到剪切板失败，请使用保存功能');
+  }
 };
 
 const resizeHandler = () => {
@@ -394,17 +504,39 @@ onBeforeUnmount(() => {
 }
 
 .save-btn {
-  width: auto;
-  padding: 0 12px;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--ds-primary);
-  color: #fff;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--ds-text-secondary);
 }
 
 .save-btn:hover {
-  background: var(--ds-primary-hover);
+  background: rgba(82, 196, 26, 0.15);
+  color: #52c41a;
+}
+
+.save-btn:active {
+  background: rgba(82, 196, 26, 0.25);
+  color: #52c41a;
+}
+
+.copy-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--ds-text-secondary);
+}
+
+.copy-btn:hover {
+  background: rgba(82, 196, 26, 0.15);
+  color: #52c41a;
+}
+
+.copy-btn:active {
+  background: rgba(82, 196, 26, 0.25);
+  color: #52c41a;
 }
 
 .close-btn:hover {

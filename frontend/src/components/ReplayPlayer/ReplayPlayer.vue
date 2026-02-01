@@ -21,6 +21,8 @@
           :is-dragging="isDraggingTimeline"
           :map-name="replay?.mapName"
           :projectile-configs="replay?.projectileRenderConfig"
+          :is-drawing-mode="isDrawingMode"
+          @close-drawing="isDrawingMode = false"
         />
 
         <!-- 击杀回传 (Kill Feed) -->
@@ -187,7 +189,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
-import DrawingBoard from './DrawingBoard.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import type { Frame, PlayerState, ReplayData } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';

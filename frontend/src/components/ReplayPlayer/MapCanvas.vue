@@ -14,6 +14,12 @@
       <span>Yaw: {{ hoverPlayer.yaw.toFixed(1) }}°</span>
     </div>
   </div>
+  <!-- Drawing Board -->
+  <DrawingBoard
+    :active="isDrawingMode || false"
+    :getBackgroundCanvas="getCanvasForDrawing"
+    @close="emit('close-drawing')"
+  />
 </template>
 
 <script setup lang="ts">
@@ -33,6 +39,7 @@ import {
   stopPlayerAnimation,
   resetPlayerRenderer,
 } from '../../composables/playersRender';
+import DrawingBoard from './DrawingBoard.vue';
 
 const props = defineProps<{
   frames: Frame[] | undefined;
@@ -42,6 +49,11 @@ const props = defineProps<{
   isDragging?: boolean;
   mapName?: string;
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
+  isDrawingMode?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'close-drawing'): void;
 }>();
 
 // 根据传入的地图名称动态获取配置
@@ -336,6 +348,10 @@ const drawPlayersForFrame = () => {
       worldToMap,
     });
   }
+};
+
+const getCanvasForDrawing = () => {
+  return app?.canvas || null;
 };
 
 // 暴露获取 Canvas 方法供截图使用
