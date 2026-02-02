@@ -1,6 +1,7 @@
 import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Frame, PlayerState, ReplayMeta } from '@/types/replay';
 import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
+import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
 
 /**
  * Player Render Module
@@ -60,14 +61,6 @@ interface RenderContext {
   onPlayerPointerMove?: (e: any, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
 }
-
-// Get display team (flipped in second half for rounds 13+)
-const getDisplayTeam = (originalTeam: number, currentRound: number): number => {
-  if (currentRound >= 13) {
-    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
-  }
-  return originalTeam;
-};
 
 // Linear interpolation helper
 const lerp = (start: number, end: number, factor: number): number => {
@@ -221,9 +214,8 @@ const drawPlayerGraphics = (
   const g = playerSprite.graphics;
   g.clear();
 
-  // Get display team (flipped in second half)
-  const displayTeam = getDisplayTeam(player.team || 0, ctx.currentRound);
-  const color = displayTeam === 3 ? 0x3b82f6 : (displayTeam === 2 ? 0xf97316 : 0x888888);
+  // Get team color (automatically handles second half flipping)
+  const color = getTeamColor(player.team || 0, ctx.currentRound, 'PRIMARY');
   const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
   const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
 
@@ -408,12 +400,11 @@ export const drawPlayersForFrame = (options: {
       if (!frameData) continue;
       
       // Merge metadata with frame data to create complete player object
-      const displayTeam = getDisplayTeam(playerInfo.team, ctx.currentRound);
       const player: PlayerState = {
         ...frameData,
         id: playerInfo.id,
         name: playerInfo.name,
-        team: displayTeam, // Use display team for correct coloring in second half
+        team: playerInfo.team,
         steamID: playerInfo.steamID,
         isBot: playerInfo.isBot
       };

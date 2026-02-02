@@ -163,6 +163,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
+import { MATCH_CONFIG, getDisplayTeam } from '@/config/game';
 import { DEBUG_CONFIG } from '@/config/debug';
 import type { RoundResultInfo, ReplayData } from '@/types/replay';
 import { showFrameData } from '@/composables/frameDataViewer';
@@ -260,15 +261,6 @@ const roundTimeColor = computed(() => {
   }
 });
 
-// 获取显示用的队伍值（后半场翻转）
-// 队伍交换规则：Rounds 1-12: CT=3, T=2 | Rounds 13+: CT=2, T=3
-const getDisplayTeam = (originalTeam: number, frame: any): number => {
-  if (frame && frame.round >= 13) {
-    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
-  }
-  return originalTeam;
-};
-
 // 格式化回合时间显示
 const formatRoundTime = computed(() => {
   const timeRemaining = currentRoundTime.value.timeRemaining;
@@ -296,7 +288,7 @@ const throwMarkers = computed(() => {
             const throwerInfo = props.replayMeta.serverPlayer.find(player => player.id === p.throwerID);
             if (throwerInfo) {
               // Get display team (flipped in second half)
-              team = getDisplayTeam(throwerInfo.team, f);
+              team = getDisplayTeam(throwerInfo.team, f.round);
             }
           }
 
@@ -333,7 +325,7 @@ const killMarkers = computed(() => {
             const killerInfo = props.replayMeta.serverPlayer.find(p => p.id === kill.killerId);
             if (killerInfo) {
               // Get display team (flipped in second half)
-              killerTeam = getDisplayTeam(killerInfo.team, f);
+              killerTeam = getDisplayTeam(killerInfo.team, f.round);
             }
           }
 
@@ -427,11 +419,9 @@ const seekToRound = (round: number) => {
 // Get round result for a specific round number
 const getRoundResult = (roundNumber: number) => {
   if (!props.roundResults || props.roundResults.length === 0) {
-    console.log(`[GetRoundResult] No round results available for round ${roundNumber}`);
     return null;
   }
   const result = props.roundResults.find(rr => rr.round === roundNumber);
-  console.log(`[GetRoundResult] Round ${roundNumber}:`, result ? result.result : 'not found');
   return result?.result || null;
 };
 
@@ -448,7 +438,6 @@ const getRoundResultIcon = (roundNumber: number): string | null => {
   };
   
   const iconPath = iconMap[result] || null;
-  console.log(`[GetRoundResultIcon] Round ${roundNumber}: ${result} -> ${iconPath}`);
   return iconPath;
 };
 

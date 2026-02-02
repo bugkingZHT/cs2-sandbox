@@ -27,6 +27,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Application, Assets, Container, Sprite } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map';
+import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { useMapConfig } from '@/composables/useMapConfig';
 import {
   clearProjectilesLayer,
@@ -336,22 +337,19 @@ const drawPlayersForFrame = () => {
     const playersArray: PlayerState[] = [];
     if (frame.players && props.replayMeta?.serverPlayer) {
       // Determine if we're in second half for team flipping
-      const isSecondHalf = frame.round >= 13;
-      
+      const currentRound = frame.round;
+      const secondHalf = isSecondHalf(currentRound);
+
       // Enrich frame players with metadata from serverPlayer
       for (const playerInfo of props.replayMeta.serverPlayer) {
         const frameData = frame.players[playerInfo.id];
         if (frameData) {
-          // Flip team in second half
-          const displayTeam = isSecondHalf 
-            ? (playerInfo.team === 2 ? 3 : (playerInfo.team === 3 ? 2 : playerInfo.team))
-            : playerInfo.team;
-            
+          // Keep original team, let color functions handle second half flipping
           playersArray.push({
             ...frameData,
             id: playerInfo.id,
             name: playerInfo.name,
-            team: displayTeam, // Use display team for correct coloring in second half
+            team: playerInfo.team, // Use original team, color functions handle flipping
             steamID: playerInfo.steamID,
             isBot: playerInfo.isBot
           });

@@ -193,6 +193,7 @@ import TimelineControl from './TimelineControl.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import type { Frame, PlayerState, ReplayData } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
+import { MATCH_CONFIG, getDisplayTeam } from '@/config/game';
 
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
@@ -346,7 +347,7 @@ const teamCTPlayers = computed<PlayerState[]>(() => {
   // Use sorted player IDs from replay.serverPlayer
   const result: PlayerState[] = [];
   for (const playerInfo of replay.value.serverPlayer) {
-    const displayTeam = getDisplayTeam(playerInfo.team);
+    const displayTeam = getDisplayTeam(playerInfo.team, currentRound.value);
     if (displayTeam !== 3) continue; // Display as CT only
     
     const frameData = frame.players[playerInfo.id];
@@ -372,7 +373,7 @@ const teamTPlayers = computed<PlayerState[]>(() => {
   // Use sorted player IDs from replay.serverPlayer
   const result: PlayerState[] = [];
   for (const playerInfo of replay.value.serverPlayer) {
-    const displayTeam = getDisplayTeam(playerInfo.team);
+    const displayTeam = getDisplayTeam(playerInfo.team, currentRound.value);
     if (displayTeam !== 2) continue; // Display as T only
     
     const frameData = frame.players[playerInfo.id];
@@ -411,20 +412,10 @@ const currentRound = computed(() => {
   return safeFrames.value[currentFrameIndex.value]?.round || 0;
 });
 
-// 判断是否在后半场（13局及以后）
+// 判断是否在后半场（使用配置中的常量）
 const isSecondHalf = computed(() => {
-  return currentRound.value >= 13;
+  return currentRound.value >= MATCH_CONFIG.SECOND_HALF_START_ROUND;
 });
-
-// 获取显示用的队伍值（后半场翻转）
-// 队伍交换规则：Rounds 1-12: CT=3, T=2 | Rounds 13+: CT=2, T=3
-const getDisplayTeam = (originalTeam: number): number => {
-  // 后半场翻转队伍显示
-  if (isSecondHalf.value) {
-    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
-  }
-  return originalTeam;
-};
 
 const currentRoundFrames = computed(() => {
   if (!safeFrames.value.length || currentRound.value === 0) return [];
@@ -455,7 +446,7 @@ const getTeamClass = (playerId: number) => {
     const playerInfo = replay.value.serverPlayer.find(p => p.id === playerId);
     if (playerInfo) {
       // Get display team (flipped in second half)
-      const displayTeam = getDisplayTeam(playerInfo.team);
+      const displayTeam = getDisplayTeam(playerInfo.team, currentRound.value);
       return displayTeam === 3 ? 'ct' : 't';
     }
   }

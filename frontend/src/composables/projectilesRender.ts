@@ -1,6 +1,7 @@
 import { Assets, Container, Graphics, Sprite, ColorMatrixFilter, Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig, BombFrame, RoundTimeInfo, DroppedEquipment } from '@/types/replay';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
+import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
 
 /**
  * 缓存已加载的纹理，避免在渲染循环中重复发起网络请求或进行异步解析
@@ -123,14 +124,6 @@ interface RenderContext {
   timeMs?: number;
 }
 
-// Get display team (flipped in second half for rounds 13+)
-const getDisplayTeam = (originalTeam: number, currentRound: number): number => {
-  if (currentRound >= 13) {
-    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
-  }
-  return originalTeam;
-};
-
 // 获取投掷物类型Key
 const getProjectileTypeKey = (typeId: number): string => {
   const fileName = EQUIPMENT_ID_MAP[typeId] || '';
@@ -241,8 +234,7 @@ const drawTrajectory = (
   );
   let trajColor = 0xff6b6b;
   if (thrower && thrower.team !== undefined) {
-    const displayTeam = getDisplayTeam(thrower.team, ctx.currentRound);
-    trajColor = displayTeam === 3 ? 0x4dabf7 : 0xff922b;
+    trajColor = getTeamColor(thrower.team, ctx.currentRound, 'SECONDARY');
   }
   if (colorOverride !== undefined) {
     trajColor = colorOverride;
@@ -313,8 +305,7 @@ const drawIcon = async (
       (p) => p.id === proj.throwerID || p.name === proj.throwerName,
     );
     if (thrower && thrower.team !== undefined) {
-      const displayTeam = getDisplayTeam(thrower.team, ctx.currentRound);
-      sprite.tint = displayTeam === 3 ? 0x4dabf7 : 0xff922b;
+      sprite.tint = getTeamColor(thrower.team, ctx.currentRound, 'SECONDARY');
     } else {
       sprite.tint = 0xff6b6b;
     }
@@ -467,8 +458,7 @@ const renderSmoke = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
       const thrower = players.find(p => p.id === proj.throwerID);
       let teamColor = 0xffffff;
       if (thrower && thrower.team !== undefined) {
-        const displayTeam = getDisplayTeam(thrower.team, ctx.currentRound);
-        teamColor = displayTeam === 3 ? 0x3b82f6 : 0xf97316;
+        teamColor = getTeamColor(thrower.team, ctx.currentRound, 'PRIMARY');
       }
       drawCountdownRing(explosionG, mapPos.x, mapPos.y, pixelRadius, progress, teamColor);
     }
