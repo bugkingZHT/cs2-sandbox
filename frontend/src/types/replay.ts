@@ -135,6 +135,7 @@ export interface ReplayMeta {
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   originalFilePath?: string; // Temporary: file name for failure detection, cleared after backfill
   fileName?: string; // 原始上传文件名（不带.dem后缀）
+  isParsing?: boolean; // 是否正在解析中（用于页面刷新后恢复状态）
 }
 
 // 单个回合的录像数据

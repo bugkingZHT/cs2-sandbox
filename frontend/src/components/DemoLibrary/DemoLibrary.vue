@@ -87,7 +87,8 @@
           :class="{ 
             'is-current': demo.id === currentDemoId,
             'loading': isLoadingDemo && selectedDemoId === demo.id,
-            'is-parsing': demo.isParsing
+            'is-parsing': demo.isParsing || (demo.parsingStatus && (demo.parsingProgress ?? 0) > 0 && !demo.hasFailed),
+            'is-failed': demo.hasFailed
           }"
           @click="selectDemo(demo)"
         >
@@ -179,8 +180,8 @@
             </div>
           </div>
 
-          <!-- Parsing Overlay -->
-          <div v-if="demo.isParsing" class="parsing-overlay-card">
+          <!-- Parsing Overlay (active parsing - blue) -->
+          <div v-if="(demo.isParsing || (demo.parsingStatus && (demo.parsingProgress ?? 0) > 0)) && !demo.hasFailed" class="parsing-overlay-card">
             <div class="parsing-progress-container">
               <div class="parsing-progress-label">解析中...</div>
               <div class="parsing-progress-bar">
@@ -191,7 +192,7 @@
             <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Processing...' }}</div>
           </div>
 
-          <!-- Failed Overlay -->
+          <!-- Failed Overlay (error/timeout - red, text only, no progress bar) -->
           <div v-else-if="demo.hasFailed" class="failed-overlay-card">
             <div class="failed-content">
               <div class="failed-icon">
@@ -208,11 +209,11 @@
             <button 
               class="delete-btn-failed"
               @click.stop="confirmDelete(demo)"
-              title="Delete this demo"
+              title="Delete failed demo"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
               </svg>
             </button>
           </div>
@@ -247,7 +248,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue';
 import type { ReplayData } from '@/types/replay';
-import { MAP_CONFIGS } from '@/config/map-config';
+import { MAP_CONFIGS } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 
 const props = defineProps<{
@@ -336,7 +337,24 @@ const onFileSelected = (event: Event) => {
 
 const selectDemo = async (demo: ReplayData) => {
   // Prevent selecting demos that are still parsing or failed
-  if (demo.isParsing || demo.hasFailed || isLoadingDemo.value || !demo.id) return;
+  // Check all possible parsing/failed indicators:
+  // - isParsing: active parsing flag
+  // - hasFailed: timeout or error flag
+  // - parsingStatus with progress: page refresh during parsing (resumed from cache)
+  if (demo.isParsing || 
+      demo.hasFailed || 
+      (demo.parsingStatus && (demo.parsingProgress ?? 0) > 0) || 
+      isLoadingDemo.value || 
+      !demo.id) {
+    console.log('[SelectDemo] Blocked - demo is parsing or failed:', {
+      uuid: demo.uuid,
+      isParsing: demo.isParsing,
+      hasFailed: demo.hasFailed,
+      parsingStatus: demo.parsingStatus,
+      parsingProgress: demo.parsingProgress
+    });
+    return;
+  }
   
   isLoadingDemo.value = true;
   selectedDemoId.value = demo.id;
@@ -766,6 +784,17 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 }
 
 .demo-card.is-parsing:hover {
+  border-color: var(--ds-border-default);
+  transform: none;
+  box-shadow: none;
+}
+
+.demo-card.is-failed {
+  cursor: not-allowed;
+  opacity: 0.95;
+}
+
+.demo-card.is-failed:hover {
   border-color: var(--ds-border-default);
   transform: none;
   box-shadow: none;

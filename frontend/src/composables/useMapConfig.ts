@@ -1,5 +1,5 @@
 import { computed } from 'vue';
-import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
+import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map';
 
 export const useMapConfig = (mapName: string = DEFAULT_MAP) => {
   const currentMapConfig = MAP_CONFIGS[mapName] || MAP_CONFIGS[DEFAULT_MAP];

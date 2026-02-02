@@ -32,11 +32,13 @@ interface ParsingCompleteMessage {
 
 interface ProgressMessage {
   type: 'PROGRESS';
+  uuid: string;
   parsedTicks: number;
 }
 
 interface ErrorMessage {
   type: 'ERROR';
+  uuid: string;
   error: string;
 }
 
@@ -96,13 +98,13 @@ function parseNextRoundPromise(onTickProgress: (ticks: number) => void): Promise
 // Main message handler
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   if (e.data.type === 'PARSE_ROUNDS') {
+    const { demoBytes, uuid, estimatedTotalTicks } = e.data;
+    
     try {
       // Ensure WASM is initialized
       await initializeWASM();
       
-      const { demoBytes, uuid, estimatedTotalTicks } = e.data;
-      
-      console.log(`[Worker] Starting round parsing for UUID: ${uuid}`);
+      console.log(`[Worker] [${uuid}] Starting round parsing`);
       
       // Initialize parser with demo bytes
       const initError = (self as any).initDemoParser(demoBytes);
@@ -110,7 +112,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         throw new Error(`initDemoParser failed: ${initError}`);
       }
       
-      console.log('[Worker] Parser initialized in worker');
+      console.log(`[Worker] [${uuid}] Parser initialized`);
       
       // Parse rounds in loop
       let roundNum = 1;
@@ -124,6 +126,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           if (parsedTicks - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL) {
             const progressMsg: ProgressMessage = {
               type: 'PROGRESS',
+              uuid: uuid,
               parsedTicks
             };
             self.postMessage(progressMsg);
@@ -133,15 +136,15 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         
         // If roundBinary is null, we've reached EOF
         if (!roundBinary) {
-          console.log(`[Worker] EOF reached after ${roundNum - 1} rounds`);
+          console.log(`[Worker] [${uuid}] EOF reached after ${roundNum - 1} rounds`);
           break;
         }
         
-        console.log(`[Worker] 📦 Round ${roundNum} binary received, size: ${roundBinary.byteLength} bytes`);
+        console.log(`[Worker] [${uuid}] Round ${roundNum} binary received, size: ${roundBinary.byteLength} bytes`);
         
         // Decode protobuf binary to ReplayRound
         const round: ReplayRound = await decodeReplayRound(roundBinary as Uint8Array);
-        console.log(`[Worker] ✅ Round ${roundNum} decoded:`, {
+        console.log(`[Worker] [${uuid}] Round ${roundNum} decoded:`, {
           uuid: round.uuid,
           round: round.round,
           frameCount: round.frames.length
@@ -152,7 +155,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         
         rounds.push(round);
         
-        console.log(`[Worker] Parsed round ${roundNum}, frames: ${round.frames.length}, UUID: ${uuid}`);
+        console.log(`[Worker] [${uuid}] Round ${roundNum} parsed, frames: ${round.frames.length}`);
         
         // Send milestone: round complete
         const response: RoundCompleteMessage = {
@@ -164,7 +167,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         roundNum++;
       }
       
-      console.log(`[Worker] All rounds parsed (${rounds.length} total)`);
+      console.log(`[Worker] [${uuid}] All rounds parsed (${rounds.length} total)`);
       
       // Extract final statistics from the last parsed state
       // Call backfillDemoMeta to get final scores
@@ -182,11 +185,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       
       const backfilledMeta = await decodeReplayMeta(backfillBinary);
       
-      console.log('[Worker] Backfilled meta received:', {
+      console.log(`[Worker] [${uuid}] Backfilled meta received:`, {
         totalRounds: backfilledMeta.totalRounds,
         hasRoundResults: !!backfilledMeta.roundResults,
-        roundResultsCount: backfilledMeta.roundResults?.length || 0,
-        roundResults: backfilledMeta.roundResults
+        roundResultsCount: backfilledMeta.roundResults?.length || 0
       });
       
       // Send completion message with statistics AND round results
@@ -199,14 +201,15 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         teamT: backfilledMeta.teamT || '',
         roundResults: backfilledMeta.roundResults || [] // Include round results
       };
-      console.log('[Worker] Sending PARSING_COMPLETE with roundResults:', completeResponse.roundResults);
+      console.log(`[Worker] [${uuid}] Sending PARSING_COMPLETE with ${completeResponse.roundResults.length} round results`);
       self.postMessage(completeResponse);
       
     } catch (error: any) {
-      console.error('[Worker] Parsing error:', error);
+      console.error(`[Worker] [${uuid}] Parsing error:`, error);
       
       const errorResponse: ErrorMessage = {
         type: 'ERROR',
+        uuid: uuid,
         error: error.message || String(error)
       };
       self.postMessage(errorResponse);

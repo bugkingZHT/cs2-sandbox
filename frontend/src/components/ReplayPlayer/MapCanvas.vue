@@ -26,7 +26,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Sprite } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
-import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map-config';
+import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map';
 import { useMapConfig } from '@/composables/useMapConfig';
 import {
   clearProjectilesLayer,

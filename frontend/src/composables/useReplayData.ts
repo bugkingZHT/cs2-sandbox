@@ -3,6 +3,7 @@ import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, Worl
 import ParserWorker from '@/workers/wasm-parser.worker?worker';
 import { getOPFSStorage } from './opfs-storage';
 import { decodeReplayMeta, encodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
+import { PARSER_CONFIG } from '@/config/parser';
 
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
@@ -23,6 +24,89 @@ interface UseReplayResult {
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
+const PARSING_CACHE_PREFIX = 'parsing_cache_';
+
+// Interface for cached parsing state
+interface ParsingStateCache {
+  uuid: string;
+  progress: number;
+  status: string;
+  lastTickTime: number; // Timestamp of last tick event (for timeout detection)
+}
+
+// Generate cache key from UUID
+const getParsingCacheKey = (uuid: string) => `${PARSING_CACHE_PREFIX}${uuid}`;
+
+// Save parsing state to sessionStorage (called by worker progress updates)
+const saveParsingState = (uuid: string, progress: number, status: string) => {
+  try {
+    const cache: ParsingStateCache = {
+      uuid,
+      progress,
+      status,
+      lastTickTime: Date.now()
+    };
+    sessionStorage.setItem(getParsingCacheKey(uuid), JSON.stringify(cache));
+  } catch (e) {
+    console.warn('[ParsingCache] Failed to save:', e);
+  }
+};
+
+// Load cached parsing state
+const loadParsingState = (uuid: string): ParsingStateCache | null => {
+  try {
+    const cached = sessionStorage.getItem(getParsingCacheKey(uuid));
+    if (!cached) return null;
+    
+    const state: ParsingStateCache = JSON.parse(cached);
+    return state;
+  } catch (e) {
+    console.warn('[ParsingCache] Failed to load:', e);
+    return null;
+  }
+};
+
+// Check if parsing has timed out based on cached timestamp
+const isParsingTimedOut = (cache: ParsingStateCache): boolean => {
+  const timeSinceLastTick = Date.now() - cache.lastTickTime;
+  return timeSinceLastTick > PARSER_CONFIG.workerTickTimeout;
+};
+
+// Clear parsing state cache for a specific UUID
+const clearParsingState = (uuid: string) => {
+  try {
+    sessionStorage.removeItem(getParsingCacheKey(uuid));
+  } catch (e) {
+    console.warn('[ParsingCache] Failed to clear:', e);
+  }
+};
+
+// Clear all parsing caches (useful for cleanup)
+const clearAllParsingStates = () => {
+  try {
+    const keys = Object.keys(sessionStorage);
+    keys.forEach(key => {
+      if (key.startsWith(PARSING_CACHE_PREFIX)) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch (e) {
+    console.warn('[ParsingCache] Failed to clear all:', e);
+  }
+};
+
+// Get all UUIDs that have parsing cache
+const getAllCachedUUIDs = (): string[] => {
+  try {
+    const keys = Object.keys(sessionStorage);
+    return keys
+      .filter(key => key.startsWith(PARSING_CACHE_PREFIX))
+      .map(key => key.replace(PARSING_CACHE_PREFIX, ''));
+  } catch (e) {
+    console.warn('[ParsingCache] Failed to get cached UUIDs:', e);
+    return [];
+  }
+};
 
 // 单例模式：确保所有组件使用同一个响应式实例
 let replayDataInstance: ReturnType<typeof createReplayData> | null = null;
@@ -41,6 +125,9 @@ function createReplayData() {
   const currentRoundNumber = ref<number>(1);
 
   const abortController = new AbortController();
+  
+  // Interval handle for checking incomplete demos timeout
+  let incompleteCheckInterval: number | null = null;
 
   // Save meta and rounds to OPFS with protobuf
   const saveReplayToOPFS = async (meta: ReplayMeta, rounds: ReplayRound[]) => {
@@ -81,36 +168,217 @@ function createReplayData() {
     
     console.log('[LoadAllReplays] 加载到的元数据数量:', metas.filter(m => m !== null).length);
     
-    // Convert meta to ReplayData for list display
-    replayList.value = metas
+    // Step 1: Build UUID map from meta
+    const metaMap = new Map<string, ReplayMeta>();
+    metas
       .filter((m): m is ReplayMeta => m !== null)
-      .map(meta => {
-        // Detect failed parsing: originalFilePath exists (backfill never completed)
-        const hasFailed = !!meta.originalFilePath;
-        
-        return {
-          uuid: meta.uuid,
-          id: meta.uuid, // For backward compatibility
-          uploaderUid: meta.uploaderUid,
-          uploadTime: meta.uploadTime,
-          mapName: meta.mapName,
-          teamCT: meta.teamCT,
-          teamT: meta.teamT,
-          scoreCT: meta.scoreCT,
-          scoreT: meta.scoreT,
-          totalRounds: meta.totalRounds,
-          totalFrames: meta.totalFrames || 0,
-          totalDurationMs: meta.totalDurationMs || 0,
-          frames: [], // Not loaded yet
-          projectileRenderConfig: meta.projectileRenderConfig,
-          timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
-          fileName: meta.fileName, // Preserve filename
-          // Parsing state fields
-          isParsing: false,
-          hasFailed: hasFailed,
-          parsingStatus: hasFailed ? `Upload failed: ${meta.originalFilePath}` : undefined,
-        };
+      .forEach(meta => {
+        metaMap.set(meta.uuid, meta);
       });
+    console.log('[LoadAllReplays] Step 1: Meta map size:', metaMap.size);
+    
+    // Step 2: Get all UUIDs from cache
+    const cachedUUIDs = getAllCachedUUIDs();
+    const cacheSet = new Set(cachedUUIDs);
+    console.log('[LoadAllReplays] Step 2: Cached UUIDs:', cachedUUIDs.length, cachedUUIDs);
+    
+    // Step 3: Find intersection and clean up orphan caches
+    const intersection = cachedUUIDs.filter(uuid => metaMap.has(uuid));
+    const orphanCaches = cachedUUIDs.filter(uuid => !metaMap.has(uuid));
+    
+    console.log('[LoadAllReplays] Step 3: Intersection (cache + meta):', intersection.length, intersection);
+    console.log('[LoadAllReplays] Step 3: Orphan caches (cache only):', orphanCaches.length, orphanCaches);
+    
+    // Clean up orphan caches (uuid in cache but not in meta)
+    orphanCaches.forEach(uuid => {
+      console.log(`[LoadAllReplays] Cleaning orphan cache: ${uuid}`);
+      clearParsingState(uuid);
+    });
+    
+    // Step 4: Render cards based on meta map
+    replayList.value = Array.from(metaMap.values()).map(meta => {
+      const uuid = meta.uuid;
+      const hasCache = cacheSet.has(uuid);
+      
+      let hasFailed = false;
+      let parsingStatus: string | undefined = undefined;
+      let parsingProgress = 0;
+      
+      if (hasCache) {
+        // UUID exists in both cache and meta - show progress bar
+        const cachedState = loadParsingState(uuid);
+        
+        if (cachedState) {
+          // Check timeout using cached timestamp and config
+          if (isParsingTimedOut(cachedState)) {
+            // Timeout exceeded - mark as failed but KEEP cache
+            hasFailed = true;
+            parsingStatus = `Parsing timeout (no progress for ${PARSER_CONFIG.workerTickTimeout / 1000}s)`;
+            parsingProgress = cachedState.progress;
+            console.log(`[LoadAllReplays] [${uuid}] Timeout detected from cache - marked as failed, cache retained`);
+            // Do NOT clear cache here - user will clean up manually
+            // clearParsingState(uuid); // ❌ 移除这行
+          } else {
+            // Still within timeout - show incomplete with progress from cache
+            parsingProgress = cachedState.progress;
+            parsingStatus = cachedState.status;
+            console.log(`[LoadAllReplays] [${uuid}] Restoring progress: ${parsingProgress}%, status: ${parsingStatus}`);
+          }
+        } else {
+          // Cache key exists but content is invalid/empty
+          console.warn(`[LoadAllReplays] [${uuid}] Cache key exists but content invalid`);
+          clearParsingState(uuid);
+        }
+      }
+      // If UUID only in meta (not in cache), render normally (no special handling)
+      
+      return {
+        uuid: meta.uuid,
+        id: meta.uuid,
+        uploaderUid: meta.uploaderUid,
+        uploadTime: meta.uploadTime,
+        mapName: meta.mapName,
+        teamCT: meta.teamCT,
+        teamT: meta.teamT,
+        scoreCT: meta.scoreCT,
+        scoreT: meta.scoreT,
+        totalRounds: meta.totalRounds,
+        totalFrames: meta.totalFrames || 0,
+        totalDurationMs: meta.totalDurationMs || 0,
+        frames: [],
+        projectileRenderConfig: meta.projectileRenderConfig,
+        timestamp: meta.uploadTime,
+        fileName: meta.fileName,
+        // Parsing state fields - purely based on cache
+        isParsing: false,
+        hasFailed: hasFailed,
+        parsingProgress: parsingProgress,
+        parsingStatus: parsingStatus,
+      };
+    });
+    
+    console.log('[LoadAllReplays] Final replay list size:', replayList.value.length);
+    
+    // Start monitoring incomplete demos for timeout
+    startIncompleteMonitoring();
+  };
+  
+  // Monitor incomplete demos and check for timeout
+  const startIncompleteMonitoring = () => {
+    // Clear existing interval if any
+    if (incompleteCheckInterval) {
+      clearInterval(incompleteCheckInterval);
+    }
+    
+    // Check every 2 seconds (faster polling for responsive progress updates)
+    incompleteCheckInterval = setInterval(() => {
+      checkIncompleteDemosTimeout();
+    }, 2000) as unknown as number;
+    
+    console.log('[IncompleteMonitor] Started monitoring (polling cache every 2s)');
+  };
+  
+  // Check all incomplete demos for timeout
+  const checkIncompleteDemosTimeout = () => {
+    let checkedCount = 0;
+    let updatedCount = 0;
+    let timedOutCount = 0;
+    let cacheNotFoundCount = 0;
+    let completedCount = 0;
+    
+    // Get current cached UUIDs (may be multiple demos parsing concurrently)
+    const cachedUUIDs = getAllCachedUUIDs();
+    
+    if (cachedUUIDs.length > 0) {
+      console.log(`[IncompleteMonitor] Polling ${cachedUUIDs.length} demos in cache: [${cachedUUIDs.map(u => u.substring(0, 8)).join(', ')}]`);
+    }
+    
+    // Track if any updates were made
+    let hasUpdates = false;
+    let needsReload = false;
+    
+    // Iterate through ALL demos in replayList with index for reactive updates
+    replayList.value.forEach((demo, index) => {
+      // Only check demos that have cache and are not already failed
+      if (cachedUUIDs.includes(demo.uuid) && !demo.hasFailed) {
+        checkedCount++;
+        const cachedState = loadParsingState(demo.uuid);
+        
+        if (cachedState) {
+          // Check if parsing is complete
+          if (cachedState.progress === 100 && cachedState.status === 'Complete') {
+            completedCount++;
+            console.log(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Parsing completed (100%), will reload cards`);
+            
+            // Clear cache for completed demo
+            clearParsingState(demo.uuid);
+            
+            // Mark that we need to reload all cards to show normal state
+            needsReload = true;
+          }
+          // Check timeout
+          else if (isParsingTimedOut(cachedState)) {
+            // Timeout exceeded - mark as failed but KEEP cache (wait for user to delete)
+            timedOutCount++;
+            console.log(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Timeout detected (no updates for ${PARSER_CONFIG.workerTickTimeout / 1000}s) - marked as failed, cache retained`);
+            
+            // Update via index assignment to trigger reactivity
+            replayList.value[index] = {
+              ...demo,
+              hasFailed: true,
+              parsingStatus: `Parsing timeout (no progress for ${PARSER_CONFIG.workerTickTimeout / 1000}s)`,
+              isParsing: false,
+              parsingProgress: cachedState.progress, // Keep last known progress
+            };
+            hasUpdates = true;
+            
+            // Do NOT clear cache - keep it until user deletes the card
+            // clearParsingState(demo.uuid); // ❌ 移除这行
+          } else {
+            // Still within timeout - update progress from cache
+            const progressChanged = demo.parsingProgress !== cachedState.progress;
+            const statusChanged = demo.parsingStatus !== cachedState.status;
+            
+            if (progressChanged || statusChanged) {
+              updatedCount++;
+              console.log(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Progress updated: ${cachedState.progress}%, status: ${cachedState.status}`);
+              
+              // Update via index assignment to trigger reactivity
+              replayList.value[index] = {
+                ...demo,
+                parsingProgress: cachedState.progress,
+                parsingStatus: cachedState.status,
+              };
+              hasUpdates = true;
+            }
+          }
+        } else {
+          // Cache not found but UUID in cached list - invalid state, clean up
+          cacheNotFoundCount++;
+          console.warn(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Cache key exists but content invalid, cleaning up`);
+          clearParsingState(demo.uuid);
+        }
+      }
+    });
+    
+    if (checkedCount > 0) {
+      console.log(`[IncompleteMonitor] Poll summary: ${checkedCount} checked, ${updatedCount} updated, ${completedCount} completed, ${timedOutCount} timed out, ${cacheNotFoundCount} cache invalid, hasUpdates: ${hasUpdates}`);
+    }
+    
+    // Reload all cards if any demo completed parsing
+    if (needsReload) {
+      console.log(`[IncompleteMonitor] Reloading all cards due to ${completedCount} completed demo(s)`);
+      loadAllReplays();
+    }
+  };
+  
+  // Stop monitoring when component unmounts
+  const stopIncompleteMonitoring = () => {
+    if (incompleteCheckInterval) {
+      clearInterval(incompleteCheckInterval);
+      incompleteCheckInterval = null;
+      console.log('[IncompleteMonitor] Stopped monitoring');
+    }
   };
 
   // Load replay meta and first round from OPFS
@@ -227,6 +495,11 @@ function createReplayData() {
     console.log('[DeleteReplayById] Starting deletion for UUID:', uuid);
     const storage = await getOPFSStorage();
     await storage.deleteReplay(uuid);
+    
+    // Clean up parsing cache when user deletes the card
+    clearParsingState(uuid);
+    console.log('[DeleteReplayById] Cleared parsing cache for UUID:', uuid);
+    
     await loadAllReplays();
     if (localStorage.getItem(LATEST_KEY) === uuid) {
       localStorage.removeItem(LATEST_KEY);
@@ -313,13 +586,12 @@ function createReplayData() {
     statusMsg.value = status;
   };
 
-  // Update parsing progress for a specific demo in the list
+  // Update parsing progress for a specific demo - only write to cache, do not update replayList
+  // Frontend will poll cache periodically to update progress bar
   const updateDemoParsingProgress = (uuid: string, progress: number, status: string) => {
-    const demo = replayList.value.find(d => d.uuid === uuid);
-    if (demo) {
-      demo.parsingProgress = Math.min(100, Math.max(0, progress));
-      demo.parsingStatus = status;
-    }
+    // Only save to cache, frontend will read from cache to update UI
+    saveParsingState(uuid, progress, status);
+    console.log(`[UpdateProgress] [${uuid}] Saved to cache: ${progress}%, ${status}`);
   };
 
   const parseDemo = async (file: File) => {
@@ -380,10 +652,13 @@ function createReplayData() {
       
       // Save original filename without .dem extension
       meta.fileName = file.name.replace(/\.dem$/i, '');
+      
+      // Mark as parsing (will be cleared during backfill)
+      meta.isParsing = true;
 
       // Step 3: Save incomplete meta to OPFS immediately
       updateParsingProgress(100, 'Metadata saved!');
-      console.log('[ParseDemo] 💾 Saving incomplete meta to OPFS...');
+      console.log('[ParseDemo] 💾 Saving incomplete meta to OPFS (with isParsing=true)...');
       await saveMetaToOPFS(meta);
       console.log('[ParseDemo] 🔄 Refreshing replay list...');
       await loadAllReplays(); // Refresh replay list
@@ -406,15 +681,46 @@ function createReplayData() {
       // ============ ASYNCHRONOUS PHASE: Round parsing in Web Worker ============
       const worker = new ParserWorker();
       const workerRounds: ReplayRound[] = [];
+      let lastTickTime = Date.now();
+      let tickTimeoutHandle: number | null = null;
+
+      // Check for tick timeout (no progress updates for configured duration)
+      const checkTickTimeout = () => {
+        const timeSinceLastTick = Date.now() - lastTickTime;
+        if (timeSinceLastTick > PARSER_CONFIG.workerTickTimeout) {
+          console.error(`[ParseDemo] Tick timeout - no progress updates for ${PARSER_CONFIG.workerTickTimeout / 1000}s`);
+          // Worker timeout - don't clear cache, let polling detect it and mark as failed
+          // This preserves the last known progress for user to see
+          (window as any).closeDemoParser();
+          // Do NOT clear cache here - let polling handle it
+          // clearParsingState(meta.uuid); // ❌ 移除这行
+          if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
+          worker.terminate();
+        }
+      };
+
+      // Start tick timeout checker (check every 5 seconds)
+      tickTimeoutHandle = setInterval(checkTickTimeout, 5000) as unknown as number;
 
       // Setup message handler
       worker.onmessage = async (e: MessageEvent) => {
         if (e.data.type === 'PROGRESS') {
+          // Update last tick time on progress
+          lastTickTime = Date.now();
+          
+          const { uuid: workerUuid, parsedTicks } = e.data;
+          
+          // Verify uuid match
+          if (workerUuid !== meta.uuid) {
+            console.error(`[ParseDemo] UUID mismatch! Expected: ${meta.uuid}, Got: ${workerUuid}`);
+            return;
+          }
+          
           // Update progress based on ticks (0-95% for parsing phase)
-          const parsedTicks = e.data.parsedTicks;
           const progress = Math.min(95, (parsedTicks / estimatedTotalTicks) * 95);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
           updateDemoParsingProgress(meta.uuid, Math.floor(progress), status);
+          console.log(`[ParseDemo] [${meta.uuid}] Tick progress: ${parsedTicks.toLocaleString()} ticks (${Math.floor(progress)}%)`);
           
         } else if (e.data.type === 'ROUND_COMPLETE') {
           const round: ReplayRound = e.data.round;
@@ -452,47 +758,51 @@ function createReplayData() {
             console.log(`[ParseDemo] Final stats - Rounds: ${meta.totalRounds}, CT: ${meta.teamCT} (${meta.scoreCT}), T: ${meta.teamT} (${meta.scoreT}), RoundResults: ${meta.roundResults?.length || 0}`);
             console.log('[ParseDemo] Meta roundResults before save:', meta.roundResults);
             
-            // Remove temporary field after successful parsing
+            // Remove temporary fields after successful parsing (backfill complete)
             delete meta.originalFilePath;
+            delete meta.isParsing;
             await saveMetaToOPFS(meta);
-            await loadAllReplays();
+            await loadAllReplays(); // Reload will detect cache cleared and show normal card
             
             // Close parser on main thread
             (window as any).closeDemoParser();
             
-            // Mark parsing complete
+            // Save completion status to cache (will be read by next poll)
             updateDemoParsingProgress(meta.uuid, 100, 'Complete');
-            const completedDemo = replayList.value.find(d => d.uuid === meta.uuid);
-            if (completedDemo) {
-              completedDemo.isParsing = false;
-              completedDemo.parsingProgress = 100;
-              completedDemo.parsingStatus = 'Complete';
-            }
+            
+            // Clear cached parsing state after a short delay (allow one last poll to see 100%)
+            setTimeout(() => {
+              clearParsingState(meta.uuid);
+              console.log(`[ParseDemo] Cleared cache for ${meta.uuid}`);
+            }, 3000);
             
             console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
           } catch (e: any) {
             console.error('[ParseDemo] Finalization failed:', e);
-            const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
-            if (failedDemo) {
-              failedDemo.isParsing = false;
-              failedDemo.hasFailed = true;
-              failedDemo.parsingStatus = `Finalization error: ${e.message || String(e)}`;
-            }
+            // Don't clear cache - keep last progress for user to see before manual deletion
             (window as any).closeDemoParser();
+            // Do NOT clear cache - let polling detect timeout
+            // clearParsingState(meta.uuid); // ❌ 移除这行
           } finally {
-            // Cleanup worker
+            // Cleanup worker and tick timeout checker
+            if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
             worker.terminate();
           }
           
         } else if (e.data.type === 'ERROR') {
-          console.error('[ParseDemo] Worker error:', e.data.error);
-          const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
-          if (failedDemo) {
-            failedDemo.isParsing = false;
-            failedDemo.hasFailed = true;
-            failedDemo.parsingStatus = `Error: ${e.data.error}`;
+          const { uuid: workerUuid, error: errorMessage } = e.data;
+          console.error(`[ParseDemo] [${workerUuid}] Worker error:`, errorMessage);
+          
+          // Verify uuid match
+          if (workerUuid !== meta.uuid) {
+            console.error(`[ParseDemo] UUID mismatch in error! Expected: ${meta.uuid}, Got: ${workerUuid}`);
           }
+          
+          // Don't clear cache - keep last progress for user to see
           (window as any).closeDemoParser();
+          // Do NOT clear cache - let polling detect timeout and mark as failed
+          // clearParsingState(meta.uuid); // ❌ 移除这行
+          if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
           worker.terminate();
         }
       };
@@ -500,13 +810,11 @@ function createReplayData() {
       // Handle worker errors
       worker.onerror = (error: ErrorEvent) => {
         console.error('[ParseDemo] Worker error event:', error);
-        const failedDemo = replayList.value.find(d => d.uuid === meta.uuid);
-        if (failedDemo) {
-          failedDemo.isParsing = false;
-          failedDemo.hasFailed = true;
-          failedDemo.parsingStatus = `Worker error: ${error.message}`;
-        }
+        // Don't clear cache - keep last progress for user to see
         (window as any).closeDemoParser();
+        // Do NOT clear cache - let polling detect timeout and mark as failed
+        // clearParsingState(meta.uuid); // ❌ 移除这行
+        if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
         worker.terminate();
       };
 
@@ -561,6 +869,7 @@ function createReplayData() {
 
   onUnmounted(() => {
     abortController.abort();
+    stopIncompleteMonitoring(); // Stop monitoring on unmount
   });
 
   return {
