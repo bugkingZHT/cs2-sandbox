@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +61,7 @@ func (e *DemoEngine) InitParser(r io.Reader) error {
 		bombState:         "carried",
 		activeProjectiles: make(map[int]entity.ProjectileFrame),
 		currentKillEvents: make(map[int]entity.KillEvent),
+		playerRegistry:    make(map[int]entity.PlayerInfo),
 		resolveFreezeTime: e.resolveFreezeTime,
 		inFreezeTime:      true, // Start in freeze time
 	}
@@ -246,6 +248,19 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		log.Println("[BackfillMeta] WARNING: No round results found!")
 	}
 
+	// Sort player IDs for consistent ordering
+	playerIDs := make([]int, 0, len(e.builder.playerRegistry))
+	for id := range e.builder.playerRegistry {
+		playerIDs = append(playerIDs, id)
+	}
+	sort.Ints(playerIDs)
+
+	// Build sorted server player list
+	serverPlayers := make([]entity.PlayerInfo, 0, len(playerIDs))
+	for _, id := range playerIDs {
+		serverPlayers = append(serverPlayers, e.builder.playerRegistry[id])
+	}
+
 	// Create updated meta preserving all original fields
 	updatedMeta := &entity.ReplayMeta{
 		UUID:             meta.UUID,
@@ -267,10 +282,11 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		ScoreT:       gs.TeamTerrorists().Score(),
 		TotalRounds:  e.builder.currentRound,
 		RoundResults: e.builder.roundResults, // Add round results from builder
+		ServerPlayer: serverPlayers,          // Add sorted player info
 	}
 
-	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d, RoundResults=%d",
-		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT, len(updatedMeta.RoundResults))
+	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d, RoundResults=%d, ServerPlayers=%d",
+		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT, len(updatedMeta.RoundResults), len(updatedMeta.ServerPlayer))
 	return updatedMeta, nil
 }
 
@@ -319,6 +335,26 @@ type replayBuilder struct {
 	roundEndTick    int // Tick when round ended
 	// Round results tracking
 	roundResults []entity.RoundResultInfo // Store all round results
+	// Player registry: track all players seen during match
+	playerRegistry map[int]entity.PlayerInfo // Player ID -> PlayerInfo
+}
+
+// trackPlayer adds or updates a player in the player registry
+func (b *replayBuilder) trackPlayer(pl *common.Player) {
+	if pl == nil {
+		return
+	}
+
+	// Add player to registry if not already tracked
+	if _, exists := b.playerRegistry[pl.UserID]; !exists {
+		b.playerRegistry[pl.UserID] = entity.PlayerInfo{
+			ID:      pl.UserID,
+			Name:    pl.Name,
+			Team:    int(pl.Team),
+			SteamID: pl.SteamID64,
+			IsBot:   pl.IsBot,
+		}
+	}
 }
 
 func (b *replayBuilder) frameOne() entity.Frame {
@@ -355,40 +391,32 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		}
 
 		playerFrame := entity.PlayerFrame{
-			ID:                  pl.UserID,
-			Name:                pl.Name,
-			Team:                int(pl.Team),
-			X:                   x,
-			Y:                   y,
-			Z:                   pos.Z,
-			Alive:               pl.IsAlive(),
-			Yaw:                 pl.ViewDirectionX(),
-			Pitch:               pl.ViewDirectionY(),
-			Health:              pl.Health(),
-			Armor:               pl.Armor(),
-			Money:               pl.Money(),
-			HasHelmet:           pl.HasHelmet(),
-			HasDefuseKit:        pl.HasDefuseKit(),
-			IsScoped:            pl.IsScoped(),
-			FlashDuration:       pl.FlashDuration,
-			IsBlinded:           pl.IsBlinded(),
-			Inventory:           inventory,
-			ActiveWeapon:        activeWeapon,
-			Buttons:             buttons,
-			Kills:               pl.Kills(),
-			Assists:             pl.Assists(),
-			Deaths:              pl.Deaths(),
-			MoneySpentTotal:     pl.MoneySpentTotal(),
-			MoneySpentThisRound: pl.MoneySpentThisRound(),
-			EquipmentValue:      pl.EquipmentValueCurrent(),
-			SteamID:             pl.SteamID64,
-			IsBot:               pl.IsBot,
+			X:             x,
+			Y:             y,
+			Z:             pos.Z,
+			Alive:         pl.IsAlive(),
+			Yaw:           pl.ViewDirectionX(),
+			Pitch:         pl.ViewDirectionY(),
+			Health:        pl.Health(),
+			Armor:         pl.Armor(),
+			Money:         pl.Money(),
+			HasHelmet:     pl.HasHelmet(),
+			HasDefuseKit:  pl.HasDefuseKit(),
+			IsScoped:      pl.IsScoped(),
+			FlashDuration: pl.FlashDuration,
+			IsBlinded:     pl.IsBlinded(),
+			Inventory:     inventory,
+			ActiveWeapon:  activeWeapon,
+			Buttons:       buttons,
+			Kills:         pl.Kills(),
+			Assists:       pl.Assists(),
+			Deaths:        pl.Deaths(),
 		}
 		playersMap[pl.UserID] = playerFrame
-	}
 
-	// Generate sorted player IDs for rendering
-	sortedPlayers := entity.SortPlayersByID(playersMap)
+		// Track this player in the player registry
+		b.trackPlayer(pl)
+	}
 
 	// Calculate round time info
 	roundTimeInfo := b.calculateRoundTime(gs, currentTick)
@@ -613,7 +641,6 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		Round:            b.currentRound,
 		RoundTime:        roundTimeInfo,
 		Players:          playersMap,
-		SortedPlayers:    sortedPlayers,
 		KillEvents:       killEvents,
 		Projectiles:      projectiles,
 		SortedProjs:      sortedProjs,

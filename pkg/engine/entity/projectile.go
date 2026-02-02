@@ -105,17 +105,6 @@ func SortProjectilesByPriority(projectiles map[int]ProjectileFrame) []int {
 	return entityIDs
 }
 
-// SortPlayersByID sorts player IDs in ascending order for consistent rendering
-func SortPlayersByID(players map[int]PlayerFrame) []int {
-	playerIDs := make([]int, 0, len(players))
-	for id := range players {
-		playerIDs = append(playerIDs, id)
-	}
-
-	sort.Ints(playerIDs)
-	return playerIDs
-}
-
 // SortInventoryByType sorts inventory equipment types by their numeric value for consistent display
 func SortInventoryByType(inventory []common.EquipmentType) {
 	sort.Slice(inventory, func(i, j int) bool {

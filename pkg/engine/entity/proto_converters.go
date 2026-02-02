@@ -29,11 +29,10 @@ func FrameToProtoPB(frame *Frame) *FramePB {
 	}
 
 	protoFrame := &FramePB{
-		TimeMs:        frame.TimeMs,
-		Tick:          int32(frame.Tick),
-		Round:         int32(frame.Round),
-		SortedPlayers: convertIntSliceToInt32(frame.SortedPlayers),
-		SortedProjs:   convertIntSliceToInt32(frame.SortedProjs),
+		TimeMs:      frame.TimeMs,
+		Tick:        int32(frame.Tick),
+		Round:       int32(frame.Round),
+		SortedProjs: convertIntSliceToInt32(frame.SortedProjs),
 	}
 
 	// Convert round time info
@@ -107,32 +106,24 @@ func PlayerFrameToProtoPB(player *PlayerFrame) *PlayerFramePB {
 	}
 
 	protoPlayer := &PlayerFramePB{
-		Id:                  int32(player.ID),
-		Name:                player.Name,
-		Team:                int32(player.Team),
-		X:                   player.X,
-		Y:                   player.Y,
-		Z:                   player.Z,
-		Yaw:                 player.Yaw,
-		Pitch:               player.Pitch,
-		Alive:               player.Alive,
-		Health:              int32(player.Health),
-		Armor:               int32(player.Armor),
-		Money:               int32(player.Money),
-		HasHelmet:           player.HasHelmet,
-		HasDefuseKit:        player.HasDefuseKit,
-		IsScoped:            player.IsScoped,
-		FlashDuration:       player.FlashDuration,
-		IsBlinded:           player.IsBlinded,
-		ActiveWeapon:        int32(player.ActiveWeapon),
-		Kills:               int32(player.Kills),
-		Assists:             int32(player.Assists),
-		Deaths:              int32(player.Deaths),
-		MoneySpentTotal:     int32(player.MoneySpentTotal),
-		MoneySpentThisRound: int32(player.MoneySpentThisRound),
-		EquipmentValue:      int32(player.EquipmentValue),
-		SteamId:             player.SteamID,
-		IsBot:               player.IsBot,
+		X:             player.X,
+		Y:             player.Y,
+		Z:             player.Z,
+		Yaw:           player.Yaw,
+		Pitch:         player.Pitch,
+		Alive:         player.Alive,
+		Health:        int32(player.Health),
+		Armor:         int32(player.Armor),
+		Money:         int32(player.Money),
+		HasHelmet:     player.HasHelmet,
+		HasDefuseKit:  player.HasDefuseKit,
+		IsScoped:      player.IsScoped,
+		FlashDuration: player.FlashDuration,
+		IsBlinded:     player.IsBlinded,
+		ActiveWeapon:  int32(player.ActiveWeapon),
+		Kills:         int32(player.Kills),
+		Assists:       int32(player.Assists),
+		Deaths:        int32(player.Deaths),
 	}
 
 	// Convert inventory

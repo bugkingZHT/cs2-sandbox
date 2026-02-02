@@ -10,13 +10,6 @@ var ButtonWatching = []common.ButtonBitMask{
 }
 
 type PlayerFrame struct {
-	// 玩家在服务器中的唯一 ID
-	ID int `json:"id"`
-	// 玩家显示的名称
-	Name string `json:"name"`
-	// 玩家所属队伍 (2=T, 3=CT, 1=Spectator)
-	Team int `json:"team"`
-
 	// 玩家在地图上的 X 坐标
 	X float64 `json:"x"`
 	// 玩家在地图上的 Y 坐标
@@ -64,19 +57,9 @@ type PlayerFrame struct {
 	Assists int `json:"assists"`
 	// 玩家本局比赛的总死亡数
 	Deaths int `json:"deaths"`
-
-	// 玩家整场比赛花费的总金额
-	MoneySpentTotal int `json:"moneySpentTotal"`
-	// 玩家本回合花费的金额
-	MoneySpentThisRound int `json:"moneySpentThisRound"`
-	// 玩家当前身上装备的总价值
-	EquipmentValue int `json:"equipmentValue"`
-
-	// 玩家的 64 位 Steam 唯一标识符
-	SteamID uint64 `json:"steamID"`
-	// 该玩家是否为机器人 (BOT)
-	IsBot bool `json:"isBot"`
 }
+
+// PlayerInfo 在对局元数据中保存的玩家基础信息（不随帧变化）
 
 // 空间坐标点
 type Point struct {
@@ -201,8 +184,6 @@ type Frame struct {
 	// 当前帧所有玩家的状态信息
 	// 玩家 ID -> 玩家信息的映射
 	Players map[int]PlayerFrame `json:"players"`
-	// 玩家渲染顺序（按 ID 排序）
-	SortedPlayers []int `json:"sortedPlayers"`
 	// 击杀事件
 	KillEvents map[int]KillEvent `json:"killEvents"`
 
@@ -243,6 +224,19 @@ type ReplayRound struct {
 	Frames []Frame `json:"frames"`
 }
 
+type PlayerInfo struct {
+	// 玩家在服务器中的唯一 ID
+	ID int `json:"id"`
+	// 玩家显示的名称
+	Name string `json:"name"`
+	// 玩家所属队伍 (2=T, 3=CT, 1=Spectator)
+	Team int `json:"team"`
+	// 玩家的 64 位 Steam 唯一标识符
+	SteamID uint64 `json:"steamID"`
+	// 该玩家是否为机器人 (BOT)
+	IsBot bool `json:"isBot"`
+}
+
 // 录像元数据（地图整体信息）
 type ReplayMeta struct {
 	// 对局唯一标识符 UUID
@@ -251,6 +245,9 @@ type ReplayMeta struct {
 	UploaderUID string `json:"uploaderUid"`
 	// 上传时间戳 (Unix milliseconds)
 	UploadTime int64 `json:"uploadTime"`
+
+	// 服务器玩家信息
+	ServerPlayer []PlayerInfo `json:"serverPlayer"`
 	// 投掷物渲染配置
 	ProjectileRender map[common.EquipmentType]ProjectileRenderConfig `json:"projectileRenderConfig"`
 	// 地图名称

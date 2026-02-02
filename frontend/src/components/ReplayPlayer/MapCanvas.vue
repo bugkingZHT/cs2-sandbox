@@ -45,6 +45,7 @@ const props = defineProps<{
   frames: Frame[] | undefined;
   bounds: WorldBounds | null | undefined;
   currentFrameIndex: number;
+  replayMeta?: any; // Add replayMeta prop
   isPlaying?: boolean;
   isDragging?: boolean;
   mapName?: string;
@@ -290,7 +291,8 @@ const drawProjectilesForFrame = async (
   players: PlayerState[],
   sortedProjs?: number[],
   droppedEquipment?: DroppedEquipment[],
-  timeMs?: number
+  timeMs?: number,
+  currentRound?: number
 ) => {
   await drawProjectilesForFrameExternal({
     projectiles,
@@ -302,6 +304,7 @@ const drawProjectilesForFrame = async (
     sortedProjs,
     droppedEquipment,
     timeMs,
+    currentRound,
   });
 };
 
@@ -316,6 +319,7 @@ const drawPlayersForFrame = () => {
   // Draw players using external renderer
   drawPlayersForFrameExternal({
     frame,
+    meta: props.replayMeta,
     playerLayer,
     currentFrameIndex: props.currentFrameIndex,
     isPlaying: props.isPlaying || false,
@@ -328,14 +332,46 @@ const drawPlayersForFrame = () => {
 
   // Draw projectiles if present
   if (frame.projectiles || frame.droppedEquipment) {
-    // Convert players map to array for projectiles renderer
-    const playersArray = Object.values(frame.players || {});
+    // Convert players map to array with metadata enrichment for projectiles renderer
+    const playersArray: PlayerState[] = [];
+    if (frame.players && props.replayMeta?.serverPlayer) {
+      // Determine if we're in second half for team flipping
+      const isSecondHalf = frame.round >= 13;
+      
+      // Enrich frame players with metadata from serverPlayer
+      for (const playerInfo of props.replayMeta.serverPlayer) {
+        const frameData = frame.players[playerInfo.id];
+        if (frameData) {
+          // Flip team in second half
+          const displayTeam = isSecondHalf 
+            ? (playerInfo.team === 2 ? 3 : (playerInfo.team === 3 ? 2 : playerInfo.team))
+            : playerInfo.team;
+            
+          playersArray.push({
+            ...frameData,
+            id: playerInfo.id,
+            name: playerInfo.name,
+            team: displayTeam, // Use display team for correct coloring in second half
+            steamID: playerInfo.steamID,
+            isBot: playerInfo.isBot
+          });
+        }
+      }
+    } else if (frame.players) {
+      // Fallback for backward compatibility
+      playersArray.push(...Object.entries(frame.players).map(([id, frameData]) => ({
+        ...frameData,
+        id: Number(id)
+      })));
+    }
+    
     drawProjectilesForFrame(
       frame.projectiles, 
       playersArray, 
       frame.sortedProjs,
       frame.droppedEquipment,
-      frame.timeMs
+      frame.timeMs,
+      frame.round // Pass current round for team color flipping
     );
   }
 

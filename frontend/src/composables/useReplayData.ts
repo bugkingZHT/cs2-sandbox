@@ -438,6 +438,8 @@ function createReplayData() {
               teamT: e.data.teamT,
               hasRoundResults: !!e.data.roundResults,
               roundResultsCount: e.data.roundResults?.length || 0,
+              hasServerPlayer: !!e.data.serverPlayer,
+              serverPlayerCount: e.data.serverPlayer?.length || 0,
             });
             
             // 从 IndexedDB 加载最新 meta 并更新
@@ -449,12 +451,13 @@ function createReplayData() {
               latestMeta.teamCT = e.data.teamCT;
               latestMeta.teamT = e.data.teamT;
               latestMeta.roundResults = e.data.roundResults;
+              latestMeta.serverPlayer = e.data.serverPlayer; // Save server player info
               latestMeta.status = 1; // 完成
               latestMeta.parsingProgress = 100;
               latestMeta.parsingStatus = 'Complete';
               
               await metaStorage.saveMeta(latestMeta);
-              console.log(`[ParseDemo] Meta 已更新到 IndexedDB: status=1, progress=100%`);
+              console.log(`[ParseDemo] Meta 已更新到 IndexedDB: status=1, progress=100%, serverPlayers=${e.data.serverPlayer?.length || 0}`);
             }
             
             await loadAllReplays(); // 刷新列表

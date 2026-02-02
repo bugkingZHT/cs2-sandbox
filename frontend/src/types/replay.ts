@@ -1,14 +1,11 @@
 export interface PlayerState {
-  id: number;
-  name: string;
-  team: number; // 2 = T, 3 = CT（根据示例数据）
+  // Frame-specific state (from PlayerFrame)
   x: number;
   y: number;
+  z?: number;
   alive: boolean;
   yaw: number;
-  // 根据types.go定义的PlayerFrame结构
   pitch?: number;
-  z?: number;
   health?: number;
   armor?: number;
   money?: number;
@@ -19,16 +16,17 @@ export interface PlayerState {
   isBlinded?: boolean;
   inventory?: string[];
   activeWeapon?: string;
-  usingItem?: boolean;
   kills?: number;
   assists?: number;
   deaths?: number;
-  moneySpentTotal?: number;
-  moneySpentThisRound?: number;
-  equipmentValue?: number;
+  buttons?: number[];
+  
+  // Metadata fields (enriched from PlayerInfo, not in frame)
+  id?: number;
+  name?: string;
+  team?: number; // 2 = T, 3 = CT
   steamID?: number;
   isBot?: boolean;
-  buttons?: number[];
 }
 
 // 投掷物类型定义
@@ -110,7 +108,6 @@ export interface Frame {
   round: number;
   roundTime: RoundTimeInfo; // 回合时间信息
   players: Record<number, PlayerState>; // Player ID -> PlayerState map
-  sortedPlayers?: number[]; // Pre-sorted player IDs for rendering order
   projectiles?: Record<number, ProjectileState>;
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs for rendering order
   killEvents?: Record<number, KillEvent>;
@@ -123,6 +120,7 @@ export interface ReplayMeta {
   uuid: string;
   uploaderUid: string; // 上传用户 UID (6位字符串)
   uploadTime: number; // 上传时间戳 (Unix milliseconds)
+  serverPlayer?: PlayerInfo[]; // 对局中出现的所有玩家信息（按ID排序）
   mapName: string;
   teamCT: string;
   teamT: string;
@@ -143,6 +141,15 @@ export interface ReplayMeta {
   parsingProgress?: number; // 0-100
   parsingStatus?: string; // 状态描述
   lastTickTime?: number; // 最后tick时间戳（用于超时检测）
+}
+
+// 玩家基础信息（存储在元数据中）
+export interface PlayerInfo {
+  id: number; // 玩家在服务器中的唯一 ID
+  name: string; // 玩家显示的名称
+  team: number; // 玩家所属队伍 (2=T, 3=CT, 1=Spectator)
+  steamID: number; // 玩家的 64 位 Steam 唯一标识符
+  isBot: boolean; // 该玩家是否为机器人 (BOT)
 }
 
 // 单个回合的录像数据

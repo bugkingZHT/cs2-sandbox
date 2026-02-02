@@ -22,37 +22,29 @@ const (
 )
 
 type PlayerFramePB struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Id                  int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name                string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Team                int32                  `protobuf:"varint,3,opt,name=team,proto3" json:"team,omitempty"`
-	X                   float64                `protobuf:"fixed64,4,opt,name=x,proto3" json:"x,omitempty"`
-	Y                   float64                `protobuf:"fixed64,5,opt,name=y,proto3" json:"y,omitempty"`
-	Z                   float64                `protobuf:"fixed64,6,opt,name=z,proto3" json:"z,omitempty"`
-	Yaw                 float32                `protobuf:"fixed32,7,opt,name=yaw,proto3" json:"yaw,omitempty"`
-	Pitch               float32                `protobuf:"fixed32,8,opt,name=pitch,proto3" json:"pitch,omitempty"`
-	Alive               bool                   `protobuf:"varint,9,opt,name=alive,proto3" json:"alive,omitempty"`
-	Health              int32                  `protobuf:"varint,10,opt,name=health,proto3" json:"health,omitempty"`
-	Armor               int32                  `protobuf:"varint,11,opt,name=armor,proto3" json:"armor,omitempty"`
-	Money               int32                  `protobuf:"varint,12,opt,name=money,proto3" json:"money,omitempty"`
-	HasHelmet           bool                   `protobuf:"varint,13,opt,name=has_helmet,json=hasHelmet,proto3" json:"has_helmet,omitempty"`
-	HasDefuseKit        bool                   `protobuf:"varint,14,opt,name=has_defuse_kit,json=hasDefuseKit,proto3" json:"has_defuse_kit,omitempty"`
-	IsScoped            bool                   `protobuf:"varint,15,opt,name=is_scoped,json=isScoped,proto3" json:"is_scoped,omitempty"`
-	FlashDuration       float32                `protobuf:"fixed32,16,opt,name=flash_duration,json=flashDuration,proto3" json:"flash_duration,omitempty"`
-	IsBlinded           bool                   `protobuf:"varint,17,opt,name=is_blinded,json=isBlinded,proto3" json:"is_blinded,omitempty"`
-	Inventory           []int32                `protobuf:"varint,18,rep,packed,name=inventory,proto3" json:"inventory,omitempty"`
-	ActiveWeapon        int32                  `protobuf:"varint,19,opt,name=active_weapon,json=activeWeapon,proto3" json:"active_weapon,omitempty"`
-	Buttons             []uint64               `protobuf:"varint,20,rep,packed,name=buttons,proto3" json:"buttons,omitempty"`
-	Kills               int32                  `protobuf:"varint,21,opt,name=kills,proto3" json:"kills,omitempty"`
-	Assists             int32                  `protobuf:"varint,22,opt,name=assists,proto3" json:"assists,omitempty"`
-	Deaths              int32                  `protobuf:"varint,23,opt,name=deaths,proto3" json:"deaths,omitempty"`
-	MoneySpentTotal     int32                  `protobuf:"varint,24,opt,name=money_spent_total,json=moneySpentTotal,proto3" json:"money_spent_total,omitempty"`
-	MoneySpentThisRound int32                  `protobuf:"varint,25,opt,name=money_spent_this_round,json=moneySpentThisRound,proto3" json:"money_spent_this_round,omitempty"`
-	EquipmentValue      int32                  `protobuf:"varint,26,opt,name=equipment_value,json=equipmentValue,proto3" json:"equipment_value,omitempty"`
-	SteamId             uint64                 `protobuf:"varint,27,opt,name=steam_id,json=steamId,proto3" json:"steam_id,omitempty"`
-	IsBot               bool                   `protobuf:"varint,28,opt,name=is_bot,json=isBot,proto3" json:"is_bot,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	X             float64                `protobuf:"fixed64,4,opt,name=x,proto3" json:"x,omitempty"`
+	Y             float64                `protobuf:"fixed64,5,opt,name=y,proto3" json:"y,omitempty"`
+	Z             float64                `protobuf:"fixed64,6,opt,name=z,proto3" json:"z,omitempty"`
+	Yaw           float32                `protobuf:"fixed32,7,opt,name=yaw,proto3" json:"yaw,omitempty"`
+	Pitch         float32                `protobuf:"fixed32,8,opt,name=pitch,proto3" json:"pitch,omitempty"`
+	Alive         bool                   `protobuf:"varint,9,opt,name=alive,proto3" json:"alive,omitempty"`
+	Health        int32                  `protobuf:"varint,10,opt,name=health,proto3" json:"health,omitempty"`
+	Armor         int32                  `protobuf:"varint,11,opt,name=armor,proto3" json:"armor,omitempty"`
+	Money         int32                  `protobuf:"varint,12,opt,name=money,proto3" json:"money,omitempty"`
+	HasHelmet     bool                   `protobuf:"varint,13,opt,name=has_helmet,json=hasHelmet,proto3" json:"has_helmet,omitempty"`
+	HasDefuseKit  bool                   `protobuf:"varint,14,opt,name=has_defuse_kit,json=hasDefuseKit,proto3" json:"has_defuse_kit,omitempty"`
+	IsScoped      bool                   `protobuf:"varint,15,opt,name=is_scoped,json=isScoped,proto3" json:"is_scoped,omitempty"`
+	FlashDuration float32                `protobuf:"fixed32,16,opt,name=flash_duration,json=flashDuration,proto3" json:"flash_duration,omitempty"`
+	IsBlinded     bool                   `protobuf:"varint,17,opt,name=is_blinded,json=isBlinded,proto3" json:"is_blinded,omitempty"`
+	Inventory     []int32                `protobuf:"varint,18,rep,packed,name=inventory,proto3" json:"inventory,omitempty"`
+	ActiveWeapon  int32                  `protobuf:"varint,19,opt,name=active_weapon,json=activeWeapon,proto3" json:"active_weapon,omitempty"`
+	Buttons       []uint64               `protobuf:"varint,20,rep,packed,name=buttons,proto3" json:"buttons,omitempty"`
+	Kills         int32                  `protobuf:"varint,21,opt,name=kills,proto3" json:"kills,omitempty"`
+	Assists       int32                  `protobuf:"varint,22,opt,name=assists,proto3" json:"assists,omitempty"`
+	Deaths        int32                  `protobuf:"varint,23,opt,name=deaths,proto3" json:"deaths,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PlayerFramePB) Reset() {
@@ -83,27 +75,6 @@ func (x *PlayerFramePB) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PlayerFramePB.ProtoReflect.Descriptor instead.
 func (*PlayerFramePB) Descriptor() ([]byte, []int) {
 	return file_pkg_engine_entity_replay_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *PlayerFramePB) GetId() int32 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
-func (x *PlayerFramePB) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *PlayerFramePB) GetTeam() int32 {
-	if x != nil {
-		return x.Team
-	}
-	return 0
 }
 
 func (x *PlayerFramePB) GetX() float64 {
@@ -244,41 +215,6 @@ func (x *PlayerFramePB) GetDeaths() int32 {
 		return x.Deaths
 	}
 	return 0
-}
-
-func (x *PlayerFramePB) GetMoneySpentTotal() int32 {
-	if x != nil {
-		return x.MoneySpentTotal
-	}
-	return 0
-}
-
-func (x *PlayerFramePB) GetMoneySpentThisRound() int32 {
-	if x != nil {
-		return x.MoneySpentThisRound
-	}
-	return 0
-}
-
-func (x *PlayerFramePB) GetEquipmentValue() int32 {
-	if x != nil {
-		return x.EquipmentValue
-	}
-	return 0
-}
-
-func (x *PlayerFramePB) GetSteamId() uint64 {
-	if x != nil {
-		return x.SteamId
-	}
-	return 0
-}
-
-func (x *PlayerFramePB) GetIsBot() bool {
-	if x != nil {
-		return x.IsBot
-	}
-	return false
 }
 
 type PointPB struct {
@@ -728,7 +664,6 @@ type FramePB struct {
 	Round            int32                        `protobuf:"varint,3,opt,name=round,proto3" json:"round,omitempty"`
 	RoundTime        *RoundTimeInfoPB             `protobuf:"bytes,4,opt,name=round_time,json=roundTime,proto3" json:"round_time,omitempty"`
 	Players          map[int32]*PlayerFramePB     `protobuf:"bytes,5,rep,name=players,proto3" json:"players,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	SortedPlayers    []int32                      `protobuf:"varint,6,rep,packed,name=sorted_players,json=sortedPlayers,proto3" json:"sorted_players,omitempty"`
 	KillEvents       map[int32]*KillEventPB       `protobuf:"bytes,7,rep,name=kill_events,json=killEvents,proto3" json:"kill_events,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Projectiles      map[int32]*ProjectileFramePB `protobuf:"bytes,8,rep,name=projectiles,proto3" json:"projectiles,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	SortedProjs      []int32                      `protobuf:"varint,9,rep,packed,name=sorted_projs,json=sortedProjs,proto3" json:"sorted_projs,omitempty"`
@@ -799,13 +734,6 @@ func (x *FramePB) GetRoundTime() *RoundTimeInfoPB {
 func (x *FramePB) GetPlayers() map[int32]*PlayerFramePB {
 	if x != nil {
 		return x.Players
-	}
-	return nil
-}
-
-func (x *FramePB) GetSortedPlayers() []int32 {
-	if x != nil {
-		return x.SortedPlayers
 	}
 	return nil
 }
@@ -977,11 +905,8 @@ var File_pkg_engine_entity_replay_proto protoreflect.FileDescriptor
 
 const file_pkg_engine_entity_replay_proto_rawDesc = "" +
 	"\n" +
-	"\x1epkg/engine/entity/replay.proto\x12\x06entity\"\xfc\x05\n" +
-	"\rPlayerFramePB\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
-	"\x04team\x18\x03 \x01(\x05R\x04team\x12\f\n" +
+	"\x1epkg/engine/entity/replay.proto\x12\x06entity\"\x88\x04\n" +
+	"\rPlayerFramePB\x12\f\n" +
 	"\x01x\x18\x04 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x05 \x01(\x01R\x01y\x12\f\n" +
 	"\x01z\x18\x06 \x01(\x01R\x01z\x12\x10\n" +
@@ -1004,12 +929,7 @@ const file_pkg_engine_entity_replay_proto_rawDesc = "" +
 	"\abuttons\x18\x14 \x03(\x04R\abuttons\x12\x14\n" +
 	"\x05kills\x18\x15 \x01(\x05R\x05kills\x12\x18\n" +
 	"\aassists\x18\x16 \x01(\x05R\aassists\x12\x16\n" +
-	"\x06deaths\x18\x17 \x01(\x05R\x06deaths\x12*\n" +
-	"\x11money_spent_total\x18\x18 \x01(\x05R\x0fmoneySpentTotal\x123\n" +
-	"\x16money_spent_this_round\x18\x19 \x01(\x05R\x13moneySpentThisRound\x12'\n" +
-	"\x0fequipment_value\x18\x1a \x01(\x05R\x0eequipmentValue\x12\x19\n" +
-	"\bsteam_id\x18\x1b \x01(\x04R\asteamId\x12\x15\n" +
-	"\x06is_bot\x18\x1c \x01(\bR\x05isBot\"3\n" +
+	"\x06deaths\x18\x17 \x01(\x05R\x06deaths\"3\n" +
 	"\aPointPB\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x01R\x01y\x12\f\n" +
@@ -1049,15 +969,14 @@ const file_pkg_engine_entity_replay_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x05R\x04type\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x03 \x01(\x01R\x01y\x12\f\n" +
-	"\x01z\x18\x04 \x01(\x01R\x01z\"\x80\x06\n" +
+	"\x01z\x18\x04 \x01(\x01R\x01z\"\xd9\x05\n" +
 	"\aFramePB\x12\x17\n" +
 	"\atime_ms\x18\x01 \x01(\x03R\x06timeMs\x12\x12\n" +
 	"\x04tick\x18\x02 \x01(\x05R\x04tick\x12\x14\n" +
 	"\x05round\x18\x03 \x01(\x05R\x05round\x126\n" +
 	"\n" +
 	"round_time\x18\x04 \x01(\v2\x17.entity.RoundTimeInfoPBR\troundTime\x126\n" +
-	"\aplayers\x18\x05 \x03(\v2\x1c.entity.FramePB.PlayersEntryR\aplayers\x12%\n" +
-	"\x0esorted_players\x18\x06 \x03(\x05R\rsortedPlayers\x12@\n" +
+	"\aplayers\x18\x05 \x03(\v2\x1c.entity.FramePB.PlayersEntryR\aplayers\x12@\n" +
 	"\vkill_events\x18\a \x03(\v2\x1f.entity.FramePB.KillEventsEntryR\n" +
 	"killEvents\x12B\n" +
 	"\vprojectiles\x18\b \x03(\v2 .entity.FramePB.ProjectilesEntryR\vprojectiles\x12!\n" +

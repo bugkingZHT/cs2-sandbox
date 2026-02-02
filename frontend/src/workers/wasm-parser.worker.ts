@@ -29,6 +29,7 @@ interface ParsingCompleteMessage {
   teamCT: string;
   teamT: string;
   roundResults: Array<{ round: number; result: string }>; // Add round results
+  serverPlayer: Array<{ id: number; name: string; team: number; steamID: number; isBot: boolean }>; // Add server player info
 }
 
 interface ProgressMessage {
@@ -203,11 +204,13 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         totalRounds: backfilledMeta.totalRounds,
         hasRoundResults: !!backfilledMeta.roundResults,
         roundResultsCount: backfilledMeta.roundResults?.length || 0,
+        hasServerPlayer: !!backfilledMeta.serverPlayer,
+        serverPlayerCount: backfilledMeta.serverPlayer?.length || 0,
         hasFileName: !!backfilledMeta.fileName,
         hasOriginPath: !!backfilledMeta.originPath
       });
       
-      // Send completion message with statistics AND round results
+      // Send completion message with statistics AND round results AND server players
       const completeResponse: ParsingCompleteMessage = {
         type: 'PARSING_COMPLETE',
         totalRounds: backfilledMeta.totalRounds || totalRoundsParsed,
@@ -215,9 +218,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         scoreT: backfilledMeta.scoreT || 0,
         teamCT: backfilledMeta.teamCT || '',
         teamT: backfilledMeta.teamT || '',
-        roundResults: backfilledMeta.roundResults || [] // Include round results
+        roundResults: backfilledMeta.roundResults || [], // Include round results
+        serverPlayer: backfilledMeta.serverPlayer || [] // Include server player info
       };
-      console.log(`[Worker] [${uuid}] Sending PARSING_COMPLETE with ${completeResponse.roundResults.length} round results`);
+      console.log(`[Worker] [${uuid}] Sending PARSING_COMPLETE with ${completeResponse.roundResults.length} round results and ${completeResponse.serverPlayer.length} players`);
       self.postMessage(completeResponse);
       
       // ============ CLEANUP: Destroy WASM instance after parsing ============

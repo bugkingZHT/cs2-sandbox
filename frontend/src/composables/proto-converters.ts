@@ -184,7 +184,6 @@ function protoToFrame(proto: any): Frame {
     round: proto.round || 1,
     roundTime: protoToRoundTimeInfo(proto.roundTime),
     players,
-    sortedPlayers: proto.sortedPlayers || [],
     projectiles,
     sortedProjs: proto.sortedProjs || [],
     killEvents,
@@ -212,10 +211,8 @@ function protoToBombFrame(proto: any): BombFrame {
 
 // Convert protobuf object to PlayerState
 function protoToPlayerState(proto: any): PlayerState {
+  // Frame data only - metadata fields will be enriched from serverPlayer when rendering
   return {
-    id: proto.id || 0,
-    name: proto.name || '',
-    team: proto.team || 0,
     x: proto.x || 0,
     y: proto.y || 0,
     z: proto.z || 0,
@@ -236,11 +233,6 @@ function protoToPlayerState(proto: any): PlayerState {
     kills: proto.kills || 0,
     assists: proto.assists || 0,
     deaths: proto.deaths || 0,
-    moneySpentTotal: proto.moneySpentTotal || 0,
-    moneySpentThisRound: proto.moneySpentThisRound || 0,
-    equipmentValue: proto.equipmentValue || 0,
-    steamID: proto.steamId || 0,
-    isBot: proto.isBot || false,
   };
 }
 
@@ -376,7 +368,6 @@ function frameToProto(frame: Frame): any {
       timeRemaining: frame.roundTime.timeRemaining,
     },
     players,
-    sortedPlayers: frame.sortedPlayers || [],
     killEvents,
     projectiles,
     sortedProjs: frame.sortedProjs || [],
@@ -404,10 +395,9 @@ function bombFrameToProto(bomb: BombFrame): any {
 
 // Convert PlayerState to protobuf object
 function playerStateToProto(player: PlayerState): any {
+  // Only include frame-varying fields, not metadata (id, name, team)
+  // Metadata is stored in serverPlayer in meta
   return {
-    id: player.id,
-    name: player.name,
-    team: player.team,
     x: player.x,
     y: player.y,
     z: player.z || 0,
@@ -428,11 +418,6 @@ function playerStateToProto(player: PlayerState): any {
     kills: player.kills || 0,
     assists: player.assists || 0,
     deaths: player.deaths || 0,
-    moneySpentTotal: player.moneySpentTotal || 0,
-    moneySpentThisRound: player.moneySpentThisRound || 0,
-    equipmentValue: player.equipmentValue || 0,
-    steamId: player.steamID || 0,
-    isBot: player.isBot || false,
   };
 }
 

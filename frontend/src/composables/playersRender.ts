@@ -1,5 +1,5 @@
 import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
-import type { Frame, PlayerState } from '@/types/replay';
+import type { Frame, PlayerState, ReplayMeta } from '@/types/replay';
 import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
 
 /**
@@ -52,6 +52,7 @@ let lastFrameIndex = 0;
 interface RenderContext {
   playerLayer: Container;
   currentFrameIndex: number;
+  currentRound: number; // For team color flipping in second half
   isPlaying: boolean;
   isDragging: boolean;
   worldToMap: (x: number, y: number) => { x: number; y: number };
@@ -59,6 +60,14 @@ interface RenderContext {
   onPlayerPointerMove?: (e: any, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
 }
+
+// Get display team (flipped in second half for rounds 13+)
+const getDisplayTeam = (originalTeam: number, currentRound: number): number => {
+  if (currentRound >= 13) {
+    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
+  }
+  return originalTeam;
+};
 
 // Linear interpolation helper
 const lerp = (start: number, end: number, factor: number): number => {
@@ -138,7 +147,7 @@ const createPlayerSprite = (
   ctx: RenderContext,
 ): PlayerSprite => {
   const g = new Graphics();
-  const label = new Text(player.name, {
+  const label = new Text(player.name || 'Unknown', {
     fontFamily: 'system-ui',
     fontSize: PLAYER_STYLE.nameSize,
     fill: 0xffffff,
@@ -159,7 +168,7 @@ const createPlayerSprite = (
     lastUpdateFrame: ctx.currentFrameIndex,
   };
 
-  playerSpriteMap.set(player.id, playerSprite);
+  playerSpriteMap.set(player.id!, playerSprite);
   ctx.playerLayer.addChild(g);
   ctx.playerLayer.addChild(label);
 
@@ -207,11 +216,14 @@ const updatePlayerSprite = (
 const drawPlayerGraphics = (
   playerSprite: PlayerSprite,
   player: PlayerState,
+  ctx: RenderContext,
 ) => {
   const g = playerSprite.graphics;
   g.clear();
 
-  const color = player.team === 3 ? 0x3b82f6 : 0xf97316;
+  // Get display team (flipped in second half)
+  const displayTeam = getDisplayTeam(player.team || 0, ctx.currentRound);
+  const color = displayTeam === 3 ? 0x3b82f6 : (displayTeam === 2 ? 0xf97316 : 0x888888);
   const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
   const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
 
@@ -333,6 +345,7 @@ const updateWeaponIcon = async (
 // Main draw function for players
 export const drawPlayersForFrame = (options: {
   frame: Frame | undefined;
+  meta?: ReplayMeta | null;
   playerLayer: Container | null;
   currentFrameIndex: number;
   isPlaying: boolean;
@@ -344,6 +357,7 @@ export const drawPlayersForFrame = (options: {
 }) => {
   const {
     frame,
+    meta,
     playerLayer,
     currentFrameIndex,
     isPlaying,
@@ -364,6 +378,7 @@ export const drawPlayersForFrame = (options: {
   const ctx: RenderContext = {
     playerLayer,
     currentFrameIndex,
+    currentRound: frame.round, // For team color flipping in second half
     isPlaying,
     isDragging,
     worldToMap,
@@ -380,22 +395,34 @@ export const drawPlayersForFrame = (options: {
   // Track which players exist in current frame
   const currentPlayers = new Set<number>();
 
-  if (frame.players) {
-    // Use pre-sorted player IDs from engine if available, otherwise extract from map keys
-    const playerIds = frame.sortedPlayers || Object.keys(frame.players).map(Number);
-    
-    // frame.players is already a map (Record<number, PlayerState>)
+  if (frame.players && meta?.serverPlayer) {
+    // Use sorted player IDs from meta.serverPlayer
+    const serverPlayers = meta.serverPlayer;
     const playerMap = frame.players;
 
-    for (const playerId of playerIds) {
-      const player = playerMap[playerId];
-      if (!player) continue; // Skip if player not found in map
+    for (const playerInfo of serverPlayers) {
+      const playerId = playerInfo.id;
+      const frameData = playerMap[playerId];
       
-      currentPlayers.add(player.id);
+      // Skip if player not found in current frame
+      if (!frameData) continue;
+      
+      // Merge metadata with frame data to create complete player object
+      const displayTeam = getDisplayTeam(playerInfo.team, ctx.currentRound);
+      const player: PlayerState = {
+        ...frameData,
+        id: playerInfo.id,
+        name: playerInfo.name,
+        team: displayTeam, // Use display team for correct coloring in second half
+        steamID: playerInfo.steamID,
+        isBot: playerInfo.isBot
+      };
+      
+      currentPlayers.add(player.id!);
       const mapPos = worldToMap(player.x, player.y);
 
       // Check if player sprite already exists
-      let playerSprite = playerSpriteMap.get(player.id);
+      let playerSprite = playerSpriteMap.get(player.id!);
 
       if (!playerSprite) {
         // Create new player sprite
@@ -406,9 +433,38 @@ export const drawPlayersForFrame = (options: {
       }
 
       // Redraw player graphics
-      drawPlayerGraphics(playerSprite, player);
+      drawPlayerGraphics(playerSprite, player, ctx);
       
       // Update weapon icon (grenades and C4) - non-blocking
+      updateWeaponIcon(playerSprite, player, ctx);
+    }
+  } else if (frame.players) {
+    // Fallback: if no serverPlayer metadata, use frame keys (backward compatibility)
+    const playerIds = Object.keys(frame.players).map(Number);
+    const playerMap = frame.players;
+
+    for (const playerId of playerIds) {
+      const frameData = playerMap[playerId];
+      if (!frameData) continue;
+      
+      // Use frame data only (missing metadata fields)
+      const player: PlayerState = {
+        ...frameData,
+        id: playerId
+      };
+      
+      currentPlayers.add(player.id!);
+      const mapPos = worldToMap(player.x, player.y);
+
+      let playerSprite = playerSpriteMap.get(player.id!);
+
+      if (!playerSprite) {
+        playerSprite = createPlayerSprite(player, mapPos, ctx);
+      } else {
+        updatePlayerSprite(playerSprite, player, mapPos, ctx, isSeek);
+      }
+
+      drawPlayerGraphics(playerSprite, player, ctx);
       updateWeaponIcon(playerSprite, player, ctx);
     }
   }

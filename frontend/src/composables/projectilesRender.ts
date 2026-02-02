@@ -117,10 +117,19 @@ export const clearProjectilesLayer = (projectileLayer: Container | null) => {
 interface RenderContext {
   projectileLayer: Container;
   players: PlayerState[];
+  currentRound: number; // For team color flipping in second half
   worldToMap: (x: number, y: number) => { x: number; y: number };
   configs?: Record<number, ProjectileRenderConfig>;
   timeMs?: number;
 }
+
+// Get display team (flipped in second half for rounds 13+)
+const getDisplayTeam = (originalTeam: number, currentRound: number): number => {
+  if (currentRound >= 13) {
+    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
+  }
+  return originalTeam;
+};
 
 // 获取投掷物类型Key
 const getProjectileTypeKey = (typeId: number): string => {
@@ -231,8 +240,9 @@ const drawTrajectory = (
     (p) => p.id === proj.throwerID || p.name === proj.throwerName,
   );
   let trajColor = 0xff6b6b;
-  if (thrower) {
-    trajColor = thrower.team === 3 ? 0x4dabf7 : 0xff922b;
+  if (thrower && thrower.team !== undefined) {
+    const displayTeam = getDisplayTeam(thrower.team, ctx.currentRound);
+    trajColor = displayTeam === 3 ? 0x4dabf7 : 0xff922b;
   }
   if (colorOverride !== undefined) {
     trajColor = colorOverride;
@@ -302,8 +312,9 @@ const drawIcon = async (
     const thrower = players.find(
       (p) => p.id === proj.throwerID || p.name === proj.throwerName,
     );
-    if (thrower) {
-      sprite.tint = thrower.team === 3 ? 0x4dabf7 : 0xff922b;
+    if (thrower && thrower.team !== undefined) {
+      const displayTeam = getDisplayTeam(thrower.team, ctx.currentRound);
+      sprite.tint = displayTeam === 3 ? 0x4dabf7 : 0xff922b;
     } else {
       sprite.tint = 0xff6b6b;
     }
@@ -454,7 +465,11 @@ const renderSmoke = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
     if (proj.ttl !== undefined && logicConfig.durationInMs > 0) {
       const progress = Math.max(0, Math.min(1, proj.ttl / logicConfig.durationInMs));
       const thrower = players.find(p => p.id === proj.throwerID);
-      const teamColor = thrower ? (thrower.team === 3 ? 0x3b82f6 : 0xf97316) : 0xffffff;
+      let teamColor = 0xffffff;
+      if (thrower && thrower.team !== undefined) {
+        const displayTeam = getDisplayTeam(thrower.team, ctx.currentRound);
+        teamColor = displayTeam === 3 ? 0x3b82f6 : 0xf97316;
+      }
       drawCountdownRing(explosionG, mapPos.x, mapPos.y, pixelRadius, progress, teamColor);
     }
 
@@ -637,6 +652,7 @@ export const drawProjectilesForFrame = async (options: {
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs from engine
   droppedEquipment?: DroppedEquipment[];
   timeMs?: number;
+  currentRound?: number; // For team color flipping in second half
 }) => {
   const {
     projectiles,
@@ -648,6 +664,7 @@ export const drawProjectilesForFrame = async (options: {
     sortedProjs,
     droppedEquipment,
     timeMs,
+    currentRound = 1,
   } = options;
 
   if (!projectileLayer || !mapSprite) return;
@@ -655,6 +672,7 @@ export const drawProjectilesForFrame = async (options: {
   const ctx: RenderContext = {
     projectileLayer,
     players,
+    currentRound, // For team color flipping in second half
     worldToMap,
     configs: projectileConfigs,
     timeMs,

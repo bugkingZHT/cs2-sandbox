@@ -17,6 +17,7 @@
           :frames="frames" 
           :bounds="bounds" 
           :current-frame-index="currentFrameIndex"
+          :replay-meta="replay"
           :is-playing="isPlaying"
           :is-dragging="isDraggingTimeline"
           :map-name="replay?.mapName"
@@ -340,90 +341,67 @@ const currentFrame = computed<Frame | null>(() => {
 
 const teamCTPlayers = computed<PlayerState[]>(() => {
   const frame = currentFrame.value;
-  if (!frame?.players) return [];
+  if (!frame?.players || !replay.value?.serverPlayer) return [];
   
-  // Use pre-sorted player IDs from engine
-  const sortedPlayerIds = frame.sortedPlayers || Object.keys(frame.players).map(Number);
-  
-  // Filter and return CT players in sorted order
-  // Create new objects with explicit property spreading to ensure reactivity
-  return sortedPlayerIds
-    .map(id => frame.players[id])
-    .filter(p => p && p.team === 3)
-    .map(p => ({
-      id: p.id,
-      name: p.name,
-      team: p.team,
-      x: p.x,
-      y: p.y,
-      alive: p.alive,
-      yaw: p.yaw,
-      health: p.health,
-      armor: p.armor,
-      money: p.money,
-      kills: p.kills,
-      assists: p.assists,
-      deaths: p.deaths,
-      inventory: p.inventory,
-      activeWeapon: p.activeWeapon,
-      hasHelmet: p.hasHelmet,
-      hasDefuseKit: p.hasDefuseKit,
-      isScoped: p.isScoped,
-      flashDuration: p.flashDuration,
-      isBlinded: p.isBlinded,
-      buttons: p.buttons
-    }));
+  // Use sorted player IDs from replay.serverPlayer
+  const result: PlayerState[] = [];
+  for (const playerInfo of replay.value.serverPlayer) {
+    const displayTeam = getDisplayTeam(playerInfo.team);
+    if (displayTeam !== 3) continue; // Display as CT only
+    
+    const frameData = frame.players[playerInfo.id];
+    if (!frameData) continue; // Skip if player not in this frame
+    
+    // Merge metadata with frame data, using display team for styling
+    result.push({
+      ...frameData,
+      id: playerInfo.id,
+      name: playerInfo.name,
+      team: displayTeam, // Use display team
+      steamID: playerInfo.steamID,
+      isBot: playerInfo.isBot
+    });
+  }
+  return result;
 });
 
 const teamTPlayers = computed<PlayerState[]>(() => {
   const frame = currentFrame.value;
-  if (!frame?.players) return [];
+  if (!frame?.players || !replay.value?.serverPlayer) return [];
   
-  // Use pre-sorted player IDs from engine
-  const sortedPlayerIds = frame.sortedPlayers || Object.keys(frame.players).map(Number);
-  
-  // Filter and return T players in sorted order
-  // Create new objects with explicit property spreading to ensure reactivity
-  return sortedPlayerIds
-    .map(id => frame.players[id])
-    .filter(p => p && p.team === 2)
-    .map(p => ({
-      id: p.id,
-      name: p.name,
-      team: p.team,
-      x: p.x,
-      y: p.y,
-      alive: p.alive,
-      yaw: p.yaw,
-      health: p.health,
-      armor: p.armor,
-      money: p.money,
-      kills: p.kills,
-      assists: p.assists,
-      deaths: p.deaths,
-      inventory: p.inventory,
-      activeWeapon: p.activeWeapon,
-      hasHelmet: p.hasHelmet,
-      hasDefuseKit: p.hasDefuseKit,
-      isScoped: p.isScoped,
-      flashDuration: p.flashDuration,
-      isBlinded: p.isBlinded,
-      buttons: p.buttons
-    }));
+  // Use sorted player IDs from replay.serverPlayer
+  const result: PlayerState[] = [];
+  for (const playerInfo of replay.value.serverPlayer) {
+    const displayTeam = getDisplayTeam(playerInfo.team);
+    if (displayTeam !== 2) continue; // Display as T only
+    
+    const frameData = frame.players[playerInfo.id];
+    if (!frameData) continue; // Skip if player not in this frame
+    
+    // Merge metadata with frame data, using display team for styling
+    result.push({
+      ...frameData,
+      id: playerInfo.id,
+      name: playerInfo.name,
+      team: displayTeam, // Use display team
+      steamID: playerInfo.steamID,
+      isBot: playerInfo.isBot
+    });
+  }
+  return result;
 });
 
 // 计算所有玩家 ID 到名称的映射，用于击杀信息显示
 const playerNameMap = computed(() => {
   const map: Record<number, string> = {};
-  safeFrames.value.forEach(f => {
-    if (f.players) {
-      // Iterate through players map
-      for (const playerId in f.players) {
-        const p = f.players[playerId];
-        if (!map[p.id]) map[p.id] = p.name;
-      }
+  
+  // Use serverPlayer from replay metadata for player names
+  if (replay.value?.serverPlayer) {
+    for (const playerInfo of replay.value.serverPlayer) {
+      map[playerInfo.id] = playerInfo.name;
     }
-  });
+  }
+  
   return map;
 });
 
@@ -432,6 +410,21 @@ const currentRound = computed(() => {
   if (!safeFrames.value.length) return 0;
   return safeFrames.value[currentFrameIndex.value]?.round || 0;
 });
+
+// 判断是否在后半场（13局及以后）
+const isSecondHalf = computed(() => {
+  return currentRound.value >= 13;
+});
+
+// 获取显示用的队伍值（后半场翻转）
+// 队伍交换规则：Rounds 1-12: CT=3, T=2 | Rounds 13+: CT=2, T=3
+const getDisplayTeam = (originalTeam: number): number => {
+  // 后半场翻转队伍显示
+  if (isSecondHalf.value) {
+    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
+  }
+  return originalTeam;
+};
 
 const currentRoundFrames = computed(() => {
   if (!safeFrames.value.length || currentRound.value === 0) return [];
@@ -455,18 +448,18 @@ const currentRoundKills = computed(() => {
   return visibleKills;
 });
 
-// 获取玩家阵营对应的 CSS 类
+// 获取玩家阵营对应的 CSS 类（后半场翻转）
 const getTeamClass = (playerId: number) => {
-  // 尝试从当前帧找，找不到就从所有帧找（处理离线/结束情况）
-  let player = currentFrame.value?.players?.[playerId];
-  if (!player) {
-    for (const f of safeFrames.value) {
-      player = f.players?.[playerId];
-      if (player) break;
+  // Use serverPlayer metadata to get team info
+  if (replay.value?.serverPlayer) {
+    const playerInfo = replay.value.serverPlayer.find(p => p.id === playerId);
+    if (playerInfo) {
+      // Get display team (flipped in second half)
+      const displayTeam = getDisplayTeam(playerInfo.team);
+      return displayTeam === 3 ? 'ct' : 't';
     }
   }
-  if (!player) return '';
-  return player.team === 3 ? 'ct' : 't';
+  return '';
 };
 
 const roundStartTimeMs = computed(() => {

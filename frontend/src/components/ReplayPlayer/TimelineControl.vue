@@ -260,6 +260,15 @@ const roundTimeColor = computed(() => {
   }
 });
 
+// 获取显示用的队伍值（后半场翻转）
+// 队伍交换规则：Rounds 1-12: CT=3, T=2 | Rounds 13+: CT=2, T=3
+const getDisplayTeam = (originalTeam: number, frame: any): number => {
+  if (frame && frame.round >= 13) {
+    return originalTeam === 2 ? 3 : (originalTeam === 3 ? 2 : originalTeam);
+  }
+  return originalTeam;
+};
+
 // 格式化回合时间显示
 const formatRoundTime = computed(() => {
   const timeRemaining = currentRoundTime.value.timeRemaining;
@@ -281,8 +290,15 @@ const throwMarkers = computed(() => {
           seenIds.add(p.entityID);
           const relTime = f.timeMs - props.roundStartTimeMs;
           
-          const thrower = f.players?.[p.throwerID] || null;
-          const team = thrower ? thrower.team : 0;
+          // Use serverPlayer metadata to get thrower's team
+          let team = 0;
+          if (p.throwerID && props.replayMeta?.serverPlayer) {
+            const throwerInfo = props.replayMeta.serverPlayer.find(player => player.id === p.throwerID);
+            if (throwerInfo) {
+              // Get display team (flipped in second half)
+              team = getDisplayTeam(throwerInfo.team, f);
+            }
+          }
 
           markers.push({
             offset: (relTime / props.roundDurationMs) * 100,
@@ -312,17 +328,12 @@ const killMarkers = computed(() => {
           const relTime = f.timeMs - props.roundStartTimeMs;
           
           let killerTeam = 0;
-          if (kill.killerId !== 0) {
-            const killer = f.players?.[kill.killerId];
-            if (killer) {
-              killerTeam = killer.team;
-            } else {
-              for (const rf of props.roundFrames) {
-                if (rf.players?.[kill.killerId]) {
-                  killerTeam = rf.players[kill.killerId].team;
-                  break;
-                }
-              }
+          if (kill.killerId !== 0 && props.replayMeta?.serverPlayer) {
+            // Use serverPlayer metadata to get killer's team
+            const killerInfo = props.replayMeta.serverPlayer.find(p => p.id === kill.killerId);
+            if (killerInfo) {
+              // Get display team (flipped in second half)
+              killerTeam = getDisplayTeam(killerInfo.team, f);
             }
           }
 
