@@ -4,10 +4,11 @@
  * File Structure:
  * /replays/
  *   /{uuid}/
- *     meta.pb         - ReplayMeta protobuf
  *     round_1.pb      - Round 1 frames protobuf
  *     round_2.pb      - Round 2 frames protobuf
  *     ...
+ * 
+ * Note: Meta data is now stored in IndexedDB, not in OPFS
  */
 
 export class OPFSReplayStorage {
@@ -20,30 +21,7 @@ export class OPFSReplayStorage {
     this.root = await navigator.storage.getDirectory();
   }
 
-  async saveMeta(uuid: string, metaBytes: Uint8Array): Promise<void> {
-    console.log(`[OPFS] 💾 Saving meta for UUID: ${uuid}, size: ${metaBytes.byteLength} bytes`);
-    const replayDir = await this.getReplayDir(uuid);
-    const fileHandle = await replayDir.getFileHandle('meta.pb', { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(metaBytes);
-    await writable.close();
-    console.log(`[OPFS] ✅ Meta saved successfully for UUID: ${uuid}`);
-  }
-
-  async loadMeta(uuid: string): Promise<Uint8Array | null> {
-    try {
-      console.log(`[OPFS] 📖 Loading meta for UUID: ${uuid}`);
-      const replayDir = await this.getReplayDir(uuid);
-      const fileHandle = await replayDir.getFileHandle('meta.pb');
-      const file = await fileHandle.getFile();
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      console.log(`[OPFS] ✅ Meta loaded, size: ${bytes.byteLength} bytes`);
-      return bytes;
-    } catch (e) {
-      console.warn(`[OPFS] ⚠️ Meta not found for UUID: ${uuid}`, e);
-      return null;
-    }
-  }
+  // Meta storage methods removed - use IndexedDB (indexdb-storage.ts) instead
 
   async saveRound(uuid: string, roundNum: number, roundBytes: Uint8Array): Promise<void> {
     console.log(`[OPFS] 💾 Saving round ${roundNum} for UUID: ${uuid}, size: ${roundBytes.byteLength} bytes`);

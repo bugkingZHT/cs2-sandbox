@@ -1,56 +1,5 @@
 package entity
 
-import (
-	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
-)
-
-// ReplayMetaToProtoPB converts entity.ReplayMeta to protobuf message
-func ReplayMetaToProtoPB(meta *ReplayMeta) *ReplayMetaPB {
-	if meta == nil {
-		return nil
-	}
-
-	protoMeta := &ReplayMetaPB{
-		Uuid:             meta.UUID,
-		UploaderUid:      meta.UploaderUID,
-		UploadTime:       meta.UploadTime,
-		MapName:          meta.MapName,
-		TeamCt:           meta.TeamCT,
-		TeamT:            meta.TeamT,
-		ScoreCt:          int32(meta.ScoreCT),
-		ScoreT:           int32(meta.ScoreT),
-		TotalRounds:      int32(meta.TotalRounds),
-		FileName:         meta.FileName,
-		OriginalFilePath: meta.OriginalFilePath,
-	}
-
-	// Convert projectile render config map
-	if meta.ProjectileRender != nil {
-		protoMeta.ProjectileRender = make(map[int32]*ProjectileRenderConfigPB)
-		for k, v := range meta.ProjectileRender {
-			protoMeta.ProjectileRender[int32(k)] = &ProjectileRenderConfigPB{
-				ExplosionRadius:   v.ExplosionRadius,
-				DurationInMs:      v.DurationInMs,
-				CanClearSmoke:     v.CanClearSmoke,
-				CanExtinguishFire: v.CanExtinguishFire,
-			}
-		}
-	}
-
-	// Convert round results
-	if meta.RoundResults != nil {
-		protoMeta.RoundResults = make([]*RoundResultInfoPB, len(meta.RoundResults))
-		for i, rr := range meta.RoundResults {
-			protoMeta.RoundResults[i] = &RoundResultInfoPB{
-				Round:  int32(rr.Round),
-				Result: string(rr.Result),
-			}
-		}
-	}
-
-	return protoMeta
-}
-
 // ReplayRoundToProtoPB converts entity.ReplayRound to protobuf message
 func ReplayRoundToProtoPB(round *ReplayRound) *ReplayRoundPB {
 	if round == nil {
@@ -233,53 +182,6 @@ func ProjectileFrameToProtoPB(proj *ProjectileFrame) *ProjectileFramePB {
 	}
 
 	return protoProj
-}
-
-// ProtoToReplayMeta converts protobuf ReplayMetaPB back to entity.ReplayMeta
-func ProtoToReplayMeta(protoMeta *ReplayMetaPB) *ReplayMeta {
-	if protoMeta == nil {
-		return nil
-	}
-
-	meta := &ReplayMeta{
-		UUID:             protoMeta.Uuid,
-		UploaderUID:      protoMeta.UploaderUid,
-		UploadTime:       protoMeta.UploadTime,
-		MapName:          protoMeta.MapName,
-		TeamCT:           protoMeta.TeamCt,
-		TeamT:            protoMeta.TeamT,
-		ScoreCT:          int(protoMeta.ScoreCt),
-		ScoreT:           int(protoMeta.ScoreT),
-		TotalRounds:      int(protoMeta.TotalRounds),
-		FileName:         protoMeta.FileName,
-		OriginalFilePath: protoMeta.OriginalFilePath,
-	}
-
-	// Convert projectile render config map
-	if protoMeta.ProjectileRender != nil {
-		meta.ProjectileRender = make(map[common.EquipmentType]ProjectileRenderConfig)
-		for k, v := range protoMeta.ProjectileRender {
-			meta.ProjectileRender[common.EquipmentType(k)] = ProjectileRenderConfig{
-				ExplosionRadius:   v.ExplosionRadius,
-				DurationInMs:      v.DurationInMs,
-				CanClearSmoke:     v.CanClearSmoke,
-				CanExtinguishFire: v.CanExtinguishFire,
-			}
-		}
-	}
-
-	// Convert round results
-	if protoMeta.RoundResults != nil {
-		meta.RoundResults = make([]RoundResultInfo, len(protoMeta.RoundResults))
-		for i, rr := range protoMeta.RoundResults {
-			meta.RoundResults[i] = RoundResultInfo{
-				Round:  int(rr.Round),
-				Result: RoundResult(rr.Result),
-			}
-		}
-	}
-
-	return meta
 }
 
 // Helper function to convert []int to []int32

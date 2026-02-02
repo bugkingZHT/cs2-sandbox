@@ -87,8 +87,8 @@
           :class="{ 
             'is-current': demo.id === currentDemoId,
             'loading': isLoadingDemo && selectedDemoId === demo.id,
-            'is-parsing': demo.isParsing || (demo.parsingStatus && (demo.parsingProgress ?? 0) > 0 && !demo.hasFailed),
-            'is-failed': demo.hasFailed
+            'is-parsing': demo.status === 0,
+            'is-failed': demo.status === -1
           }"
           @click="selectDemo(demo)"
         >
@@ -181,7 +181,7 @@
           </div>
 
           <!-- Parsing Overlay (active parsing - blue) -->
-          <div v-if="(demo.isParsing || (demo.parsingStatus && (demo.parsingProgress ?? 0) > 0)) && !demo.hasFailed" class="parsing-overlay-card">
+          <div v-if="demo.status === 0" class="parsing-overlay-card">
             <div class="parsing-progress-container">
               <div class="parsing-progress-label">解析中...</div>
               <div class="parsing-progress-bar">
@@ -193,7 +193,7 @@
           </div>
 
           <!-- Failed Overlay (error/timeout - red, text only, no progress bar) -->
-          <div v-else-if="demo.hasFailed" class="failed-overlay-card">
+          <div v-else-if="demo.status === -1" class="failed-overlay-card">
             <div class="failed-content">
               <div class="failed-icon">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
@@ -336,21 +336,15 @@ const onFileSelected = (event: Event) => {
 };
 
 const selectDemo = async (demo: ReplayData) => {
-  // Prevent selecting demos that are still parsing or failed
-  // Check all possible parsing/failed indicators:
-  // - isParsing: active parsing flag
-  // - hasFailed: timeout or error flag
-  // - parsingStatus with progress: page refresh during parsing (resumed from cache)
-  if (demo.isParsing || 
-      demo.hasFailed || 
-      (demo.parsingStatus && (demo.parsingProgress ?? 0) > 0) || 
+  // 阻止选择正在解析或失败的 demo
+  // status: 0=解析中, 1=完成, -1=失败
+  if (demo.status === 0 || 
+      demo.status === -1 || 
       isLoadingDemo.value || 
       !demo.id) {
-    console.log('[SelectDemo] Blocked - demo is parsing or failed:', {
+    console.log('[SelectDemo] 阻止选择 - demo 正在解析或失败:', {
       uuid: demo.uuid,
-      isParsing: demo.isParsing,
-      hasFailed: demo.hasFailed,
-      parsingStatus: demo.parsingStatus,
+      status: demo.status,
       parsingProgress: demo.parsingProgress
     });
     return;

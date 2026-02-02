@@ -1,0 +1,141 @@
+import type { ReplayMeta } from '../types/replay';
+
+// Database schema
+const DB_NAME = 'cs-demobox';
+const DB_VERSION = 1;
+const META_STORE = 'replay-meta';
+
+export class IndexedDBMetaStorage {
+  private db: IDBDatabase | null = null;
+
+  async init(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        
+        // Create meta store with uuid as key
+        if (!db.objectStoreNames.contains(META_STORE)) {
+          const store = db.createObjectStore(META_STORE, { keyPath: 'uuid' });
+          store.createIndex('uploadTime', 'uploadTime', { unique: false });
+          store.createIndex('status', 'status', { unique: false });
+          console.log('[IndexedDB] Created meta store with indexes');
+        }
+      };
+    });
+  }
+
+  // Save meta to IndexedDB
+  async saveMeta(meta: ReplayMeta): Promise<void> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readwrite');
+      const store = tx.objectStore(META_STORE);
+      const request = store.put(meta);
+      
+      request.onsuccess = () => {
+        console.log(`[IndexedDB] Saved meta: ${meta.uuid.substring(0, 8)}, status=${meta.status}`);
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Load single meta by UUID
+  async loadMeta(uuid: string): Promise<ReplayMeta | null> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readonly');
+      const store = tx.objectStore(META_STORE);
+      const request = store.get(uuid);
+      
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Load all metas
+  async loadAllMetas(): Promise<ReplayMeta[]> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readonly');
+      const store = tx.objectStore(META_STORE);
+      const request = store.getAll();
+      
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Update meta status fields
+  async updateMetaStatus(
+    uuid: string, 
+    status: number, 
+    progress?: number, 
+    statusText?: string,
+    lastTickTime?: number
+  ): Promise<void> {
+    const meta = await this.loadMeta(uuid);
+    if (!meta) throw new Error(`Meta not found: ${uuid}`);
+    
+    meta.status = status;
+    if (progress !== undefined) meta.parsingProgress = progress;
+    if (statusText !== undefined) meta.parsingStatus = statusText;
+    if (lastTickTime !== undefined) meta.lastTickTime = lastTickTime;
+    
+    await this.saveMeta(meta);
+  }
+
+  // Delete meta
+  async deleteMeta(uuid: string): Promise<void> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readwrite');
+      const store = tx.objectStore(META_STORE);
+      const request = store.delete(uuid);
+      
+      request.onsuccess = () => {
+        console.log(`[IndexedDB] Deleted meta: ${uuid.substring(0, 8)}`);
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Query parsing metas (status = 0)
+  async getParsingMetas(): Promise<ReplayMeta[]> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readonly');
+      const store = tx.objectStore(META_STORE);
+      const index = store.index('status');
+      const request = index.getAll(0); // status = 0 (parsing)
+      
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+
+// Singleton
+let metaStorageInstance: IndexedDBMetaStorage | null = null;
+
+export async function getMetaStorage(): Promise<IndexedDBMetaStorage> {
+  if (!metaStorageInstance) {
+    metaStorageInstance = new IndexedDBMetaStorage();
+    await metaStorageInstance.init();
+  }
+  return metaStorageInstance;
+}

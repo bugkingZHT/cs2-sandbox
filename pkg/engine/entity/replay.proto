@@ -102,27 +102,6 @@ message ProjectileRenderConfigPB {
   bool can_extinguish_fire = 4;
 }
 
-message RoundResultInfoPB {
-  int32 round = 1;
-  string result = 2;
-}
-
-message ReplayMetaPB {
-  string uuid = 1;
-  string uploader_uid = 2;
-  int64 upload_time = 3;
-  map<int32, ProjectileRenderConfigPB> projectile_render = 4;
-  string map_name = 5;
-  string team_ct = 6;
-  string team_t = 7;
-  int32 score_ct = 8;
-  int32 score_t = 9;
-  int32 total_rounds = 10;
-  string file_name = 11;
-  string original_file_path = 12;
-  repeated RoundResultInfoPB round_results = 13;
-}
-
 message ReplayRoundPB {
   string uuid = 1;
   int32 round = 2;

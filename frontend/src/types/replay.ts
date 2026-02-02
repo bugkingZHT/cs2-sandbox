@@ -133,9 +133,13 @@ export interface ReplayMeta {
   totalFrames: number; // Demo 总帧数（来自 header.PlaybackFrames）
   totalDurationMs: number; // Demo 总时长（毫秒，来自 header.PlaybackTime）
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
-  originalFilePath?: string; // Temporary: file name for failure detection, cleared after backfill
   fileName?: string; // 原始上传文件名（不带.dem后缀）
-  isParsing?: boolean; // 是否正在解析中（用于页面刷新后恢复状态）
+  
+  // 解析状态统一字段
+  status: number; // 0=解析中, 1=完成, -1=失败
+  parsingProgress?: number; // 0-100
+  parsingStatus?: string; // 状态描述
+  lastTickTime?: number; // 最后tick时间戳（用于超时检测）
 }
 
 // 单个回合的录像数据
@@ -152,28 +156,11 @@ export interface ParsedReplayData {
 }
 
 // 用于前端显示和兼容的完整数据
-export interface ReplayData {
-  uuid: string;
-  uploaderUid: string; // 上传用户 UID
-  uploadTime: number; // 上传时间戳
-  mapName: string;
-  teamCT: string;
-  teamT: string;
-  scoreCT: number;
-  scoreT: number;
-  totalRounds: number;
-  roundResults?: RoundResultInfo[]; // 每回合胜负结果列表
+export interface ReplayData extends ReplayMeta {
   frames: Frame[];
-  projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   // 额外字段用于列表展示
   id?: string;
   timestamp?: number; // 向后兼容，映射到 uploadTime
-  fileName?: string; // 原始上传文件名（不带.dem后缀）
-  // 解析状态字段
-  isParsing?: boolean; // 是否正在解析
-  parsingProgress?: number; // 解析进度 (0-100)
-  parsingStatus?: string; // 解析状态文本
-  hasFailed?: boolean; // 是否解析失败
 }
 
 export interface WorldBounds {

@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { ReplayRound } from '@/types/replay';
-import { decodeReplayMeta, decodeReplayRound } from '@/composables/proto-converters';
+import { decodeReplayRound } from '@/composables/proto-converters';
 
 // Declare global types for Go WASM runtime
 declare const Go: any;
@@ -171,19 +171,18 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       
       // Extract final statistics from the last parsed state
       // Call backfillDemoMeta to get final scores
-      // Create minimal meta binary for backfill
-      const { encodeReplayMeta } = await import('@/composables/proto-converters');
-      const minimalMeta = { uuid } as any;
-      const metaBytes = await encodeReplayMeta(minimalMeta);
+      // Pass JSON meta to WASM
+      const minimalMeta = { uuid };
+      const metaJsonString = JSON.stringify(minimalMeta);
       
-      const backfillBinary = await new Promise<Uint8Array>((resolve, reject) => {
-        (self as any).backfillDemoMeta(metaBytes, (res: any, err: string) => {
+      const backfillJsonString = await new Promise<string>((resolve, reject) => {
+        (self as any).backfillDemoMeta(metaJsonString, (res: any, err: string) => {
           if (err) reject(new Error(err));
           else resolve(res);
         });
       });
       
-      const backfilledMeta = await decodeReplayMeta(backfillBinary);
+      const backfilledMeta = JSON.parse(backfillJsonString);
       
       console.log(`[Worker] [${uuid}] Backfilled meta received:`, {
         totalRounds: backfilledMeta.totalRounds,

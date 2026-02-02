@@ -4,28 +4,28 @@
 
 Demo文件解析采用主线程 + Worker线程混合架构，将耗时的round解析移至Worker，避免UI阻塞。
 
-**核心设计原则**：Worker 只写缓存，主线程定时轮询缓存更新 UI。
+**核心设计原则**：Worker 写 IndexedDB meta，主线程定时轮询 IndexedDB 更新 UI。
 
 ## 核心原理
 
-- **主线程**：负责轻量级操作（初始化parser、提取metadata、backfill后处理）、定时轮询缓存更新进度条
-- **Worker线程**：负责重量级操作（遍历所有rounds、逐tick解析帧数据）、写入解析进度到 sessionStorage
-- **Cache层**：sessionStorage 作为主线程和 Worker 的解耦通信层
+- **主线程**：负责轻量级操作（初始化parser、提取metadata、backfill后处理）、定时轮询 IndexedDB 更新进度条
+- **Worker线程**：负责重量级操作（遍历所有rounds、逐tick解析帧数据）、更新解析进度到 IndexedDB
+- **IndexedDB**：统一存储 meta 数据，包含解析进度和状态字段
 
 ## 架构图
 
 ```
 ┌─────────────┐         ┌──────────────────┐         ┌─────────────┐
-│   Worker    │         │  sessionStorage  │         │  主线程UI    │
-│   线程      │         │   (Cache层)      │         │             │
+│   Worker    │         │    IndexedDB     │         │  主线程UI    │
+│   线程      │         │   (Meta Store)   │         │             │
 └─────────────┘         └──────────────────┘         └─────────────┘
        │                         │                          │
-       │ 1. 写进度               │                          │
-       │ saveParsingState()      │                          │
+       │ 1. 更新进度              │                          │
+       │ updateMetaStatus()      │                          │
        │────────────────────────>│                          │
        │                         │                          │
-       │                         │   2. 定时轮询 (2s)       │
-       │                         │   loadParsingState()     │
+       │                         │   2. 定时轮询 (1s)       │
+       │                         │   getParsingMetas()      │
        │                         │<─────────────────────────│
        │                         │                          │
        │                         │   3. 更新 replayList     │
@@ -33,10 +33,10 @@ Demo文件解析采用主线程 + Worker线程混合架构，将耗时的round�
        │                         │─────────────────────────>│
        │                         │                          │
        │ 4. 解析完成             │                          │
-       │ clearParsingState()     │                          │
+       │ updateMetaStatus(1)     │                          │
        │────────────────────────>│                          │
        │                         │                          │
-       │                         │   5. 轮询检测cache消失   │
+       │                         │   5. 轮询检测status=1    │
        │                         │   显示正常卡片           │
        │                         │<─────────────────────────│
 ```
@@ -47,20 +47,20 @@ Demo文件解析采用主线程 + Worker线程混合架构，将耗时的round�
 sequenceDiagram
     participant U as 用户
     participant M as 主线程
-    participant C as SessionStorage
+    participant IDB as IndexedDB
     participant W as Worker线程
-    participant DB as OPFS
+    participant OPFS as OPFS
     
     U->>M: 上传.dem文件
     
     Note over M: Phase 1: 快速初始化
     M->>M: initDemoParser(bytes)
-    M->>M: extractDemoMetadata()
-    M->>DB: 保存meta (含UUID, isParsing=true)
+    M->>M: extractDemoMetadata() (JSON)
+    M->>IDB: saveMeta(meta, status=0)
     M->>U: 显示Demo卡片 (1-2秒)
-    M->>M: 启动轮询定时器 (2s间隔)
+    M->>M: 启动 ParsingMonitor (1s间隔)
     
-    Note over W: Phase 2: 后台解析 (Worker只写cache)
+    Note over W: Phase 2: 后台解析
     M->>W: postMessage(PARSE_ROUNDS, bytes, uuid)
     W->>W: initDemoParser(bytes)
     
@@ -68,115 +68,150 @@ sequenceDiagram
         W->>W: parseNextRound()
         W->>W: 覆盖round.uuid = meta.uuid
         W->>M: postMessage(ROUND_COMPLETE, round)
-        M->>DB: 保存round
+        M->>OPFS: 保存round (protobuf)
         
         alt 每1000 tick
-            W->>C: saveParsingState(uuid, progress, status)
-            Note over C: 写入 parsing_cache_{uuid}
+            W->>IDB: updateMetaStatus(uuid, 0, progress, status, lastTickTime)
+            Note over IDB: 更新 meta.parsingProgress, meta.lastTickTime
         end
         
-        alt 主线程轮询 (每2秒)
-            M->>C: loadParsingState(uuid)
-            C->>M: 返回 {progress, status, lastTickTime}
-            M->>M: 更新 replayList[uuid].parsingProgress
+        alt 主线程轮询 (每1秒)
+            M->>IDB: getParsingMetas() (status=0)
+            IDB->>M: 返回所有解析中的 meta
+            M->>M: 对比 replayList[uuid] 进度
+            M->>M: 直接更新 replayList[uuid].parsingProgress
             M->>U: 刷新进度条
         end
     end
     
-    W->>W: backfillDemoMeta()
-    W->>C: saveParsingState(uuid, 100, 'Complete')
+    W->>W: backfillDemoMeta() (JSON)
     W->>M: postMessage(PARSING_COMPLETE, stats)
     
     Note over M: Phase 3: 最终化
-    M->>M: 更新meta统计数据
-    M->>M: delete meta.isParsing
-    M->>DB: 保存完整meta
+    M->>M: 合并统计数据到meta
+    M->>IDB: updateMetaStatus(uuid, 1, 100, 'Complete')
     M->>M: closeDemoParser()
-    M->>C: clearParsingState(uuid) (3秒后)
     M->>W: worker.terminate()
     
-    Note over M: 轮询检测cache消失
-    M->>C: loadParsingState(uuid)
-    C->>M: null (cache已清理)
+    Note over M: 轮询检测 status=1
+    M->>IDB: getParsingMetas()
+    IDB->>M: [] (无status=0的meta)
     M->>U: 显示正常卡片
 ```
 
-## Cache-Polling 架构
+## IndexedDB Meta 架构
 
-### Cache 数据结构
+### Meta 数据结构
 
 ```typescript
-// Cache Key: parsing_cache_{uuid}
-interface ParsingStateCache {
+interface ReplayMeta {
+  // 基础字段
   uuid: string;
-  progress: number;        // 0-100
-  status: string;          // "Parsing rounds..."
-  lastTickTime: number;    // 最后一次tick的时间戳 (用于超时检测)
+  fileName: string;
+  uploadTime: number;
+  
+  // 解析状态字段（新架构）
+  status: number;              // 0=parsing, 1=complete, -1=failed
+  parsingProgress: number;     // 0-100
+  parsingStatus: string;       // "Parsing rounds..." / "Complete" / 错误信息
+  lastTickTime: number;        // 最后一次tick的时间戳 (用于超时检测)
+  
+  // 游戏统计（backfill后填充）
+  totalRounds: number;
+  scoreCT: number;
+  scoreT: number;
+  teamCT: string;
+  teamT: string;
+  roundResults: RoundResultInfo[];
 }
 ```
 
-### Worker 职责：只写 Cache
+### IndexedDB Indexes
+
+```typescript
+// metaStore 索引
+- uploadTime (排序、分页)
+- status (快速查询 status=0 的解析中demos)
+```
+
+### Worker 职责：写 IndexedDB
 
 ```typescript
 // Worker 中的进度更新
-const updateDemoParsingProgress = (uuid: string, progress: number, status: string) => {
-  // 只保存到 cache，不触碰 replayList
-  saveParsingState(uuid, progress, status);
-  console.log(`[UpdateProgress] [${uuid}] Saved to cache: ${progress}%, ${status}`);
+const updateProgress = async (uuid: string, progress: number, status: string) => {
+  const metaStorage = await getMetaStorage();
+  await metaStorage.updateMetaStatus(
+    uuid,
+    0,           // status = 0 (parsing)
+    progress,    // 0-100
+    status,      // "Parsing rounds..."
+    Date.now()   // lastTickTime
+  );
+  console.log(`[Worker] [${uuid}] Progress: ${progress}%, ${status}`);
 };
 ```
 
 **调用时机**：
-- PROGRESS 消息：`updateDemoParsingProgress(uuid, progress, "Parsing rounds...")`
-- ROUND_COMPLETE：`updateDemoParsingProgress(uuid, 97, "Finalizing metadata...")`
-- PARSING_COMPLETE：`updateDemoParsingProgress(uuid, 100, "Complete")`
+- 每 1000 tick：`updateProgress(uuid, progress, "Parsing rounds...")`
+- Round 完成：`updateProgress(uuid, 97, "Finalizing metadata...")`
+- 解析完成：`updateMetaStatus(uuid, 1, 100, "Complete")`
 
-### 主线程职责：轮询 Cache 更新 UI
+### 主线程职责：轮询 IndexedDB 更新 UI
 
 ```typescript
-// 启动轮询 (每 2 秒)
-startIncompleteMonitoring() {
-  incompleteCheckInterval = setInterval(() => {
-    checkIncompleteDemosTimeout();
-  }, 2000);
+// 启动轮询 (每 1 秒)
+startParsingMonitor() {
+  parsingMonitorInterval = setInterval(() => {
+    checkParsingDemos();
+  }, 1000);
 }
 
 // 轮询逻辑
-checkIncompleteDemosTimeout() {
-  const cachedUUIDs = getAllCachedUUIDs();
+async checkParsingDemos() {
+  const metaStorage = await getMetaStorage();
+  const parsingMetas = await metaStorage.getParsingMetas(); // 查询 status=0
   
-  replayList.value.forEach(demo => {
-    if (cachedUUIDs.includes(demo.uuid) && !demo.hasFailed) {
-      const cachedState = loadParsingState(demo.uuid);
-      
-      if (cachedState) {
-        if (isParsingTimedOut(cachedState)) {
-          // 超时 → 标记失败
-          demo.hasFailed = true;
-          demo.parsingStatus = 'Parsing timeout...';
-          clearParsingState(demo.uuid);
-        } else {
-          // 未超时 → 更新进度
-          demo.parsingProgress = cachedState.progress;
-          demo.parsingStatus = cachedState.status;
-        }
-      } else {
-        // Cache 无效 → 清理
-        clearParsingState(demo.uuid);
-      }
+  for (const meta of parsingMetas) {
+    const timeSinceLastTick = Date.now() - (meta.lastTickTime || 0);
+    const demoIndex = replayList.value.findIndex(d => d.uuid === meta.uuid);
+    
+    if (demoIndex === -1) continue;
+    
+    // 1. 超时检测
+    if (timeSinceLastTick > PARSER_CONFIG.workerTickTimeout) {
+      await metaStorage.updateMetaStatus(uuid, -1, meta.parsingProgress, 'Timeout');
+      needsReload = true;
+      continue;
     }
-  });
+    
+    // 2. 检查完成状态
+    if (meta.status === 1) {
+      needsReload = true;
+      continue;
+    }
+    
+    // 3. 进度更新 - 直接从 meta 同步到 UI
+    if (currentDemo.parsingProgress !== meta.parsingProgress) {
+      replayList.value[demoIndex] = {
+        ...currentDemo,
+        parsingProgress: meta.parsingProgress,
+        parsingStatus: meta.parsingStatus,
+        lastTickTime: meta.lastTickTime,
+      };
+    }
+  }
 }
 ```
 
 ### 超时检测逻辑
 
 ```typescript
-// 基于 cache 的 lastTickTime 判断超时
-const isParsingTimedOut = (cache: ParsingStateCache): boolean => {
-  const timeSinceLastTick = Date.now() - cache.lastTickTime;
-  return timeSinceLastTick > PARSER_CONFIG.workerTickTimeout; // 默认 30000ms
-};
+// 基于 meta.lastTickTime 判断超时
+const timeSinceLastTick = Date.now() - meta.lastTickTime;
+if (timeSinceLastTick > PARSER_CONFIG.workerTickTimeout) {
+  // 超时 → 标记为失败 (status = -1)
+  await metaStorage.updateMetaStatus(uuid, -1, meta.parsingProgress, 'Parsing timeout');
+}
 ```
 
 ## 消息协议
@@ -198,15 +233,14 @@ const isParsingTimedOut = (cache: ParsingStateCache): boolean => {
 ```typescript
 {
   type: 'PROGRESS',
-  uuid: string,        // 新增：UUID 用于 1v1 绑定
+  uuid: string,        // UUID 用于 1v1 绑定
   parsedTicks: number  // 已解析tick数
 }
 ```
 
 **主线程处理**：
-- ✅ 更新 `lastTickTime`（用于 tick timeout 检测）
-- ✅ 调用 `updateDemoParsingProgress()` 写入 cache
-- ❌ **不再直接更新 `replayList`**
+- ✅ 更新 IndexedDB：`updateMetaStatus(uuid, 0, progress, status, Date.now())`
+- ❌ **不再直接更新 `replayList`**（由轮询统一处理）
 
 #### 2. Round完成（每个round）
 ```typescript
@@ -217,8 +251,9 @@ const isParsingTimedOut = (cache: ParsingStateCache): boolean => {
 ```
 
 **主线程处理**：
+- 编码为 protobuf
 - 保存 round 到 OPFS
-- 写入 cache（97%，"Finalizing metadata..."）
+- 更新 IndexedDB（97%，"Finalizing metadata..."）
 
 #### 3. 解析完成
 ```typescript
@@ -234,63 +269,66 @@ const isParsingTimedOut = (cache: ParsingStateCache): boolean => {
 ```
 
 **主线程处理**：
-- Backfill meta（删除 `isParsing`、`originalFilePath`）
-- 保存完整 meta 到 OPFS
-- 写入 cache（100%，"Complete"）
-- **3秒后清理 cache**（让轮询有机会看到 100%）
-- 轮询检测到 cache 消失 → 显示正常卡片
+- Backfill meta（合并统计数据）
+- 更新 IndexedDB：`updateMetaStatus(uuid, 1, 100, 'Complete')`
+- 轮询检测到 status=1 → 重新加载列表 → 显示正常卡片
 
 #### 4. 错误
 ```typescript
 {
   type: 'ERROR',
-  uuid: string,  // 新增：UUID 用于 1v1 绑定
+  uuid: string,
   error: string
 }
 ```
 
 **主线程处理**：
-- ✅ 清理 cache：`clearParsingState(uuid)`
+- ✅ 更新 IndexedDB：`updateMetaStatus(uuid, -1, progress, errorMsg)`
 - ❌ **不再直接更新 `replayList`**
-- ⏱️ 轮询会检测到 cache 消失 + 超时 → 标记为失败
+- ⏱️ 轮询会检测到 status=-1 → 标记为失败
 
-## 卡片渲染的 4 步逻辑
+## 卡片渲染逻辑
 
 页面加载时（`loadAllReplays()`）：
 
 ```typescript
-// Step 1: 构建 Meta UUID Map
-const metaMap = new Map<string, ReplayMeta>();
-metas.forEach(meta => metaMap.set(meta.uuid, meta));
+// Step 1: 从 IndexedDB 加载所有 meta
+const metas = await metaStorage.loadAllMetas();
 
-// Step 2: 提取 Cache 中所有 UUID
-const cachedUUIDs = getAllCachedUUIDs();
-const cacheSet = new Set(cachedUUIDs);
+// Step 2: 直接映射 meta 到 replayList（status 已包含解析状态）
+replayList.value = metas.map(meta => ({
+  ...meta,
+  id: meta.uuid,
+  frames: [],
+  timestamp: meta.uploadTime,
+}));
 
-// Step 3: 判断交集与孤立缓存
-const intersection = cachedUUIDs.filter(uuid => metaMap.has(uuid));
-const orphanCaches = cachedUUIDs.filter(uuid => !metaMap.has(uuid));
+// Step 3: 启动 ParsingMonitor（自动处理 status=0 的卡片）
+startParsingMonitor();
+```
 
-// 清理孤立缓存（仅在 cache，不在 meta）
-orphanCaches.forEach(uuid => clearParsingState(uuid));
-
-// Step 4: 渲染卡片
-replayList.value = Array.from(metaMap.values()).map(meta => {
-  const hasCache = cacheSet.has(meta.uuid);
+**卡片显示逻辑**（在 DemoLibrary.vue）：
+```vue
+<div class="demo-card" :class="{
+  'is-parsing': demo.status === 0,
+  'is-failed': demo.status === -1
+}">
+  <!-- status=0: 显示进度条覆盖层 -->
+  <div v-if="demo.status === 0" class="parsing-overlay">
+    <progress :value="demo.parsingProgress" max="100"></progress>
+    <span>{{ demo.parsingStatus }}</span>
+  </div>
   
-  if (hasCache) {
-    // UUID 在 cache + meta → 显示进度条（从 cache 读取）
-    const cachedState = loadParsingState(meta.uuid);
-    if (isParsingTimedOut(cachedState)) {
-      return { ...meta, hasFailed: true, parsingProgress: cache.progress };
-    } else {
-      return { ...meta, parsingProgress: cache.progress, parsingStatus: cache.status };
-    }
-  } else {
-    // UUID 仅在 meta → 正常展示
-    return { ...meta };
-  }
-});
+  <!-- status=-1: 显示失败覆盖层 -->
+  <div v-else-if="demo.status === -1" class="failed-overlay">
+    <span>{{ demo.parsingStatus }}</span>
+  </div>
+  
+  <!-- status=1: 正常显示卡片内容 -->
+  <template v-else>
+    <!-- 正常卡片内容 -->
+  </template>
+</div>
 ```
 
 ## UUID对齐机制
@@ -301,35 +339,31 @@ replayList.value = Array.from(metaMap.values()).map(meta => {
 1. 主线程Phase 1提取metadata时获得UUID
 2. 主线程将UUID传给Worker
 3. Worker解析每个round后**强制覆盖** `round.uuid = uuid`
-4. 确保所有数据使用同一UUID存储在OPFS
-5. Cache key 也使用相同 UUID：`parsing_cache_{uuid}`
+4. 确保所有数据使用同一UUID存储
+   - Meta: IndexedDB `metaStore` (key = uuid)
+   - Rounds: OPFS `/replay_data/{uuid}/round_{N}.pb`
 
 ## 统计数据回刷
 
-Worker完成解析后调用`backfillDemoMeta()`获取最终统计：
+Worker完成解析后调用`backfillDemoMeta()`获取最终统计（JSON格式）：
 - `totalRounds`：总回合数
 - `scoreCT / scoreT`：双方比分
 - `teamCT / teamT`：队伍名称（从GameState提取）
 - `roundResults`：每回合胜负结果
 
-主线程接收后直接更新meta并保存，无需二次调用Go函数。
-
-同时删除临时字段：
-```typescript
-delete meta.originalFilePath;
-delete meta.isParsing;
-```
+主线程接收后直接合并到meta并更新 IndexedDB，无需二次调用Go函数。
 
 ## 性能特性
 
-| 指标 | 优化前（主线程） | 优化后（Worker + Cache） |
-|------|----------------|------------------------|
-| UI响应 | 冻结30-60秒 | 始终流畅 |
-| 卡片显示 | 解析完成后 | 1-2秒内显示 |
-| 进度更新 | 实时（高频阻塞） | 轮询（2s间隔，非阻塞） |
-| 并发支持 | 阻塞后续上传 | 支持多文件同时解析 |
-| 刷新恢复 | 丢失进度 | 自动恢复进度 |
-| 架构耦合 | Worker直接操作UI | 完全解耦（通过cache） |
+| 指标 | 优化前（sessionStorage） | 优化后（IndexedDB） |
+|------|----------------------|-------------------|
+| UI响应 | 始终流畅 | 始终流畅 |
+| 卡片显示 | 1-2秒内显示 | 1-2秒内显示 |
+| 进度更新 | 轮询（2s间隔） | 轮询（1s间隔，更快） |
+| 数据持久化 | 需要双写（OPFS protobuf + sessionStorage） | 单一存储（IndexedDB JSON） |
+| 刷新恢复 | 需要 OPFS protobuf 读取 | 直接从 IndexedDB 读取 |
+| 查询性能 | 遍历所有 meta 文件 | 索引查询（status=0） |
+| 架构耦合 | Cache-Polling 双层 | 单层存储，直接轮询 |
 
 ## 失败检测机制
 
@@ -337,34 +371,34 @@ delete meta.isParsing;
 
 Worker 端每次发送 PROGRESS 时更新 `lastTickTime`：
 ```typescript
-// Worker 中
-saveParsingState(uuid, progress, status); // 自动更新 lastTickTime
+// Worker 中（通过主线程转发）
+await metaStorage.updateMetaStatus(uuid, 0, progress, status, Date.now());
 ```
 
 主线程轮询检测超时：
 ```typescript
-// 主线程中（每 2 秒）
-if (isParsingTimedOut(cachedState)) {
-  // 30秒内没有 tick → 超时
-  demo.hasFailed = true;
-  clearParsingState(uuid);
+// ParsingMonitor 中（每 1 秒）
+const timeSinceLastTick = Date.now() - meta.lastTickTime;
+if (timeSinceLastTick > PARSER_CONFIG.workerTickTimeout) {
+  // 30秒内没有 tick → 超时，标记为失败
+  await metaStorage.updateMetaStatus(uuid, -1, meta.parsingProgress, 'Parsing timeout');
 }
 ```
 
-### 2. Cache 消失检测（被动）
+### 2. Status 状态检测（直接）
 
-当 Worker 发生错误或主动清理 cache 时：
 ```typescript
-// Worker 错误处理
-worker.onerror = () => {
-  clearParsingState(uuid); // 清理 cache
-  // 不直接修改 replayList
-};
+// ParsingMonitor 中
+const parsingMetas = await metaStorage.getParsingMetas(); // 只查询 status=0
 
-// 主线程轮询检测
-if (!cachedState && meta.isParsing) {
-  // Cache 消失但 meta 仍标记为 parsing → 异常
-  demo.hasFailed = true;
+// 完成检测
+if (meta.status === 1) {
+  // 重新加载列表 → 显示正常卡片
+}
+
+// 失败检测
+if (meta.status === -1) {
+  // 重新加载列表 → 显示失败覆盖层
 }
 ```
 
@@ -372,12 +406,13 @@ if (!cachedState && meta.isParsing) {
 
 ```
 workers/
-├── wasm-parser.worker.ts   # Worker实现（只写cache）
+├── wasm-parser.worker.ts   # Worker实现（通过主线程写IndexedDB）
 └── README.md               # 本文档
 
 composables/
-├── useReplayData.ts        # 主线程调用逻辑（轮询cache）
-└── opfs-storage.ts         # OPFS 存储接口
+├── useReplayData.ts        # 主线程调用逻辑（ParsingMonitor）
+├── opfs-storage.ts         # OPFS 存储接口（仅存储 rounds protobuf）
+└── indexdb-storage.ts      # IndexedDB 存储接口（存储 meta JSON）
 
 config/
 └── parser.ts               # PARSER_CONFIG.workerTickTimeout
@@ -386,49 +421,74 @@ config/
 ## 关键代码位置
 
 ### 主线程
-- **Worker创建**：`useReplayData.ts:635`
-- **轮询启动**：`useReplayData.ts:272` (`startIncompleteMonitoring`)
-- **轮询逻辑**：`useReplayData.ts:283` (`checkIncompleteDemosTimeout`)
-- **4步渲染**：`useReplayData.ts:163-259` (`loadAllReplays`)
-- **Cache工具**：`useReplayData.ts:41-96`
+- **Worker创建**：`useReplayData.ts:parseDemo()`
+- **ParsingMonitor启动**：`useReplayData.ts:startParsingMonitor()`
+- **轮询逻辑**：`useReplayData.ts:checkParsingDemos()`
+- **列表加载**：`useReplayData.ts:loadAllReplays()`
+- **IndexedDB操作**：`composables/opfs-storage.ts:MetaStorage`
 
 ### Worker
-- **UUID覆盖**：`wasm-parser.worker.ts:139`
-- **Tick进度**：`wasm-parser.worker.ts:119-127`
-- **统计回刷**：`wasm-parser.worker.ts:159-166`
+- **UUID覆盖**：`wasm-parser.worker.ts` (ROUND_COMPLETE消息处理)
+- **Tick进度**：`wasm-parser.worker.ts` (PROGRESS消息发送)
+- **统计回刷**：`wasm-parser.worker.ts` (backfillDemoMeta调用)
 
-### Cache操作
-- **写入cache**：`useReplayData.ts:41` (`saveParsingState`)
-- **读取cache**：`useReplayData.ts:55` (`loadParsingState`)
-- **超时检测**：`useReplayData.ts:70` (`isParsingTimedOut`)
-- **清理cache**：`useReplayData.ts:77` (`clearParsingState`)
-- **获取所有UUID**：`useReplayData.ts:89` (`getAllCachedUUIDs`)
+### IndexedDB操作
+- **保存meta**：`metaStorage.saveMeta(meta, status)`
+- **更新状态**：`metaStorage.updateMetaStatus(uuid, status, progress, statusMsg, lastTickTime)`
+- **查询解析中**：`metaStorage.getParsingMetas()` (status=0索引查询)
+- **加载所有**：`metaStorage.loadAllMetas()` (按uploadTime排序)
 
 ## 错误处理
 
-| 错误场景 | Worker 行为 | 主线程行为 | 结果 |
-|---------|-----------|----------|------|
-| Worker初始化失败 | 发送ERROR消息 | 清理cache | 轮询检测超时→失败卡片 |
-| 解析过程出错 | worker.onerror触发 | 清理cache | 轮询检测超时→失败卡片 |
-| Tick超时(30s) | - | 清理cache | 轮询检测超时→失败卡片 |
-| 主线程异常 | - | finally块确保terminate() | Cache自然过期 |
-| 页面刷新 | - | 轮询恢复进度 | 继续显示进度条 |
+| 错误场景 | Worker 行为 | 主线程行为 | IndexedDB 状态 | 结果 |
+|---------|-----------|----------|--------------|------|
+| Worker初始化失败 | 发送ERROR消息 | updateMetaStatus(-1) | status=-1 | 轮询检测→失败卡片 |
+| 解析过程出错 | worker.onerror触发 | updateMetaStatus(-1) | status=-1 | 轮询检测→失败卡片 |
+| Tick超时(30s) | - | updateMetaStatus(-1) | status=-1 | 轮询检测→失败卡片 |
+| 主线程异常 | - | finally块确保terminate() | status保持0 | 页面刷新后继续轮询 |
+| 页面刷新 | - | 重新启动ParsingMonitor | status=0持久化 | 继续显示进度条 |
 
-**关键原则**：Worker 和错误处理都**不直接修改 `replayList`**，只操作 cache，由轮询统一处理 UI 更新。
+**关键原则**：Worker 通过主线程更新 IndexedDB，ParsingMonitor 统一处理 UI 更新。
 
 ## 日志示例
 
 ```
-[UpdateProgress] [abc-123] Saved to cache: 0%, Starting...
-[IncompleteMonitor] Started monitoring (polling cache every 2s)
+[ParsingMonitor] Started monitoring (every 1s)
+[Worker] [abc-123] Progress: 0%, Starting...
 
-[UpdateProgress] [abc-123] Saved to cache: 15%, Parsing rounds...
-[IncompleteMonitor] Poll: 1 checked, 1 updated, 0 timed out, 0 cache invalid
+[Worker] [abc-123] Progress: 15%, Parsing rounds...
+[ParsingMonitor] [abc-123] 进度: 15%, Parsing rounds...
 
-[UpdateProgress] [abc-123] Saved to cache: 30%, Parsing rounds...
-[IncompleteMonitor] Poll: 1 checked, 1 updated, 0 timed out, 0 cache invalid
+[Worker] [abc-123] Progress: 30%, Parsing rounds...
+[ParsingMonitor] [abc-123] 进度: 30%, Parsing rounds...
 
-[UpdateProgress] [abc-123] Saved to cache: 100%, Complete
-[ParseDemo] Cleared cache for abc-123
-[IncompleteMonitor] Poll: 0 checked, 0 updated, 0 timed out, 0 cache invalid
+[Worker] [abc-123] Progress: 97%, Finalizing metadata...
+[ParsingMonitor] [abc-123] 进度: 97%, Finalizing metadata...
+
+[ParseDemo] Backfill complete, updating meta to status=1
+[ParsingMonitor] 1 完成, 0 超时，重新加载列表
+[ParsingMonitor] Stopped monitoring
 ```
+
+## 架构对比总结
+
+### 旧架构（sessionStorage Cache）
+```
+Worker → sessionStorage (cache) → 轮询 → replayList → UI
+         ↓
+    OPFS (meta protobuf + rounds protobuf)
+```
+
+### 新架构（IndexedDB）
+```
+Worker → 主线程 → IndexedDB (meta JSON) → 轮询 → replayList → UI
+                 ↓
+            OPFS (rounds protobuf only)
+```
+
+**关键改进**：
+1. ✅ **单一数据源**：Meta 只存在于 IndexedDB（JSON），无需 sessionStorage 缓存
+2. ✅ **索引查询**：`status` 索引快速查询解析中的 demos
+3. ✅ **更快轮询**：1秒间隔（vs 2秒）
+4. ✅ **数据持久化**：IndexedDB 自动持久化，刷新后直接读取
+5. ✅ **简化架构**：去除 Cache-Polling 双层，直接轮询 IndexedDB

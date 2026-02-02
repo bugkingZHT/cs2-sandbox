@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"syscall/js"
 
@@ -84,21 +85,18 @@ func extractDemoMetadata(this js.Value, args []js.Value) interface{} {
 			return
 		}
 
-		// Convert to protobuf and marshal
-		protoMeta := entity.ReplayMetaToProtoPB(meta)
-		b, err := proto.Marshal(protoMeta)
+		// Convert to JSON (no longer use protobuf for meta)
+		jsonData, err := json.Marshal(meta)
 		if err != nil {
-			log.Printf("Protobuf marshal error: %v\n", err)
+			log.Printf("JSON marshal error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())
 			return
 		}
 
-		log.Printf("[ExtractMetadata] Metadata extracted, Protobuf size: %d bytes\n", len(b))
+		log.Printf("[ExtractMetadata] Metadata extracted, JSON size: %d bytes\n", len(jsonData))
 
-		// Create Uint8Array in JS from binary data
-		uint8Array := js.Global().Get("Uint8Array").New(len(b))
-		js.CopyBytesToJS(uint8Array, b)
-		callback.Invoke(uint8Array, js.Null())
+		// Return JSON string directly
+		callback.Invoke(string(jsonData), js.Null())
 	}()
 
 	return nil
@@ -180,45 +178,38 @@ func backfillDemoMeta(this js.Value, args []js.Value) interface{} {
 			return
 		}
 
-		// Copy binary data from JS to Go
-		metaBytes := make([]byte, metaBinaryData.Get("byteLength").Int())
-		js.CopyBytesToGo(metaBytes, metaBinaryData)
+		// Get input JSON string
+		jsonString := metaBinaryData.String()
 
-		// Unmarshal protobuf meta
-		var protoMeta entity.ReplayMetaPB
-		err := proto.Unmarshal(metaBytes, &protoMeta)
+		// Unmarshal JSON meta
+		var meta entity.ReplayMeta
+		err := json.Unmarshal([]byte(jsonString), &meta)
 		if err != nil {
-			log.Printf("Protobuf unmarshal error: %v\n", err)
+			log.Printf("JSON unmarshal error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())
 			return
 		}
 
-		// Convert to entity type
-		meta := entity.ProtoToReplayMeta(&protoMeta)
-
 		// Backfill metadata
-		updatedMeta, err := engineInstance.BackfillMeta(meta)
+		updatedMeta, err := engineInstance.BackfillMeta(&meta)
 		if err != nil {
 			log.Printf("BackfillMeta error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())
 			return
 		}
 
-		// Convert back to protobuf and marshal
-		updatedProtoMeta := entity.ReplayMetaToProtoPB(updatedMeta)
-		b, err := proto.Marshal(updatedProtoMeta)
+		// Convert back to JSON
+		jsonData, err := json.Marshal(updatedMeta)
 		if err != nil {
-			log.Printf("Protobuf marshal error: %v\n", err)
+			log.Printf("JSON marshal error: %v\n", err)
 			callback.Invoke(js.Null(), err.Error())
 			return
 		}
 
-		log.Printf("[BackfillMeta] Metadata backfilled, Protobuf size: %d bytes\n", len(b))
+		log.Printf("[BackfillMeta] Metadata backfilled, JSON size: %d bytes\n", len(jsonData))
 
-		// Create Uint8Array in JS from binary data
-		uint8Array := js.Global().Get("Uint8Array").New(len(b))
-		js.CopyBytesToJS(uint8Array, b)
-		callback.Invoke(uint8Array, js.Null())
+		// Return JSON string
+		callback.Invoke(string(jsonData), js.Null())
 	}()
 
 	return nil

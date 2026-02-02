@@ -269,6 +269,10 @@ type ReplayMeta struct {
 	RoundResults []RoundResultInfo `json:"roundResults"`
 	// 原始上传文件名（不带.dem后缀）
 	FileName string `json:"fileName,omitempty"`
-	// 原始上传文件路径（用于失败检测，解析成功后清除）
-	OriginalFilePath string `json:"originalFilePath,omitempty"`
+
+	// 解析状态统一字段
+	Status          int    `json:"status"`                    // 0=解析中, 1=完成, -1=失败
+	ParsingProgress int    `json:"parsingProgress,omitempty"` // 0-100
+	ParsingStatus   string `json:"parsingStatus,omitempty"`   // 状态描述文本
+	LastTickTime    int64  `json:"lastTickTime,omitempty"`    // 最后tick时间戳（用于超时检测）
 }

@@ -913,198 +913,6 @@ func (x *ProjectileRenderConfigPB) GetCanExtinguishFire() bool {
 	return false
 }
 
-type RoundResultInfoPB struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Round         int32                  `protobuf:"varint,1,opt,name=round,proto3" json:"round,omitempty"`
-	Result        string                 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RoundResultInfoPB) Reset() {
-	*x = RoundResultInfoPB{}
-	mi := &file_pkg_engine_entity_replay_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RoundResultInfoPB) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RoundResultInfoPB) ProtoMessage() {}
-
-func (x *RoundResultInfoPB) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_engine_entity_replay_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RoundResultInfoPB.ProtoReflect.Descriptor instead.
-func (*RoundResultInfoPB) Descriptor() ([]byte, []int) {
-	return file_pkg_engine_entity_replay_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *RoundResultInfoPB) GetRound() int32 {
-	if x != nil {
-		return x.Round
-	}
-	return 0
-}
-
-func (x *RoundResultInfoPB) GetResult() string {
-	if x != nil {
-		return x.Result
-	}
-	return ""
-}
-
-type ReplayMetaPB struct {
-	state            protoimpl.MessageState              `protogen:"open.v1"`
-	Uuid             string                              `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
-	UploaderUid      string                              `protobuf:"bytes,2,opt,name=uploader_uid,json=uploaderUid,proto3" json:"uploader_uid,omitempty"`
-	UploadTime       int64                               `protobuf:"varint,3,opt,name=upload_time,json=uploadTime,proto3" json:"upload_time,omitempty"`
-	ProjectileRender map[int32]*ProjectileRenderConfigPB `protobuf:"bytes,4,rep,name=projectile_render,json=projectileRender,proto3" json:"projectile_render,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	MapName          string                              `protobuf:"bytes,5,opt,name=map_name,json=mapName,proto3" json:"map_name,omitempty"`
-	TeamCt           string                              `protobuf:"bytes,6,opt,name=team_ct,json=teamCt,proto3" json:"team_ct,omitempty"`
-	TeamT            string                              `protobuf:"bytes,7,opt,name=team_t,json=teamT,proto3" json:"team_t,omitempty"`
-	ScoreCt          int32                               `protobuf:"varint,8,opt,name=score_ct,json=scoreCt,proto3" json:"score_ct,omitempty"`
-	ScoreT           int32                               `protobuf:"varint,9,opt,name=score_t,json=scoreT,proto3" json:"score_t,omitempty"`
-	TotalRounds      int32                               `protobuf:"varint,10,opt,name=total_rounds,json=totalRounds,proto3" json:"total_rounds,omitempty"`
-	FileName         string                              `protobuf:"bytes,11,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
-	OriginalFilePath string                              `protobuf:"bytes,12,opt,name=original_file_path,json=originalFilePath,proto3" json:"original_file_path,omitempty"`
-	RoundResults     []*RoundResultInfoPB                `protobuf:"bytes,13,rep,name=round_results,json=roundResults,proto3" json:"round_results,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *ReplayMetaPB) Reset() {
-	*x = ReplayMetaPB{}
-	mi := &file_pkg_engine_entity_replay_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReplayMetaPB) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReplayMetaPB) ProtoMessage() {}
-
-func (x *ReplayMetaPB) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_engine_entity_replay_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReplayMetaPB.ProtoReflect.Descriptor instead.
-func (*ReplayMetaPB) Descriptor() ([]byte, []int) {
-	return file_pkg_engine_entity_replay_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *ReplayMetaPB) GetUuid() string {
-	if x != nil {
-		return x.Uuid
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetUploaderUid() string {
-	if x != nil {
-		return x.UploaderUid
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetUploadTime() int64 {
-	if x != nil {
-		return x.UploadTime
-	}
-	return 0
-}
-
-func (x *ReplayMetaPB) GetProjectileRender() map[int32]*ProjectileRenderConfigPB {
-	if x != nil {
-		return x.ProjectileRender
-	}
-	return nil
-}
-
-func (x *ReplayMetaPB) GetMapName() string {
-	if x != nil {
-		return x.MapName
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetTeamCt() string {
-	if x != nil {
-		return x.TeamCt
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetTeamT() string {
-	if x != nil {
-		return x.TeamT
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetScoreCt() int32 {
-	if x != nil {
-		return x.ScoreCt
-	}
-	return 0
-}
-
-func (x *ReplayMetaPB) GetScoreT() int32 {
-	if x != nil {
-		return x.ScoreT
-	}
-	return 0
-}
-
-func (x *ReplayMetaPB) GetTotalRounds() int32 {
-	if x != nil {
-		return x.TotalRounds
-	}
-	return 0
-}
-
-func (x *ReplayMetaPB) GetFileName() string {
-	if x != nil {
-		return x.FileName
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetOriginalFilePath() string {
-	if x != nil {
-		return x.OriginalFilePath
-	}
-	return ""
-}
-
-func (x *ReplayMetaPB) GetRoundResults() []*RoundResultInfoPB {
-	if x != nil {
-		return x.RoundResults
-	}
-	return nil
-}
-
 type ReplayRoundPB struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
@@ -1116,7 +924,7 @@ type ReplayRoundPB struct {
 
 func (x *ReplayRoundPB) Reset() {
 	*x = ReplayRoundPB{}
-	mi := &file_pkg_engine_entity_replay_proto_msgTypes[11]
+	mi := &file_pkg_engine_entity_replay_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1128,7 +936,7 @@ func (x *ReplayRoundPB) String() string {
 func (*ReplayRoundPB) ProtoMessage() {}
 
 func (x *ReplayRoundPB) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_engine_entity_replay_proto_msgTypes[11]
+	mi := &file_pkg_engine_entity_replay_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1141,7 +949,7 @@ func (x *ReplayRoundPB) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayRoundPB.ProtoReflect.Descriptor instead.
 func (*ReplayRoundPB) Descriptor() ([]byte, []int) {
-	return file_pkg_engine_entity_replay_proto_rawDescGZIP(), []int{11}
+	return file_pkg_engine_entity_replay_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReplayRoundPB) GetUuid() string {
@@ -1270,29 +1078,7 @@ const file_pkg_engine_entity_replay_proto_rawDesc = "" +
 	"\x10explosion_radius\x18\x01 \x01(\x01R\x0fexplosionRadius\x12$\n" +
 	"\x0eduration_in_ms\x18\x02 \x01(\x03R\fdurationInMs\x12&\n" +
 	"\x0fcan_clear_smoke\x18\x03 \x01(\bR\rcanClearSmoke\x12.\n" +
-	"\x13can_extinguish_fire\x18\x04 \x01(\bR\x11canExtinguishFire\"A\n" +
-	"\x11RoundResultInfoPB\x12\x14\n" +
-	"\x05round\x18\x01 \x01(\x05R\x05round\x12\x16\n" +
-	"\x06result\x18\x02 \x01(\tR\x06result\"\xd3\x04\n" +
-	"\fReplayMetaPB\x12\x12\n" +
-	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12!\n" +
-	"\fuploader_uid\x18\x02 \x01(\tR\vuploaderUid\x12\x1f\n" +
-	"\vupload_time\x18\x03 \x01(\x03R\n" +
-	"uploadTime\x12W\n" +
-	"\x11projectile_render\x18\x04 \x03(\v2*.entity.ReplayMetaPB.ProjectileRenderEntryR\x10projectileRender\x12\x19\n" +
-	"\bmap_name\x18\x05 \x01(\tR\amapName\x12\x17\n" +
-	"\ateam_ct\x18\x06 \x01(\tR\x06teamCt\x12\x15\n" +
-	"\x06team_t\x18\a \x01(\tR\x05teamT\x12\x19\n" +
-	"\bscore_ct\x18\b \x01(\x05R\ascoreCt\x12\x17\n" +
-	"\ascore_t\x18\t \x01(\x05R\x06scoreT\x12!\n" +
-	"\ftotal_rounds\x18\n" +
-	" \x01(\x05R\vtotalRounds\x12\x1b\n" +
-	"\tfile_name\x18\v \x01(\tR\bfileName\x12,\n" +
-	"\x12original_file_path\x18\f \x01(\tR\x10originalFilePath\x12>\n" +
-	"\rround_results\x18\r \x03(\v2\x19.entity.RoundResultInfoPBR\froundResults\x1ae\n" +
-	"\x15ProjectileRenderEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\x05R\x03key\x126\n" +
-	"\x05value\x18\x02 \x01(\v2 .entity.ProjectileRenderConfigPBR\x05value:\x028\x01\"b\n" +
+	"\x13can_extinguish_fire\x18\x04 \x01(\bR\x11canExtinguishFire\"b\n" +
 	"\rReplayRoundPB\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\x14\n" +
 	"\x05round\x18\x02 \x01(\x05R\x05round\x12'\n" +
@@ -1310,7 +1096,7 @@ func file_pkg_engine_entity_replay_proto_rawDescGZIP() []byte {
 	return file_pkg_engine_entity_replay_proto_rawDescData
 }
 
-var file_pkg_engine_entity_replay_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_pkg_engine_entity_replay_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_pkg_engine_entity_replay_proto_goTypes = []any{
 	(*PlayerFramePB)(nil),            // 0: entity.PlayerFramePB
 	(*PointPB)(nil),                  // 1: entity.PointPB
@@ -1321,34 +1107,28 @@ var file_pkg_engine_entity_replay_proto_goTypes = []any{
 	(*DroppedEquipmentPB)(nil),       // 6: entity.DroppedEquipmentPB
 	(*FramePB)(nil),                  // 7: entity.FramePB
 	(*ProjectileRenderConfigPB)(nil), // 8: entity.ProjectileRenderConfigPB
-	(*RoundResultInfoPB)(nil),        // 9: entity.RoundResultInfoPB
-	(*ReplayMetaPB)(nil),             // 10: entity.ReplayMetaPB
-	(*ReplayRoundPB)(nil),            // 11: entity.ReplayRoundPB
-	nil,                              // 12: entity.FramePB.PlayersEntry
-	nil,                              // 13: entity.FramePB.KillEventsEntry
-	nil,                              // 14: entity.FramePB.ProjectilesEntry
-	nil,                              // 15: entity.ReplayMetaPB.ProjectileRenderEntry
+	(*ReplayRoundPB)(nil),            // 9: entity.ReplayRoundPB
+	nil,                              // 10: entity.FramePB.PlayersEntry
+	nil,                              // 11: entity.FramePB.KillEventsEntry
+	nil,                              // 12: entity.FramePB.ProjectilesEntry
 }
 var file_pkg_engine_entity_replay_proto_depIdxs = []int32{
 	1,  // 0: entity.ProjectileFramePB.trajectory:type_name -> entity.PointPB
 	4,  // 1: entity.FramePB.round_time:type_name -> entity.RoundTimeInfoPB
-	12, // 2: entity.FramePB.players:type_name -> entity.FramePB.PlayersEntry
-	13, // 3: entity.FramePB.kill_events:type_name -> entity.FramePB.KillEventsEntry
-	14, // 4: entity.FramePB.projectiles:type_name -> entity.FramePB.ProjectilesEntry
+	10, // 2: entity.FramePB.players:type_name -> entity.FramePB.PlayersEntry
+	11, // 3: entity.FramePB.kill_events:type_name -> entity.FramePB.KillEventsEntry
+	12, // 4: entity.FramePB.projectiles:type_name -> entity.FramePB.ProjectilesEntry
 	6,  // 5: entity.FramePB.dropped_equipment:type_name -> entity.DroppedEquipmentPB
 	5,  // 6: entity.FramePB.bomb:type_name -> entity.BombFramePB
-	15, // 7: entity.ReplayMetaPB.projectile_render:type_name -> entity.ReplayMetaPB.ProjectileRenderEntry
-	9,  // 8: entity.ReplayMetaPB.round_results:type_name -> entity.RoundResultInfoPB
-	7,  // 9: entity.ReplayRoundPB.frames:type_name -> entity.FramePB
-	0,  // 10: entity.FramePB.PlayersEntry.value:type_name -> entity.PlayerFramePB
-	3,  // 11: entity.FramePB.KillEventsEntry.value:type_name -> entity.KillEventPB
-	2,  // 12: entity.FramePB.ProjectilesEntry.value:type_name -> entity.ProjectileFramePB
-	8,  // 13: entity.ReplayMetaPB.ProjectileRenderEntry.value:type_name -> entity.ProjectileRenderConfigPB
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	7,  // 7: entity.ReplayRoundPB.frames:type_name -> entity.FramePB
+	0,  // 8: entity.FramePB.PlayersEntry.value:type_name -> entity.PlayerFramePB
+	3,  // 9: entity.FramePB.KillEventsEntry.value:type_name -> entity.KillEventPB
+	2,  // 10: entity.FramePB.ProjectilesEntry.value:type_name -> entity.ProjectileFramePB
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_pkg_engine_entity_replay_proto_init() }
@@ -1362,7 +1142,7 @@ func file_pkg_engine_entity_replay_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_engine_entity_replay_proto_rawDesc), len(file_pkg_engine_entity_replay_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

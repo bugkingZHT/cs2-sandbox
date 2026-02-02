@@ -2,7 +2,8 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
 import ParserWorker from '@/workers/wasm-parser.worker?worker';
 import { getOPFSStorage } from './opfs-storage';
-import { decodeReplayMeta, encodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
+import { getMetaStorage } from './indexdb-storage';
+import { decodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
 import { PARSER_CONFIG } from '@/config/parser';
 
 interface UseReplayResult {
@@ -24,89 +25,6 @@ interface UseReplayResult {
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
-const PARSING_CACHE_PREFIX = 'parsing_cache_';
-
-// Interface for cached parsing state
-interface ParsingStateCache {
-  uuid: string;
-  progress: number;
-  status: string;
-  lastTickTime: number; // Timestamp of last tick event (for timeout detection)
-}
-
-// Generate cache key from UUID
-const getParsingCacheKey = (uuid: string) => `${PARSING_CACHE_PREFIX}${uuid}`;
-
-// Save parsing state to sessionStorage (called by worker progress updates)
-const saveParsingState = (uuid: string, progress: number, status: string) => {
-  try {
-    const cache: ParsingStateCache = {
-      uuid,
-      progress,
-      status,
-      lastTickTime: Date.now()
-    };
-    sessionStorage.setItem(getParsingCacheKey(uuid), JSON.stringify(cache));
-  } catch (e) {
-    console.warn('[ParsingCache] Failed to save:', e);
-  }
-};
-
-// Load cached parsing state
-const loadParsingState = (uuid: string): ParsingStateCache | null => {
-  try {
-    const cached = sessionStorage.getItem(getParsingCacheKey(uuid));
-    if (!cached) return null;
-    
-    const state: ParsingStateCache = JSON.parse(cached);
-    return state;
-  } catch (e) {
-    console.warn('[ParsingCache] Failed to load:', e);
-    return null;
-  }
-};
-
-// Check if parsing has timed out based on cached timestamp
-const isParsingTimedOut = (cache: ParsingStateCache): boolean => {
-  const timeSinceLastTick = Date.now() - cache.lastTickTime;
-  return timeSinceLastTick > PARSER_CONFIG.workerTickTimeout;
-};
-
-// Clear parsing state cache for a specific UUID
-const clearParsingState = (uuid: string) => {
-  try {
-    sessionStorage.removeItem(getParsingCacheKey(uuid));
-  } catch (e) {
-    console.warn('[ParsingCache] Failed to clear:', e);
-  }
-};
-
-// Clear all parsing caches (useful for cleanup)
-const clearAllParsingStates = () => {
-  try {
-    const keys = Object.keys(sessionStorage);
-    keys.forEach(key => {
-      if (key.startsWith(PARSING_CACHE_PREFIX)) {
-        sessionStorage.removeItem(key);
-      }
-    });
-  } catch (e) {
-    console.warn('[ParsingCache] Failed to clear all:', e);
-  }
-};
-
-// Get all UUIDs that have parsing cache
-const getAllCachedUUIDs = (): string[] => {
-  try {
-    const keys = Object.keys(sessionStorage);
-    return keys
-      .filter(key => key.startsWith(PARSING_CACHE_PREFIX))
-      .map(key => key.replace(PARSING_CACHE_PREFIX, ''));
-  } catch (e) {
-    console.warn('[ParsingCache] Failed to get cached UUIDs:', e);
-    return [];
-  }
-};
 
 // 单例模式：确保所有组件使用同一个响应式实例
 let replayDataInstance: ReturnType<typeof createReplayData> | null = null;
@@ -126,265 +44,142 @@ function createReplayData() {
 
   const abortController = new AbortController();
   
-  // Interval handle for checking incomplete demos timeout
-  let incompleteCheckInterval: number | null = null;
-
-  // Save meta and rounds to OPFS with protobuf
-  const saveReplayToOPFS = async (meta: ReplayMeta, rounds: ReplayRound[]) => {
-    console.time('[SaveReplayToOPFS] 保存到OPFS耗时');
-    const storage = await getOPFSStorage();
-    
-    // Convert to protobuf and save meta
-    const metaBytes = await encodeReplayMeta(meta);
-    await storage.saveMeta(meta.uuid, metaBytes);
-    
-    // Save each round
-    for (const round of rounds) {
-      const roundBytes = await encodeReplayRound(round);
-      await storage.saveRound(round.uuid, round.round, roundBytes);
-    }
-    
-    // Update latest UUID
-    localStorage.setItem(LATEST_KEY, meta.uuid);
-
-    console.timeEnd('[SaveReplayToOPFS] 保存到OPFS耗时');
-  };
+  // Interval handle for checking parsing demos
+  let parsingMonitorInterval: number | null = null;
 
   // Load all replay metadata for list display
   const loadAllReplays = async () => {
     console.log('[LoadAllReplays] 开始加载所有回放元数据');
-    const storage = await getOPFSStorage();
+    const metaStorage = await getMetaStorage();
+    const opfsStorage = await getOPFSStorage();
     
-    const uuids = await storage.listAllReplays();
-    console.log('[LoadAllReplays] 找到的UUID数量:', uuids.length);
+    // Step 1: 从 IndexedDB 加载所有 meta
+    const metas = await metaStorage.loadAllMetas();
+    console.log('[LoadAllReplays] 从 IndexedDB 加载的 meta 数量:', metas.length);
     
-    const metas = await Promise.all(
-      uuids.map(async (uuid) => {
-        const metaBytes = await storage.loadMeta(uuid);
-        if (!metaBytes) return null;
-        return await decodeReplayMeta(metaBytes);
-      })
-    );
+    // Step 2: 从 OPFS 获取所有 UUID（用于清理孤立目录）
+    const opfsUUIDs = await opfsStorage.listAllReplays();
+    const metaUUIDs = new Set(metas.map(m => m.uuid));
     
-    console.log('[LoadAllReplays] 加载到的元数据数量:', metas.filter(m => m !== null).length);
+    // Step 3: 清理 OPFS 中孤立的目录（meta 已删除但 round 文件仍存在）
+    const orphanDirs = opfsUUIDs.filter(uuid => !metaUUIDs.has(uuid));
+    for (const uuid of orphanDirs) {
+      console.log(`[LoadAllReplays] 清理孤立的 OPFS 目录: ${uuid}`);
+      await opfsStorage.deleteReplay(uuid);
+    }
     
-    // Step 1: Build UUID map from meta
-    const metaMap = new Map<string, ReplayMeta>();
-    metas
-      .filter((m): m is ReplayMeta => m !== null)
-      .forEach(meta => {
-        metaMap.set(meta.uuid, meta);
-      });
-    console.log('[LoadAllReplays] Step 1: Meta map size:', metaMap.size);
+    // Step 4: 直接映射 meta 到 replayList（无需 cache 合并）
+    replayList.value = metas.map(meta => ({
+      ...meta,
+      id: meta.uuid,
+      frames: [],
+      timestamp: meta.uploadTime,
+    }));
     
-    // Step 2: Get all UUIDs from cache
-    const cachedUUIDs = getAllCachedUUIDs();
-    const cacheSet = new Set(cachedUUIDs);
-    console.log('[LoadAllReplays] Step 2: Cached UUIDs:', cachedUUIDs.length, cachedUUIDs);
+    console.log('[LoadAllReplays] 最终 replay list 大小:', replayList.value.length);
     
-    // Step 3: Find intersection and clean up orphan caches
-    const intersection = cachedUUIDs.filter(uuid => metaMap.has(uuid));
-    const orphanCaches = cachedUUIDs.filter(uuid => !metaMap.has(uuid));
-    
-    console.log('[LoadAllReplays] Step 3: Intersection (cache + meta):', intersection.length, intersection);
-    console.log('[LoadAllReplays] Step 3: Orphan caches (cache only):', orphanCaches.length, orphanCaches);
-    
-    // Clean up orphan caches (uuid in cache but not in meta)
-    orphanCaches.forEach(uuid => {
-      console.log(`[LoadAllReplays] Cleaning orphan cache: ${uuid}`);
-      clearParsingState(uuid);
-    });
-    
-    // Step 4: Render cards based on meta map
-    replayList.value = Array.from(metaMap.values()).map(meta => {
-      const uuid = meta.uuid;
-      const hasCache = cacheSet.has(uuid);
-      
-      let hasFailed = false;
-      let parsingStatus: string | undefined = undefined;
-      let parsingProgress = 0;
-      
-      if (hasCache) {
-        // UUID exists in both cache and meta - show progress bar
-        const cachedState = loadParsingState(uuid);
-        
-        if (cachedState) {
-          // Check timeout using cached timestamp and config
-          if (isParsingTimedOut(cachedState)) {
-            // Timeout exceeded - mark as failed but KEEP cache
-            hasFailed = true;
-            parsingStatus = `Parsing timeout (no progress for ${PARSER_CONFIG.workerTickTimeout / 1000}s)`;
-            parsingProgress = cachedState.progress;
-            console.log(`[LoadAllReplays] [${uuid}] Timeout detected from cache - marked as failed, cache retained`);
-            // Do NOT clear cache here - user will clean up manually
-            // clearParsingState(uuid); // ❌ 移除这行
-          } else {
-            // Still within timeout - show incomplete with progress from cache
-            parsingProgress = cachedState.progress;
-            parsingStatus = cachedState.status;
-            console.log(`[LoadAllReplays] [${uuid}] Restoring progress: ${parsingProgress}%, status: ${parsingStatus}`);
-          }
-        } else {
-          // Cache key exists but content is invalid/empty
-          console.warn(`[LoadAllReplays] [${uuid}] Cache key exists but content invalid`);
-          clearParsingState(uuid);
-        }
-      }
-      // If UUID only in meta (not in cache), render normally (no special handling)
-      
-      return {
-        uuid: meta.uuid,
-        id: meta.uuid,
-        uploaderUid: meta.uploaderUid,
-        uploadTime: meta.uploadTime,
-        mapName: meta.mapName,
-        teamCT: meta.teamCT,
-        teamT: meta.teamT,
-        scoreCT: meta.scoreCT,
-        scoreT: meta.scoreT,
-        totalRounds: meta.totalRounds,
-        totalFrames: meta.totalFrames || 0,
-        totalDurationMs: meta.totalDurationMs || 0,
-        frames: [],
-        projectileRenderConfig: meta.projectileRenderConfig,
-        timestamp: meta.uploadTime,
-        fileName: meta.fileName,
-        // Parsing state fields - purely based on cache
-        isParsing: false,
-        hasFailed: hasFailed,
-        parsingProgress: parsingProgress,
-        parsingStatus: parsingStatus,
-      };
-    });
-    
-    console.log('[LoadAllReplays] Final replay list size:', replayList.value.length);
-    
-    // Start monitoring incomplete demos for timeout
-    startIncompleteMonitoring();
+    // Start monitoring parsing demos
+    startParsingMonitor();
   };
   
-  // Monitor incomplete demos and check for timeout
-  const startIncompleteMonitoring = () => {
+  // Start parsing monitor: check timeout and update progress
+  const startParsingMonitor = () => {
     // Clear existing interval if any
-    if (incompleteCheckInterval) {
-      clearInterval(incompleteCheckInterval);
+    if (parsingMonitorInterval) {
+      clearInterval(parsingMonitorInterval);
     }
     
-    // Check every 2 seconds (faster polling for responsive progress updates)
-    incompleteCheckInterval = setInterval(() => {
-      checkIncompleteDemosTimeout();
-    }, 2000) as unknown as number;
+    // Check every 1 second for responsive progress updates
+    parsingMonitorInterval = setInterval(() => {
+      checkParsingDemos();
+    }, 1000) as unknown as number;
     
-    console.log('[IncompleteMonitor] Started monitoring (polling cache every 2s)');
+    console.log('[ParsingMonitor] Started monitoring (every 1s)');
   };
   
-  // Check all incomplete demos for timeout
-  const checkIncompleteDemosTimeout = () => {
-    let checkedCount = 0;
-    let updatedCount = 0;
-    let timedOutCount = 0;
-    let cacheNotFoundCount = 0;
-    let completedCount = 0;
+  // Check parsing demos: timeout detection + progress update
+  const checkParsingDemos = async () => {
+    const metaStorage = await getMetaStorage();
     
-    // Get current cached UUIDs (may be multiple demos parsing concurrently)
-    const cachedUUIDs = getAllCachedUUIDs();
+    // 获取所有 status=0 的 meta
+    const parsingMetas = await metaStorage.getParsingMetas();
     
-    if (cachedUUIDs.length > 0) {
-      console.log(`[IncompleteMonitor] Polling ${cachedUUIDs.length} demos in cache: [${cachedUUIDs.map(u => u.substring(0, 8)).join(', ')}]`);
+    if (parsingMetas.length === 0) {
+      return;
     }
     
-    // Track if any updates were made
-    let hasUpdates = false;
+    const now = Date.now();
     let needsReload = false;
+    let completedCount = 0;
+    let timedOutCount = 0;
+    let progressUpdatedCount = 0;
     
-    // Iterate through ALL demos in replayList with index for reactive updates
-    replayList.value.forEach((demo, index) => {
-      // Only check demos that have cache and are not already failed
-      if (cachedUUIDs.includes(demo.uuid) && !demo.hasFailed) {
-        checkedCount++;
-        const cachedState = loadParsingState(demo.uuid);
-        
-        if (cachedState) {
-          // Check if parsing is complete
-          if (cachedState.progress === 100 && cachedState.status === 'Complete') {
-            completedCount++;
-            console.log(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Parsing completed (100%), will reload cards`);
-            
-            // Clear cache for completed demo
-            clearParsingState(demo.uuid);
-            
-            // Mark that we need to reload all cards to show normal state
-            needsReload = true;
-          }
-          // Check timeout
-          else if (isParsingTimedOut(cachedState)) {
-            // Timeout exceeded - mark as failed but KEEP cache (wait for user to delete)
-            timedOutCount++;
-            console.log(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Timeout detected (no updates for ${PARSER_CONFIG.workerTickTimeout / 1000}s) - marked as failed, cache retained`);
-            
-            // Update via index assignment to trigger reactivity
-            replayList.value[index] = {
-              ...demo,
-              hasFailed: true,
-              parsingStatus: `Parsing timeout (no progress for ${PARSER_CONFIG.workerTickTimeout / 1000}s)`,
-              isParsing: false,
-              parsingProgress: cachedState.progress, // Keep last known progress
-            };
-            hasUpdates = true;
-            
-            // Do NOT clear cache - keep it until user deletes the card
-            // clearParsingState(demo.uuid); // ❌ 移除这行
-          } else {
-            // Still within timeout - update progress from cache
-            const progressChanged = demo.parsingProgress !== cachedState.progress;
-            const statusChanged = demo.parsingStatus !== cachedState.status;
-            
-            if (progressChanged || statusChanged) {
-              updatedCount++;
-              console.log(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Progress updated: ${cachedState.progress}%, status: ${cachedState.status}`);
-              
-              // Update via index assignment to trigger reactivity
-              replayList.value[index] = {
-                ...demo,
-                parsingProgress: cachedState.progress,
-                parsingStatus: cachedState.status,
-              };
-              hasUpdates = true;
-            }
-          }
-        } else {
-          // Cache not found but UUID in cached list - invalid state, clean up
-          cacheNotFoundCount++;
-          console.warn(`[IncompleteMonitor] [${demo.uuid.substring(0, 8)}] Cache key exists but content invalid, cleaning up`);
-          clearParsingState(demo.uuid);
-        }
+    for (const meta of parsingMetas) {
+      const timeSinceLastTick = now - (meta.lastTickTime || 0);
+      const demoIndex = replayList.value.findIndex(d => d.uuid === meta.uuid);
+      
+      if (demoIndex === -1) continue;
+      
+      // 1. 超时检测
+      if (timeSinceLastTick > PARSER_CONFIG.workerTickTimeout) {
+        console.log(`[ParsingMonitor] [${meta.uuid.substring(0, 8)}] 超时，标记为失败`);
+        await metaStorage.updateMetaStatus(
+          meta.uuid,
+          -1, // status = -1
+          meta.parsingProgress,
+          `Parsing timeout (no progress for ${PARSER_CONFIG.workerTickTimeout / 1000}s)`
+        );
+        timedOutCount++;
+        needsReload = true;
+        continue;
       }
-    });
-    
-    if (checkedCount > 0) {
-      console.log(`[IncompleteMonitor] Poll summary: ${checkedCount} checked, ${updatedCount} updated, ${completedCount} completed, ${timedOutCount} timed out, ${cacheNotFoundCount} cache invalid, hasUpdates: ${hasUpdates}`);
+      
+      // 2. 检查完成状态
+      if (meta.status === 1) {
+        completedCount++;
+        needsReload = true;
+        continue;
+      }
+      
+      // 3. 进度更新 - 直接从当前 meta 同步到 UI
+      const currentDemo = replayList.value[demoIndex];
+      if (currentDemo.parsingProgress !== meta.parsingProgress ||
+          currentDemo.parsingStatus !== meta.parsingStatus) {
+        replayList.value[demoIndex] = {
+          ...currentDemo,
+          parsingProgress: meta.parsingProgress,
+          parsingStatus: meta.parsingStatus,
+          lastTickTime: meta.lastTickTime,
+        };
+        progressUpdatedCount++;
+        console.log(`[ParsingMonitor] [${meta.uuid.substring(0, 8)}] 进度: ${meta.parsingProgress}%, ${meta.parsingStatus}`);
+      }
     }
     
-    // Reload all cards if any demo completed parsing
+    // 完成或超时时重新加载
     if (needsReload) {
-      console.log(`[IncompleteMonitor] Reloading all cards due to ${completedCount} completed demo(s)`);
-      loadAllReplays();
+      console.log(`[ParsingMonitor] ${completedCount} 完成, ${timedOutCount} 超时，重新加载列表`);
+      await loadAllReplays();
+    } else if (progressUpdatedCount > 0) {
+      console.log(`[ParsingMonitor] ${progressUpdatedCount} 个进度已更新`);
     }
   };
   
   // Stop monitoring when component unmounts
-  const stopIncompleteMonitoring = () => {
-    if (incompleteCheckInterval) {
-      clearInterval(incompleteCheckInterval);
-      incompleteCheckInterval = null;
-      console.log('[IncompleteMonitor] Stopped monitoring');
+  const stopParsingMonitor = () => {
+    if (parsingMonitorInterval) {
+      clearInterval(parsingMonitorInterval);
+      parsingMonitorInterval = null;
+      console.log('[ParsingMonitor] Stopped monitoring');
     }
   };
 
   // Load replay meta and first round from OPFS
   const loadReplayFromOPFS = async (uuid?: string): Promise<ReplayData | null> => {
     console.log('[OPFS] 开始从数据库加载回放数据...', { uuid, storedUuid: localStorage.getItem(LATEST_KEY) });
-    const storage = await getOPFSStorage();
+    const metaStorage = await getMetaStorage();
+    const opfsStorage = await getOPFSStorage();
+    
     const targetUuid = uuid || localStorage.getItem(LATEST_KEY);
     console.log('[OPFS] 目标UUID:', targetUuid);
     if (!targetUuid) {
@@ -392,18 +187,17 @@ function createReplayData() {
       return null;
     }
 
-    // Load meta
-    const metaBytes = await storage.loadMeta(targetUuid);
-    if (!metaBytes) {
-      console.log('[OPFS] 未找到元数据');
+    // 从 IndexedDB 加载 meta
+    const meta = await metaStorage.loadMeta(targetUuid);
+    if (!meta) {
+      console.log('[OPFS] 未找到 meta');
       return null;
     }
-    const meta = await decodeReplayMeta(metaBytes);
 
-    // Load ONLY the first round
-    const roundBytes = await storage.loadRound(targetUuid, 1);
+    // 从 OPFS 加载第一回合
+    const roundBytes = await opfsStorage.loadRound(targetUuid, 1);
     if (!roundBytes) {
-      console.warn('[OPFS] First round not found');
+      console.warn('[OPFS] 第一回合未找到');
       return null;
     }
     const firstRound = await decodeReplayRound(roundBytes);
@@ -413,32 +207,12 @@ function createReplayData() {
     // Sort frames within the first round
     const sortedFrames = firstRound.frames.sort((a, b) => a.timeMs - b.timeMs);
 
-    // Convert to ReplayData format
-    const replayData: ReplayData = {
-      uuid: meta.uuid,
+    return {
+      ...meta,
       id: meta.uuid,
-      uploaderUid: meta.uploaderUid,
-      uploadTime: meta.uploadTime,
-      mapName: meta.mapName,
-      teamCT: meta.teamCT,
-      teamT: meta.teamT,
-      scoreCT: meta.scoreCT,
-      scoreT: meta.scoreT,
-      totalRounds: meta.totalRounds,
-      roundResults: meta.roundResults, // Preserve round results
       frames: sortedFrames,
-      projectileRenderConfig: meta.projectileRenderConfig,
-      timestamp: meta.uploadTime, // Map to uploadTime for backward compatibility
-      fileName: meta.fileName, // Preserve filename
+      timestamp: meta.uploadTime,
     };
-
-    console.log('[LoadReplayFromOPFS] ReplayData created with roundResults:', {
-      hasRoundResults: !!replayData.roundResults,
-      roundResultsLength: replayData.roundResults?.length || 0,
-      roundResults: replayData.roundResults
-    });
-
-    return replayData;
   };
 
   const loadReplayById = async (uuid: string) => {
@@ -492,20 +266,24 @@ function createReplayData() {
   };
 
   const deleteReplayById = async (uuid: string) => {
-    console.log('[DeleteReplayById] Starting deletion for UUID:', uuid);
-    const storage = await getOPFSStorage();
-    await storage.deleteReplay(uuid);
+    console.log('[DeleteReplayById] 删除 UUID:', uuid);
     
-    // Clean up parsing cache when user deletes the card
-    clearParsingState(uuid);
-    console.log('[DeleteReplayById] Cleared parsing cache for UUID:', uuid);
+    const metaStorage = await getMetaStorage();
+    const opfsStorage = await getOPFSStorage();
     
+    // 从 IndexedDB 删除 meta
+    await metaStorage.deleteMeta(uuid);
+    
+    // 从 OPFS 删除 rounds
+    await opfsStorage.deleteReplay(uuid);
+    
+    // 刷新列表
     await loadAllReplays();
+    
     if (localStorage.getItem(LATEST_KEY) === uuid) {
       localStorage.removeItem(LATEST_KEY);
-      console.log('[DeleteReplayById] Removed from localStorage LATEST_KEY');
     }
-    console.log('[DeleteReplayById] Deletion complete for UUID:', uuid);
+    console.log('[DeleteReplayById] 删除完成');
   };
 
   const estimateBounds = (allFrames: Frame[]): WorldBounds | null => {
@@ -551,21 +329,6 @@ function createReplayData() {
     }, { timeout: 100 });
   };
 
-  // Save only metadata to OPFS
-  const saveMetaToOPFS = async (meta: ReplayMeta) => {
-    console.log('[SaveMetaToOPFS] 📦 Starting meta save:', {
-      uuid: meta.uuid,
-      fileName: meta.fileName,
-      mapName: meta.mapName,
-      hasOriginalFilePath: !!meta.originalFilePath
-    });
-    const storage = await getOPFSStorage();
-    const metaBytes = await encodeReplayMeta(meta);
-    console.log(`[SaveMetaToOPFS] 🔄 Encoded to protobuf, size: ${metaBytes.byteLength} bytes`);
-    await storage.saveMeta(meta.uuid, metaBytes);
-    console.log('[SaveMetaToOPFS] ✅ Meta saved successfully');
-  };
-
   // Save single round to OPFS
   const saveRoundToOPFS = async (round: ReplayRound) => {
     console.log(`[SaveRoundToOPFS] 📦 Starting round ${round.round} save:`, {
@@ -584,14 +347,6 @@ function createReplayData() {
     parsingProgress.value = Math.min(100, Math.max(0, progress));
     parsingStatus.value = status;
     statusMsg.value = status;
-  };
-
-  // Update parsing progress for a specific demo - only write to cache, do not update replayList
-  // Frontend will poll cache periodically to update progress bar
-  const updateDemoParsingProgress = (uuid: string, progress: number, status: string) => {
-    // Only save to cache, frontend will read from cache to update UI
-    saveParsingState(uuid, progress, status);
-    console.log(`[UpdateProgress] [${uuid}] Saved to cache: ${progress}%, ${status}`);
   };
 
   const parseDemo = async (file: File) => {
@@ -627,52 +382,43 @@ function createReplayData() {
       // Step 2: Extract metadata (header only, no frame traversal)
       updateParsingProgress(50, 'Extracting metadata...');
       console.log('[ParseDemo] 📦 Calling WASM extractDemoMetadata...');
-      const metaBinary = await new Promise<Uint8Array>((resolve, reject) => {
+      const metaJsonString = await new Promise<string>((resolve, reject) => {
         (window as any).extractDemoMetadata((res: any, err: string) => {
           if (err) {
             console.error('[ParseDemo] ❌ extractDemoMetadata error:', err);
             reject(new Error(err));
           } else {
-            console.log('[ParseDemo] ✅ extractDemoMetadata returned binary, size:', res?.byteLength);
-            resolve(res as Uint8Array);
+            console.log('[ParseDemo] ✅ extractDemoMetadata returned JSON, length:', res?.length);
+            resolve(res as string);
           }
         });
       });
-      console.log('[ParseDemo] 🔄 Decoding metadata from protobuf...');
-      const meta: ReplayMeta = await decodeReplayMeta(metaBinary);
+      console.log('[ParseDemo] 🔄 Parsing metadata from JSON...');
+      const meta: ReplayMeta = JSON.parse(metaJsonString);
       demoUuid = meta.uuid;
-      console.log('[ParseDemo] ✅ Metadata decoded successfully:', {
+      console.log('[ParseDemo] ✅ Metadata parsed successfully:', {
         uuid: meta.uuid,
         fileName: meta.fileName,
         mapName: meta.mapName
       });
 
-      // Save original file path for failure detection
-      meta.originalFilePath = file.name;
-      
-      // Save original filename without .dem extension
+      // 保存原始文件名（不含 .dem 扩展名）
       meta.fileName = file.name.replace(/\.dem$/i, '');
       
-      // Mark as parsing (will be cleared during backfill)
-      meta.isParsing = true;
+      // 设置初始状态
+      meta.status = 0; // 0 = 解析中
+      meta.parsingProgress = 0;
+      meta.parsingStatus = 'Starting round parsing...';
+      meta.lastTickTime = Date.now();
 
-      // Step 3: Save incomplete meta to OPFS immediately
+      // Step 3: 保存初始 meta 到 IndexedDB
       updateParsingProgress(100, 'Metadata saved!');
-      console.log('[ParseDemo] 💾 Saving incomplete meta to OPFS (with isParsing=true)...');
-      await saveMetaToOPFS(meta);
-      console.log('[ParseDemo] 🔄 Refreshing replay list...');
-      await loadAllReplays(); // Refresh replay list
-      console.log('[ParseDemo] ✅ Meta saved and list refreshed');
-
-      // Mark this demo as parsing in the list
-      const newDemo = replayList.value.find(d => d.uuid === meta.uuid);
-      if (newDemo) {
-        newDemo.isParsing = true;
-        newDemo.hasFailed = false; // Clear any previous failure state
-        newDemo.parsingProgress = 0;
-        newDemo.parsingStatus = 'Starting round parsing...';
-        console.log('[ParseDemo] 🏁 Marked demo as parsing in list');
-      }
+      console.log('[ParseDemo] 💾 保存初始 meta 到 IndexedDB...');
+      const metaStorage = await getMetaStorage();
+      await metaStorage.saveMeta(meta);
+      console.log('[ParseDemo] 🔄 刷新回放列表...');
+      await loadAllReplays();
+      console.log('[ParseDemo] ✅ Meta 已保存到 IndexedDB 并刷新列表');
 
       // Close the global parsing modal - synchronous phase complete
       parsing.value = false;
@@ -716,10 +462,18 @@ function createReplayData() {
             return;
           }
           
-          // Update progress based on ticks (0-95% for parsing phase)
+          // 更新 IndexedDB 中的进度 (0-95% for parsing phase)
           const progress = Math.min(95, (parsedTicks / estimatedTotalTicks) * 95);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
-          updateDemoParsingProgress(meta.uuid, Math.floor(progress), status);
+          
+          await metaStorage.updateMetaStatus(
+            meta.uuid,
+            0, // status = 0 (解析中)
+            Math.floor(progress),
+            status,
+            Date.now()
+          );
+          
           console.log(`[ParseDemo] [${meta.uuid}] Tick progress: ${parsedTicks.toLocaleString()} ticks (${Math.floor(progress)}%)`);
           
         } else if (e.data.type === 'ROUND_COMPLETE') {
@@ -733,9 +487,7 @@ function createReplayData() {
           
         } else if (e.data.type === 'PARSING_COMPLETE') {
           try {
-            // Phase 3: Update metadata with statistics from worker
-            updateDemoParsingProgress(meta.uuid, 97, 'Finalizing metadata...');
-            
+            // Phase 3: 更新 IndexedDB meta 为完成状态
             console.log('[ParseDemo] PARSING_COMPLETE received:', {
               totalRounds: e.data.totalRounds,
               scoreCT: e.data.scoreCT,
@@ -744,45 +496,36 @@ function createReplayData() {
               teamT: e.data.teamT,
               hasRoundResults: !!e.data.roundResults,
               roundResultsCount: e.data.roundResults?.length || 0,
-              roundResults: e.data.roundResults
             });
             
-            // Update meta with final statistics from worker
-            meta.totalRounds = e.data.totalRounds;
-            meta.scoreCT = e.data.scoreCT;
-            meta.scoreT = e.data.scoreT;
-            meta.teamCT = e.data.teamCT;
-            meta.teamT = e.data.teamT;
-            meta.roundResults = e.data.roundResults; // Save round results!
+            // 从 IndexedDB 加载最新 meta 并更新
+            const latestMeta = await metaStorage.loadMeta(meta.uuid);
+            if (latestMeta) {
+              latestMeta.totalRounds = e.data.totalRounds;
+              latestMeta.scoreCT = e.data.scoreCT;
+              latestMeta.scoreT = e.data.scoreT;
+              latestMeta.teamCT = e.data.teamCT;
+              latestMeta.teamT = e.data.teamT;
+              latestMeta.roundResults = e.data.roundResults;
+              latestMeta.status = 1; // 完成
+              latestMeta.parsingProgress = 100;
+              latestMeta.parsingStatus = 'Complete';
+              
+              await metaStorage.saveMeta(latestMeta);
+              console.log(`[ParseDemo] Meta 已更新到 IndexedDB: status=1, progress=100%`);
+            }
             
-            console.log(`[ParseDemo] Final stats - Rounds: ${meta.totalRounds}, CT: ${meta.teamCT} (${meta.scoreCT}), T: ${meta.teamT} (${meta.scoreT}), RoundResults: ${meta.roundResults?.length || 0}`);
-            console.log('[ParseDemo] Meta roundResults before save:', meta.roundResults);
-            
-            // Remove temporary fields after successful parsing (backfill complete)
-            delete meta.originalFilePath;
-            delete meta.isParsing;
-            await saveMetaToOPFS(meta);
-            await loadAllReplays(); // Reload will detect cache cleared and show normal card
+            await loadAllReplays(); // 刷新列表
             
             // Close parser on main thread
             (window as any).closeDemoParser();
             
-            // Save completion status to cache (will be read by next poll)
-            updateDemoParsingProgress(meta.uuid, 100, 'Complete');
-            
-            // Clear cached parsing state after a short delay (allow one last poll to see 100%)
-            setTimeout(() => {
-              clearParsingState(meta.uuid);
-              console.log(`[ParseDemo] Cleared cache for ${meta.uuid}`);
-            }, 3000);
-            
             console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
           } catch (e: any) {
             console.error('[ParseDemo] Finalization failed:', e);
-            // Don't clear cache - keep last progress for user to see before manual deletion
+            // 标记为失败
+            await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Finalization error: ${e.message}`);
             (window as any).closeDemoParser();
-            // Do NOT clear cache - let polling detect timeout
-            // clearParsingState(meta.uuid); // ❌ 移除这行
           } finally {
             // Cleanup worker and tick timeout checker
             if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
@@ -798,22 +541,20 @@ function createReplayData() {
             console.error(`[ParseDemo] UUID mismatch in error! Expected: ${meta.uuid}, Got: ${workerUuid}`);
           }
           
-          // Don't clear cache - keep last progress for user to see
+          // 标记为失败
+          await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker error: ${errorMessage}`);
           (window as any).closeDemoParser();
-          // Do NOT clear cache - let polling detect timeout and mark as failed
-          // clearParsingState(meta.uuid); // ❌ 移除这行
           if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
           worker.terminate();
         }
       };
 
       // Handle worker errors
-      worker.onerror = (error: ErrorEvent) => {
+      worker.onerror = async (error: ErrorEvent) => {
         console.error('[ParseDemo] Worker error event:', error);
-        // Don't clear cache - keep last progress for user to see
+        // 标记为失败
+        await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker crashed: ${error.message}`);
         (window as any).closeDemoParser();
-        // Do NOT clear cache - let polling detect timeout and mark as failed
-        // clearParsingState(meta.uuid); // ❌ 移除这行
         if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
         worker.terminate();
       };
@@ -830,12 +571,10 @@ function createReplayData() {
     } catch (e: any) {
       error.value = `解析失败: ${e.message || String(e)}`;
       if (demoUuid) {
-        const failedDemo = replayList.value.find(d => d.uuid === demoUuid);
-        if (failedDemo) {
-          failedDemo.isParsing = false;
-          failedDemo.hasFailed = true;
-          failedDemo.parsingStatus = `Error: ${e.message || String(e)}`;
-        }
+        // 标记为失败
+        const metaStorage = await getMetaStorage();
+        await metaStorage.updateMetaStatus(demoUuid, -1, undefined, `Parse error: ${e.message}`);
+        await loadAllReplays();
       }
       (window as any).closeDemoParser(); // Cleanup on error
       parsing.value = false;
@@ -869,7 +608,7 @@ function createReplayData() {
 
   onUnmounted(() => {
     abortController.abort();
-    stopIncompleteMonitoring(); // Stop monitoring on unmount
+    stopParsingMonitor(); // Stop monitoring on unmount
   });
 
   return {

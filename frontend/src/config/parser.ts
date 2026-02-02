@@ -23,5 +23,5 @@ export const PARSER_CONFIG = {
    * on slower systems. Higher values are more tolerant but delay
    * failure detection.
    */
-  workerTickTimeout: 30000,
+  workerTickTimeout: 10000,
 };
