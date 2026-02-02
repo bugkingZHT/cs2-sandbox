@@ -130,8 +130,12 @@ function protoToReplayMeta(proto: any): ReplayMeta {
     totalFrames: 0, // Not stored in proto, will be computed client-side
     totalDurationMs: 0, // Not stored in proto, will be computed client-side
     fileName: proto.fileName || '',
+    originPath: proto.originPath || '',
     projectileRenderConfig: convertProjectileRenderConfig(proto.projectileRender || {}),
-    originalFilePath: proto.originalFilePath || '',
+    status: proto.status ?? 1, // Default to 1 (complete) when loading from proto
+    parsingProgress: proto.parsingProgress,
+    parsingStatus: proto.parsingStatus,
+    lastTickTime: proto.lastTickTime,
   };
   
   console.log('[ProtoConverter] Converted meta roundResults:', meta.roundResults);
@@ -321,7 +325,11 @@ function replayMetaToProto(meta: ReplayMeta): any {
     totalRounds: meta.totalRounds,
     roundResults: roundResults, // Add round results to proto object
     fileName: meta.fileName || '',
-    originalFilePath: (meta as any).originalFilePath || '',
+    originPath: meta.originPath || '',
+    status: meta.status,
+    parsingProgress: meta.parsingProgress,
+    parsingStatus: meta.parsingStatus,
+    lastTickTime: meta.lastTickTime,
   };
 }
 

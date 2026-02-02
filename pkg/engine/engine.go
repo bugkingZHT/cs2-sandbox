@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"runtime"
 	"time"
 
 	"github.com/google/uuid"
@@ -214,6 +215,11 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 	}
 
 	log.Printf("[ParseNextRound] Completed round %d with %d frames", startRound, len(frames))
+
+	// Force garbage collection after each round to release memory
+	runtime.GC()
+	log.Printf("[ParseNextRound] 🗑️ GC triggered after completing round %d", startRound)
+
 	return &entity.ReplayRound{
 		UUID:   e.uuid,
 		Round:  startRound,
@@ -247,10 +253,16 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		UploadTime:       meta.UploadTime,
 		ProjectileRender: meta.ProjectileRender,
 		MapName:          meta.MapName,
-		FileName:         meta.FileName, // Preserve original filename
-		TeamCT:           gs.TeamCounterTerrorists().ClanName(),
-		TeamT:            gs.TeamTerrorists().ClanName(),
-		// Update these fields with final values
+		FileName:         meta.FileName,   // Preserve original filename
+		OriginPath:       meta.OriginPath, // Preserve original file path
+		// Preserve parsing state fields
+		Status:          meta.Status,
+		ParsingProgress: meta.ParsingProgress,
+		ParsingStatus:   meta.ParsingStatus,
+		LastTickTime:    meta.LastTickTime,
+		// Update team info and scores
+		TeamCT:       gs.TeamCounterTerrorists().ClanName(),
+		TeamT:        gs.TeamTerrorists().ClanName(),
 		ScoreCT:      gs.TeamCounterTerrorists().Score(),
 		ScoreT:       gs.TeamTerrorists().Score(),
 		TotalRounds:  e.builder.currentRound,
@@ -281,6 +293,10 @@ func (e *DemoEngine) Close() error {
 	e.initialized = false
 	e.eofReached = false
 	e.totalParsedFrames = 0 // Reset frame counter
+
+	// Force GC to release parser and builder memory
+	runtime.GC()
+	log.Println("[Close] 🗑️ GC triggered - parser and builder memory released")
 
 	log.Println("[Close] Parser closed successfully")
 	return nil

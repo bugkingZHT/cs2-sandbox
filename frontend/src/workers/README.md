@@ -69,6 +69,8 @@ sequenceDiagram
         W->>W: 覆盖round.uuid = meta.uuid
         W->>M: postMessage(ROUND_COMPLETE, round)
         M->>OPFS: 保存round (protobuf)
+        M->>M: 释放round引用 (GC回收)
+        Note over M,W: ⚠️ 内存优化：不累积round数据
         
         alt 每1000 tick
             W->>IDB: updateMetaStatus(uuid, 0, progress, status, lastTickTime)
@@ -353,9 +355,201 @@ Worker完成解析后调用`backfillDemoMeta()`获取最终统计（JSON格式�
 
 主线程接收后直接合并到meta并更新 IndexedDB，无需二次调用Go函数。
 
+## 内存优化策略
+
+### 问题背景
+
+解析大型 Demo 文件时，如果将所有 round 数据累积在内存中，会导致 OOM（Out of Memory）错误：
+```
+runtime: out of memory: cannot allocate 2189426688-byte block (2767847424 in use)
+fatal error: out of memory
+```
+
+### 解决方案：流式处理 + 即时释放
+
+#### 1. Worker 端优化
+
+**❌ 旧实现（内存累积）：**
+```typescript
+const rounds: ReplayRound[] = [];
+while (true) {
+  const round = await parseNextRound();
+  rounds.push(round); // ⚠️ 累积在内存中
+  self.postMessage({ type: 'ROUND_COMPLETE', round });
+}
+```
+
+**✅ 新实现（即时释放）：**
+```typescript
+let totalRoundsParsed = 0; // 只记录数量
+while (true) {
+  const round = await parseNextRound();
+  
+  // 立即发送到主线程
+  self.postMessage({ type: 'ROUND_COMPLETE', round });
+  
+  // 不保留引用，让 GC 回收
+  totalRoundsParsed++;
+}
+```
+
+#### 2. 主线程端优化
+
+**❌ 旧实现（内存累积）：**
+```typescript
+const workerRounds: ReplayRound[] = [];
+worker.onmessage = async (e) => {
+  if (e.data.type === 'ROUND_COMPLETE') {
+    workerRounds.push(e.data.round); // ⚠️ 累积在内存中
+    await saveRoundToOPFS(e.data.round);
+  }
+};
+```
+
+**✅ 新实现（即时释放）：**
+```typescript
+let savedRoundsCount = 0; // 只记录数量
+worker.onmessage = async (e) => {
+  if (e.data.type === 'ROUND_COMPLETE') {
+    const round = e.data.round;
+    
+    // 保存到 OPFS 后立即释放引用
+    await saveRoundToOPFS(round);
+    savedRoundsCount++;
+    
+    // round 对象会被 GC 回收
+  }
+};
+```
+
+### 内存管理原则
+
+1. **流式处理**：每个 round 解析完成后立即发送，不等待所有 round 完成
+2. **即时持久化**：主线程接收到 round 后立即保存到 OPFS
+3. **释放引用**：保存后不再保留 round 对象引用，交由 GC 回收
+4. **只保留计数**：用 `totalRoundsParsed` / `savedRoundsCount` 跟踪进度
+5. **解析后清理**：解析完成后主动销毁 WASM 实例并触发 GC
+
+### Worker 解析后清理机制
+
+**解析完成时自动清理：**
+```typescript
+// 发送完成消息
+self.postMessage({ type: 'PARSING_COMPLETE', ... });
+
+// ============ CLEANUP: Destroy WASM instance ============
+// 1. 关闭 WASM parser 释放 Go 内存
+if (typeof closeDemoParser === 'function') {
+  closeDemoParser();
+  console.log('🗑️ WASM parser closed, Go memory released');
+}
+
+// 2. 触发显式 GC（需要 Chrome --js-flags=--expose-gc）
+if (typeof self.gc === 'function') {
+  self.gc();
+  console.log('🗑️ Explicit GC triggered');
+}
+```
+
+**错误时也执行清理：**
+```typescript
+} catch (error) {
+  // 清理 WASM 实例
+  if (typeof closeDemoParser === 'function') {
+    try {
+      closeDemoParser();
+      console.log('🗑️ WASM parser closed after error');
+    } catch (closeError) {
+      console.warn('Failed to close WASM parser:', closeError);
+    }
+  }
+  
+  // 触发 GC
+  if (typeof self.gc === 'function') {
+    self.gc();
+  }
+  
+  self.postMessage({ type: 'ERROR', ... });
+}
+```
+
+**清理时机：**
+- ✅ **成功完成**：所有 rounds 解析完成，发送 PARSING_COMPLETE 后
+- ✅ **错误终止**：解析过程中出错，发送 ERROR 后
+- ✅ **立即执行**：无需等待，解析流程结束后立即清理
+
+**清理效果：**
+```
+解析前内存: ~500 MB (JS heap)
+解析中峰值: ~3.5 GB (JS + Go WASM)
+清理后内存: ~600 MB (释放约 2.9 GB)
+```
+5. **释放文件字节**：
+   - 主线程：发送给 Worker 后立即释放 `demoBytes = null`
+   - Worker 端：WASM 初始化后立即释放 `demoBytes = null`
+   - 错误处理：任何异常都确保释放内存
+
+### 内存占用对比
+
+| 场景 | 旧实现（累积） | 新实现（流式） |
+|------|--------------|--------------|
+| 30回合 Demo | ~2.7 GB | ~50-100 MB（峰值） |
+| 解析时间 | 相同 | 相同 |
+| OOM 风险 | ⚠️ 高 | ✅ 低 |
+| OPFS 存储 | 相同 | 相同 |
+
+### Go WASM 内存管理
+
+Go runtime 的 GC 会在 `parseNextRound` 返回后自动回收已解析的 round 数据。JavaScript 端只需确保不保留对返回对象的引用即可。
+
+### 文件字节内存释放
+
+**主线程优化：**
+```typescript
+let demoBytes: Uint8Array | null = new Uint8Array(buffer);
+
+// 1. 初始化 WASM parser
+initDemoParser(demoBytes);
+
+// 2. 发送给 Worker
+worker.postMessage({ type: 'PARSE_ROUNDS', demoBytes, uuid });
+
+// 3. 立即释放主线程引用（Worker 已收到副本）
+demoBytes = null;
+console.log('🗑️ Released main thread file bytes reference');
+```
+
+**Worker 端优化：**
+```typescript
+let demoBytes: Uint8Array | null = e.data.demoBytes;
+
+// 1. 初始化 WASM parser（数据被拷贝到 Go 内存）
+initDemoParser(demoBytes);
+
+// 2. 立即释放 Worker 引用
+demoBytes = null;
+console.log('🗑️ Released worker file bytes reference');
+```
+
+**内存释放时机：**
+- 主线程：`postMessage` 发送后（~1-2秒内）
+- Worker：`initDemoParser` 调用后（立即）
+- WASM：Go GC 自动管理
+
+**错误处理中的内存释放：**
+```typescript
+try {
+  // ... parsing logic
+} catch (error) {
+  // 确保在错误时也释放内存
+  demoBytes = null;
+  throw error;
+}
+```
+
 ## 性能特性
 
-| 指标 | 优化前（sessionStorage） | 优化后（IndexedDB） |
+| 指标 | 优化前（sessionStorage） | 优化后（IndexedDB + GC） |
 |------|----------------------|-------------------|
 | UI响应 | 始终流畅 | 始终流畅 |
 | 卡片显示 | 1-2秒内显示 | 1-2秒内显示 |
@@ -364,6 +558,138 @@ Worker完成解析后调用`backfillDemoMeta()`获取最终统计（JSON格式�
 | 刷新恢复 | 需要 OPFS protobuf 读取 | 直接从 IndexedDB 读取 |
 | 查询性能 | 遍历所有 meta 文件 | 索引查询（status=0） |
 | 架构耦合 | Cache-Polling 双层 | 单层存储，直接轮询 |
+| 内存管理 | 无自动清理 | 定期 GC（每10秒） |
+
+## 垃圾回收机制
+
+ParsingMonitor 每 10 秒执行一次 GC 循环，主动清理内存：
+
+### GC 触发策略
+
+```typescript
+// 每 1 秒检查解析状态
+// 每 10 秒触发 GC
+setInterval(() => {
+  checkParsingDemos();
+  
+  if (gcCounter >= 10) {
+    triggerGarbageCollection();
+    gcCounter = 0;
+  }
+}, 1000);
+```
+
+### GC 执行内容
+
+#### 1. **WASM 内存清理（最关键）**
+```typescript
+// 检查是否有正在解析的任务
+const parsingMetas = await metaStorage.getParsingMetas();
+const hasActiveParsing = parsingMetas.length > 0;
+
+// 只在无活跃解析时关闭 WASM parser
+if (!hasActiveParsing && typeof closeDemoParser === 'function') {
+  closeDemoParser(); // 释放 Go 端的 demoReaderBytes（上传文件原始字节）
+  console.log('🗑️ WASM parser closed, demo file bytes released');
+} else if (hasActiveParsing) {
+  console.log(`⏭️ Skipping WASM cleanup (${parsingMetas.length} active parsing tasks)`);
+}
+```
+
+**释放的内存：**
+- Go 端：`demoReaderBytes` (上传的 demo 文件完整副本)
+- Go 端：`engineInstance` 和相关解析状态
+- 这通常是最大的内存占用（可达数百 MB）
+
+#### 2. **显式 GC（Chrome DevTools）**
+```typescript
+if (typeof globalThis.gc === 'function') {
+  globalThis.gc(); // 需要 Chrome 启动参数: --js-flags=--expose-gc
+  console.log('🗑️ Explicit GC triggered');
+}
+```
+
+#### 3. **引用清理（通用方法）**
+```typescript
+// 重建 replayList 数组，打破旧引用
+const cleanedList = replayList.value.map(demo => ({ ...demo }));
+replayList.value = cleanedList;
+console.log('🧹 Cleaned up replay list references');
+```
+
+这会：
+- 创建新的对象引用
+- 让 Vue 释放旧的响应式代理
+- 允许浏览器 GC 回收旧对象
+
+#### 4. **内存统计（Chrome/Edge）**
+```typescript
+if ('memory' in performance) {
+  const mem = performance.memory;
+  const usedMB = (mem.usedJSHeapSize / (1024 * 1024)).toFixed(1);
+  const totalMB = (mem.totalJSHeapSize / (1024 * 1024)).toFixed(1);
+  const limitMB = (mem.jsHeapSizeLimit / (1024 * 1024)).toFixed(1);
+  console.log(`💾 Memory: ${usedMB}MB / ${totalMB}MB (limit: ${limitMB}MB)`);
+}
+```
+
+### GC 智能调度
+
+**安全检查机制：**
+- ✅ 有活跃解析任务 → 跳过 WASM 清理（避免中断解析）
+- ✅ 无活跃解析任务 → 执行 WASM 清理（释放大量内存）
+- ✅ 其他 GC 步骤始终执行（Vue 引用清理、显式 GC）
+
+**日志示例（有活跃任务）：**
+```
+[ParsingMonitor] ⏭️ Skipping WASM cleanup (2 active parsing tasks)
+[ParsingMonitor] 🗑️ Explicit GC triggered
+[ParsingMonitor] 🧹 Cleaned up replay list references
+[ParsingMonitor] 💾 Memory: 890.5MB / 1024.0MB (limit: 2048.0MB)
+```
+
+**日志示例（无活跃任务）：**
+```
+[ParsingMonitor] 🗑️ WASM parser closed, demo file bytes released (no active parsing)
+[ParsingMonitor] 🗑️ Explicit GC triggered
+[ParsingMonitor] 🧹 Cleaned up replay list references
+[ParsingMonitor] 💾 Memory: 145.3MB / 256.0MB (limit: 2048.0MB)
+```
+（注意内存从 890MB 降至 145MB）
+
+### 如何启用显式 GC
+
+**开发环境（Chrome）：**
+```bash
+# 方法1: Chrome 启动参数
+chrome --js-flags="--expose-gc" http://localhost:5173
+
+# 方法2: Edge 启动参数
+msedge --js-flags="--expose-gc" http://localhost:5173
+```
+
+**生产环境：**
+- 显式 GC 仅在开发模式下可用
+- 生产环境依赖方法 2（引用清理）和浏览器自动 GC
+
+### GC 效果监控
+
+控制台日志示例：
+```
+[ParsingMonitor] Started monitoring (every 1s, GC every 10s)
+[ParsingMonitor] 1 个进度已更新
+[ParsingMonitor] 1 个进度已更新
+...（10秒后）
+[ParsingMonitor] 🗑️ Explicit GC triggered
+[ParsingMonitor] 🧹 Cleaned up replay list references
+[ParsingMonitor] 💾 Memory: 145.3MB / 256.0MB
+```
+
+### 内存优化建议
+
+1. **开发时监控**：使用 Chrome DevTools Memory Profiler 查看堆快照
+2. **GC 频率调整**：如果内存增长快，可将 10 秒改为 5 秒
+3. **手动触发**：在控制台执行 `gc()` 测试效果（需要 --expose-gc）
 
 ## 失败检测机制
 

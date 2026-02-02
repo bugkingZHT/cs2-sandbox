@@ -26,29 +26,63 @@
           
           <!-- Hover Tooltip -->
           <div class="quota-tooltip">
-            <div class="quota-tooltip-header">
-              <span class="quota-tooltip-title">本地存储空间</span>
+            <!-- Storage Section -->
+            <div class="quota-tooltip-section">
+              <div class="quota-tooltip-header">
+                <svg class="quota-icon" width="16" height="16" viewBox="0 0 1024 1024">
+                  <path d="M952.288 697.312l-108.352-467.2a83.424 83.424 0 0 0-26.944-49.344c-14.4-12.8-32.768-20.128-51.968-20.768H257.472c-40.256 1.568-72.768 32.704-78.944 71.68L70.208 697.28c-4.64 12.48-6.208 26.528-6.208 38.976C64 806.368 121.28 864 192.48 864h639.072C902.784 864 960 806.368 960 736.288c0-12.48-3.072-26.496-7.712-38.976z m-120.736 104.384H192.48a62.464 62.464 0 0 1-45.12-18.496 63.168 63.168 0 0 1-18.368-45.344c0-35.84 29.44-63.904 63.488-63.904h639.072c35.616 0 63.456 28.064 63.456 63.904 1.568 34.24-27.84 63.84-63.456 63.84z m-32.48-84.128a21.6 21.6 0 0 0-21.664 18.72 21.76 21.76 0 0 0 18.56 21.76h3.104a20.544 20.544 0 0 0 20.128-20.192c0-12.48-7.744-20.288-20.128-20.288z m-41.792 20.288c0-23.36 18.56-42.048 41.792-42.048 23.2 0 41.792 18.688 41.792 42.048 0 23.36-18.56 42.048-41.792 42.048a41.728 41.728 0 0 1-41.792-42.048z" fill="currentColor"></path>
+                </svg>
+                <span class="quota-tooltip-title">本地存储空间</span>
+              </div>
+              <div class="quota-tooltip-body">
+                <div class="quota-info-row">
+                  <span class="quota-label">已使用:</span>
+                  <span class="quota-value">{{ storageUsedText }}</span>
+                </div>
+                <div class="quota-info-row">
+                  <span class="quota-label">可用总量:</span>
+                  <span class="quota-value">{{ storageQuotaText }}</span>
+                </div>
+                <div class="quota-progress-bar">
+                  <div 
+                    class="quota-progress-fill" 
+                    :class="{ 
+                      'storage-warning': storageUsagePercent >= 80 && storageUsagePercent < 95,
+                      'storage-critical': storageUsagePercent >= 95
+                    }"
+                    :style="{ width: `${storageUsagePercent}%` }"
+                  ></div>
+                </div>
+                <div class="quota-percentage">{{ storageUsagePercent }}%</div>
+              </div>
             </div>
-            <div class="quota-tooltip-body">
-              <div class="quota-info-row">
-                <span class="quota-label">已使用:</span>
-                <span class="quota-value">{{ storageUsedText }}</span>
+
+            <!-- Memory Section -->
+            <div class="quota-tooltip-section">
+              <div class="quota-tooltip-header">
+                <svg class="quota-icon" width="16" height="16" viewBox="0 0 1024 1024">
+                  <path d="M863.438 280.125h-704c-17.673 0-32 14.327-32 32v447.059c0 17.673 14.327 32 32 32h127.809c17.673 0 32-14.327 32-32V732.36h42.718v56.375h64V732.36h51.947v56.375h64V732.36h51.947v56.375h64V732.36h45.608v26.823c0 17.673 14.327 32 32 32h127.971c17.673 0 32-14.327 32-32V312.125c0-17.673-14.328-32-32-32z m-32 295.333h-33.559c-17.673 0-32 14.327-32 32s14.327 32 32 32h33.559v87.726h-63.971V700.36c0-17.673-14.327-32-32-32H287.246c-17.673 0-32 14.327-32 32v26.823h-63.809v-87.726h32.559c17.673 0 32-14.327 32-32s-14.327-32-32-32h-32.559V344.125h640v231.333z" fill="currentColor"></path>
+                  <path d="M256.477 395.557h80.279v140h-80.279zM400.89 395.557h80.279v140H400.89zM545.302 395.557h80.279v140h-80.279zM689.715 395.557h80.279v140h-80.279z" fill="currentColor"></path>
+                </svg>
+                <span class="quota-tooltip-title">内存解析空间</span>
               </div>
-              <div class="quota-info-row">
-                <span class="quota-label">可用总量:</span>
-                <span class="quota-value">{{ storageQuotaText }}</span>
+              <div class="quota-tooltip-body">
+                <div class="quota-info-row">
+                  <span class="quota-label">已使用:</span>
+                  <span class="quota-value">{{ wasmMemoryUsedText }}</span>
+                </div>
+                <div class="quota-info-row">
+                  <span class="quota-label">限制总量:</span>
+                  <span class="quota-value">{{ wasmMemoryLimitText }}</span>
+                </div>
+                <!-- Progress bar and percentage (only shown when valid limit exists) -->
+                <template v-if="wasmMemoryLimit && wasmMemoryLimit > 0">
+                  <div class="quota-progress-bar">
+                    <div class="quota-progress-fill" :style="{ width: wasmMemoryPercent + '%' }"></div>
+                  </div>
+                  <div class="quota-percentage">{{ wasmMemoryPercent }}%</div>
+                </template>
               </div>
-              <div class="quota-progress-bar">
-                <div 
-                  class="quota-progress-fill" 
-                  :class="{ 
-                    'storage-warning': storageUsagePercent >= 80 && storageUsagePercent < 95,
-                    'storage-critical': storageUsagePercent >= 95
-                  }"
-                  :style="{ width: `${storageUsagePercent}%` }"
-                ></div>
-              </div>
-              <div class="quota-percentage">{{ storageUsagePercent }}%</div>
             </div>
           </div>
         </div>
@@ -200,14 +234,40 @@
 
           <!-- Parsing Overlay (active parsing - blue) -->
           <div v-if="demo.status === 0" class="parsing-overlay-card">
-            <div class="parsing-progress-container">
-              <div class="parsing-progress-label">解析中...</div>
-              <div class="parsing-progress-bar">
-                <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
+            <div class="parsing-overlay-content">
+              <!-- File name at top -->
+              <div v-if="demo.fileName" class="parsing-file-name">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                  <polyline points="13 2 13 9 20 9"/>
+                </svg>
+                <span>{{ demo.fileName }}</span>
               </div>
-              <div class="parsing-progress-text">{{ demo.parsingProgress || 0 }}%</div>
+              
+              <!-- Progress in center -->
+              <div class="parsing-progress-container">
+                <div class="parsing-progress-label">解析中...</div>
+                <div class="parsing-progress-bar">
+                  <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
+                </div>
+                <div class="parsing-progress-text">{{ demo.parsingProgress || 0 }}%</div>
+              </div>
+              
+              <!-- Status at bottom -->
+              <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Processing...' }}</div>
             </div>
-            <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Processing...' }}</div>
+            
+            <!-- Force Delete button for parsing state -->
+            <button 
+              class="delete-btn-parsing"
+              @click.stop="confirmForceDelete(demo)"
+              title="Force delete parsing demo"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
           </div>
 
           <!-- Failed Overlay (error/timeout - red, text only, no progress bar) -->
@@ -260,6 +320,71 @@
         </div>
       </div>
     </div>
+
+    <!-- Upload Blocked Warning Modal -->
+    <div v-if="showUploadBlockedModal" class="delete-modal-overlay" @click="closeUploadBlockedModal">
+      <div class="delete-modal ds-card ds-card-elevated" @click.stop>
+        <div class="modal-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">Upload Blocked</h3>
+        <p class="modal-message">
+          已有解析任务正在进行中，请等待完成后再上传
+        </p>
+        <div v-if="uploadBlockedInfo" class="modal-info">
+          <div class="modal-info-row">
+            <span class="info-label">正在解析:</span>
+            <span class="info-value">{{ uploadBlockedInfo.fileName }}</span>
+          </div>
+          <div class="modal-info-row">
+            <span class="info-label">解析进度:</span>
+            <span class="info-value">{{ uploadBlockedInfo.progress }}%</span>
+          </div>
+        </div>
+        <p class="modal-warning">提示：为避免内存不足，系统限制同时只能解析一个 Demo 文件</p>
+        <div class="modal-actions">
+          <button class="ds-btn ds-btn-primary" @click="closeUploadBlockedModal">Got it</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Force Delete Confirmation Modal -->
+    <div v-if="showForceDeleteModal" class="delete-modal-overlay" @click="cancelForceDelete">
+      <div class="delete-modal ds-card ds-card-elevated" @click.stop>
+        <div class="modal-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">Force Delete Parsing Demo</h3>
+        <p class="modal-message">
+          Demo <strong>{{ demoToForceDelete?.fileName || demoToForceDelete?.mapName }}</strong> is currently being parsed.
+        </p>
+        <div v-if="demoToForceDelete" class="modal-info">
+          <div class="modal-info-row">
+            <span class="info-label">Progress:</span>
+            <span class="info-value">{{ demoToForceDelete.parsingProgress || 0 }}%</span>
+          </div>
+          <div class="modal-info-row">
+            <span class="info-label">Status:</span>
+            <span class="info-value">{{ demoToForceDelete.parsingStatus || 'Processing...' }}</span>
+          </div>
+        </div>
+        <p class="modal-warning">
+          ⚠️ Force deleting will terminate the parsing process and clean up all associated memory and storage.
+        </p>
+        <div class="modal-actions">
+          <button class="ds-btn ds-btn-secondary" @click="cancelForceDelete">Cancel</button>
+          <button class="ds-btn ds-btn-danger" @click="performForceDelete">Force Delete</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -279,15 +404,32 @@ const emit = defineEmits<{
   (e: 'select-demo', id: string): void;
   (e: 'delete-demo', id: string): void;
   (e: 'upload-demo', file: File): void;
+  (e: 'upload-blocked', info: { fileName: string; progress: number }): void;
 }>();
 
-const { parsing } = useReplayData();
+const { parsing, showUploadBlockedWarning } = useReplayData();
+
+// Watch for upload blocked warnings from composable
+watch(showUploadBlockedWarning, (warning) => {
+  if (warning) {
+    showUploadBlockedModal.value = true;
+    uploadBlockedInfo.value = warning;
+  }
+});
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isLoadingDemo = ref(false);
 const selectedDemoId = ref<string | null>(null);
 const showDeleteModal = ref(false);
 const demoToDelete = ref<ReplayData | null>(null);
 const isDismissed = ref(false);
+
+// Upload blocked modal state
+const showUploadBlockedModal = ref(false);
+const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(null);
+
+// Force delete modal state
+const showForceDeleteModal = ref(false);
+const demoToForceDelete = ref<ReplayData | null>(null);
 
 // Check if any demos are currently parsing (parsingMonitor controls this)
 const hasParsingDemos = computed(() => {
@@ -329,6 +471,41 @@ const storageQuotaText = computed(() => {
   return `${(mb / 1024).toFixed(2)} GB`;
 });
 
+// WASM memory tracking
+const wasmMemoryUsed = ref(0);
+const wasmMemoryLimit = ref(0); // Dynamic limit from browser
+const wasmMemorySupported = ref(false);
+
+const wasmMemoryPercent = computed(() => {
+  if (wasmMemoryLimit.value === 0) return 0;
+  return Math.min(100, Math.round((wasmMemoryUsed.value / wasmMemoryLimit.value) * 100));
+});
+
+const wasmMemoryUsedText = computed(() => {
+  if (!wasmMemorySupported.value) {
+    return 'N/A';
+  }
+  const mb = wasmMemoryUsed.value / (1024 * 1024);
+  if (mb < 1) {
+    return `${(mb * 1024).toFixed(0)} KB`;
+  }
+  if (mb < 1024) {
+    return `${mb.toFixed(1)} MB`;
+  }
+  return `${(mb / 1024).toFixed(2)} GB`;
+});
+
+const wasmMemoryLimitText = computed(() => {
+  if (!wasmMemorySupported.value) {
+    return 'N/A';
+  }
+  const mb = wasmMemoryLimit.value / (1024 * 1024);
+  if (mb < 1024) {
+    return `${mb.toFixed(1)} MB`;
+  }
+  return `${(mb / 1024).toFixed(2)} GB`;
+});
+
 // Fetch storage quota
 const updateStorageQuota = async () => {
   if ('storage' in navigator && 'estimate' in navigator.storage) {
@@ -342,13 +519,66 @@ const updateStorageQuota = async () => {
   }
 };
 
+// Update WASM memory usage
+const updateWasmMemory = () => {
+  try {
+    // Check if performance.memory is available (Chrome/Edge only)
+    if ('memory' in performance) {
+      wasmMemorySupported.value = true;
+      const mem = (performance as any).memory;
+      
+      // Use totalJSHeapSize to include Go WASM memory
+      const totalUsed = mem.totalJSHeapSize || mem.usedJSHeapSize || 0;
+      const currentLimit = mem.jsHeapSizeLimit;
+      
+      // Only set values if we have a valid limit (no fallback)
+      if (currentLimit && currentLimit > 0) {
+        wasmMemoryUsed.value = totalUsed;
+        wasmMemoryLimit.value = currentLimit;
+        
+        // Log warning if memory is high
+        const percent = (totalUsed / currentLimit) * 100;
+        if (percent >= 75) {
+          console.warn(`[WASM Memory] High memory usage: ${(totalUsed / (1024 * 1024)).toFixed(1)} MB (${percent.toFixed(1)}%)`);
+        }
+      } else {
+        // No valid limit - set to 0 to show N/A
+        wasmMemoryUsed.value = totalUsed;
+        wasmMemoryLimit.value = 0;
+      }
+    } else {
+      wasmMemorySupported.value = false;
+      wasmMemoryUsed.value = 0;
+      wasmMemoryLimit.value = 0;
+      console.debug('[WASM Memory] performance.memory API not available (use Chrome/Edge for accurate measurement)');
+    }
+  } catch (error) {
+    wasmMemorySupported.value = false;
+    wasmMemoryUsed.value = 0;
+    wasmMemoryLimit.value = 0;
+    console.warn('[WASM Memory] Failed to fetch memory stats:', error);
+  }
+};
+
 // Update storage quota on mount and when demo list changes
 onMounted(() => {
   updateStorageQuota();
+  updateWasmMemory();
+  
+  // Update memory stats every 2 seconds
+  const memoryUpdateInterval = setInterval(() => {
+    updateWasmMemory();
+  }, 2000);
+  
+  // Cleanup on unmount
+  return () => {
+    clearInterval(memoryUpdateInterval);
+  };
 });
 
 watch(() => props.demoList.length, () => {
   updateStorageQuota();
+  updateWasmMemory();
 });
 
 const sortedDemoList = computed(() => {
@@ -413,6 +643,67 @@ const performDelete = () => {
     emit('delete-demo', demoToDelete.value.id);
   }
   cancelDelete();
+};
+
+const confirmForceDelete = (demo: ReplayData) => {
+  demoToForceDelete.value = demo;
+  showForceDeleteModal.value = true;
+};
+
+const cancelForceDelete = () => {
+  showForceDeleteModal.value = false;
+  demoToForceDelete.value = null;
+};
+
+const performForceDelete = async () => {
+  if (!demoToForceDelete.value?.id) {
+    cancelForceDelete();
+    return;
+  }
+
+  const uuid = demoToForceDelete.value.id;
+  
+  try {
+    console.log(`[ForceDelete] Starting force delete for UUID: ${uuid}`);
+    
+    // Step 1: Close WASM parser to release Go memory
+    if (typeof (window as any).closeDemoParser === 'function') {
+      (window as any).closeDemoParser();
+      console.log('[ForceDelete] 🗑️ WASM parser closed');
+    }
+    
+    // Step 2: Trigger GC to clean up memory
+    if (typeof (globalThis as any).gc === 'function') {
+      (globalThis as any).gc();
+      console.log('[ForceDelete] 🗑️ Explicit GC triggered');
+    }
+    
+    // Step 3: Delete demo (this will clean up IndexedDB + OPFS)
+    emit('delete-demo', uuid);
+    console.log('[ForceDelete] ✅ Demo deleted successfully');
+    
+    // Step 4: Force page reload to kill all worker threads
+    console.log('[ForceDelete] 🔄 Reloading page to terminate all workers...');
+    setTimeout(() => {
+      window.location.reload();
+    }, 300); // Small delay to ensure deletion completes
+    
+  } catch (error) {
+    console.error('[ForceDelete] Error during force delete:', error);
+    // Still reload on error to ensure workers are terminated
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
+  } finally {
+    cancelForceDelete();
+  }
+};
+
+const closeUploadBlockedModal = () => {
+  showUploadBlockedModal.value = false;
+  uploadBlockedInfo.value = null;
+  // Clear warning state in composable
+  showUploadBlockedWarning.value = null;
 };
 
 const getMapLeftSideImage = (mapName: string | undefined): string | undefined => {
@@ -690,11 +981,11 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  min-width: 220px;
+  min-width: 240px;
   background: rgba(20, 20, 30, 0.98);
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-lg);
-  padding: 12px;
+  padding: 0;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-4px);
@@ -702,6 +993,7 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   pointer-events: none;
   z-index: 1000;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
 }
 
 .quota-btn-container:hover .quota-tooltip {
@@ -722,10 +1014,28 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   border-bottom: 6px solid rgba(20, 20, 30, 0.98);
 }
 
+/* Tooltip Sections */
+.quota-tooltip-section {
+  padding: 12px;
+}
+
+.quota-tooltip-section:not(:last-child) {
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
 .quota-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.quota-icon {
+  flex-shrink: 0;
+  color: var(--ds-text-primary);
+  opacity: 0.9;
 }
 
 .quota-tooltip-title {
@@ -1224,11 +1534,45 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   background: rgba(26, 26, 46, 0.95);
   backdrop-filter: blur(8px);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--ds-space-lg);
   z-index: 10;
+}
+
+.parsing-overlay-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ds-space-lg);
+}
+
+.parsing-file-name {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-xs);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  font-weight: 500;
+  padding: var(--ds-space-xs) var(--ds-space-md);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-subtle);
+  max-width: 90%;
+  overflow: hidden;
+}
+
+.parsing-file-name svg {
+  flex-shrink: 0;
+  color: var(--ds-primary);
+}
+
+.parsing-file-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .parsing-progress-container {
@@ -1357,6 +1701,32 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
+.delete-btn-parsing {
+  position: absolute;
+  bottom: var(--ds-space-lg);
+  right: var(--ds-space-lg);
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  background: rgba(239, 68, 68, 0.9);
+  border: none;
+  border-radius: var(--ds-radius-md);
+  color: white;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-xs);
+  font-size: 0.85rem;
+  font-weight: 500;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.delete-btn-parsing:hover {
+  background: var(--ds-danger);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
 /* === Delete Modal === */
 .delete-modal-overlay {
   position: fixed;
@@ -1423,6 +1793,39 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   font-size: var(--ds-text-sm);
   color: var(--ds-warning);
   margin: 0 0 var(--ds-space-xl) 0;
+}
+
+.modal-info {
+  background: var(--ds-background-subtle);
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-space-md);
+  margin: var(--ds-space-md) 0;
+}
+
+.modal-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--ds-space-xs) 0;
+}
+
+.modal-info-row + .modal-info-row {
+  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: var(--ds-space-xs);
+  padding-top: var(--ds-space-sm);
+}
+
+.info-label {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .modal-actions {

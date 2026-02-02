@@ -2,6 +2,7 @@
 
 import type { ReplayRound } from '@/types/replay';
 import { decodeReplayRound } from '@/composables/proto-converters';
+import { getMetaStorage } from '@/composables/indexdb-storage';
 
 // Declare global types for Go WASM runtime
 declare const Go: any;
@@ -98,7 +99,8 @@ function parseNextRoundPromise(onTickProgress: (ticks: number) => void): Promise
 // Main message handler
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   if (e.data.type === 'PARSE_ROUNDS') {
-    const { demoBytes, uuid, estimatedTotalTicks } = e.data;
+    let demoBytes: Uint8Array | null = e.data.demoBytes; // Track to release later
+    const { uuid, estimatedTotalTicks } = e.data;
     
     try {
       // Ensure WASM is initialized
@@ -112,11 +114,16 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         throw new Error(`initDemoParser failed: ${initError}`);
       }
       
+      // ⚠️ CRITICAL: Release worker's reference to file bytes immediately after parser init
+      // WASM has copied the data, so we can free JavaScript memory
+      demoBytes = null;
+      console.log(`[Worker] [${uuid}] 🗑️ Released worker file bytes reference`);
+      
       console.log(`[Worker] [${uuid}] Parser initialized`);
       
       // Parse rounds in loop
       let roundNum = 1;
-      const rounds: ReplayRound[] = [];
+      let totalRoundsParsed = 0; // Track count without keeping round data
       let lastProgressUpdate = 0;
       const PROGRESS_UPDATE_INTERVAL = 1000; // Send progress every 1000 ticks
       
@@ -136,7 +143,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         
         // If roundBinary is null, we've reached EOF
         if (!roundBinary) {
-          console.log(`[Worker] [${uuid}] EOF reached after ${roundNum - 1} rounds`);
+          console.log(`[Worker] [${uuid}] EOF reached after ${totalRoundsParsed} rounds`);
           break;
         }
         
@@ -153,8 +160,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         // Override the UUID to match the main thread's metadata UUID
         round.uuid = uuid;
         
-        rounds.push(round);
-        
+        // ⚠️ DO NOT ACCUMULATE: Send immediately and let GC clean up
         console.log(`[Worker] [${uuid}] Round ${roundNum} parsed, frames: ${round.frames.length}`);
         
         // Send milestone: round complete
@@ -164,16 +170,25 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         };
         self.postMessage(response);
         
+        // Release round reference immediately after sending
+        // JavaScript GC will clean up the round object
+        totalRoundsParsed++;
         roundNum++;
       }
       
-      console.log(`[Worker] [${uuid}] All rounds parsed (${rounds.length} total)`);
+      console.log(`[Worker] [${uuid}] All rounds parsed (${totalRoundsParsed} total)`);
       
       // Extract final statistics from the last parsed state
       // Call backfillDemoMeta to get final scores
-      // Pass JSON meta to WASM
-      const minimalMeta = { uuid };
-      const metaJsonString = JSON.stringify(minimalMeta);
+      // Load complete meta from IndexedDB and pass to WASM for backfill
+      const metaStorage = await getMetaStorage();
+      const currentMeta = await metaStorage.loadMeta(uuid);
+      if (!currentMeta) {
+        throw new Error(`Meta not found in IndexedDB: ${uuid}`);
+      }
+      
+      // Pass complete meta to ensure all fields are preserved during backfill
+      const metaJsonString = JSON.stringify(currentMeta);
       
       const backfillJsonString = await new Promise<string>((resolve, reject) => {
         (self as any).backfillDemoMeta(metaJsonString, (res: any, err: string) => {
@@ -187,13 +202,15 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       console.log(`[Worker] [${uuid}] Backfilled meta received:`, {
         totalRounds: backfilledMeta.totalRounds,
         hasRoundResults: !!backfilledMeta.roundResults,
-        roundResultsCount: backfilledMeta.roundResults?.length || 0
+        roundResultsCount: backfilledMeta.roundResults?.length || 0,
+        hasFileName: !!backfilledMeta.fileName,
+        hasOriginPath: !!backfilledMeta.originPath
       });
       
       // Send completion message with statistics AND round results
       const completeResponse: ParsingCompleteMessage = {
         type: 'PARSING_COMPLETE',
-        totalRounds: backfilledMeta.totalRounds || rounds.length,
+        totalRounds: backfilledMeta.totalRounds || totalRoundsParsed,
         scoreCT: backfilledMeta.scoreCT || 0,
         scoreT: backfilledMeta.scoreT || 0,
         teamCT: backfilledMeta.teamCT || '',
@@ -203,8 +220,47 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       console.log(`[Worker] [${uuid}] Sending PARSING_COMPLETE with ${completeResponse.roundResults.length} round results`);
       self.postMessage(completeResponse);
       
+      // ============ CLEANUP: Destroy WASM instance after parsing ============
+      console.log(`[Worker] [${uuid}] 🧹 Starting post-parsing cleanup...`);
+      
+      // Close WASM parser to release Go memory
+      if (typeof (self as any).closeDemoParser === 'function') {
+        (self as any).closeDemoParser();
+        console.log(`[Worker] [${uuid}] 🗑️ WASM parser closed, Go memory released`);
+      }
+      
+      // Force garbage collection if available (Chrome with --js-flags=--expose-gc)
+      if (typeof (self as any).gc === 'function') {
+        (self as any).gc();
+        console.log(`[Worker] [${uuid}] 🗑️ Explicit GC triggered`);
+      }
+      
+      console.log(`[Worker] [${uuid}] ✅ Cleanup complete`);
+      // ============ END CLEANUP ============
+      
     } catch (error: any) {
       console.error(`[Worker] [${uuid}] Parsing error:`, error);
+      
+      // Release bytes on error (if not already released)
+      demoBytes = null;
+      
+      // ============ CLEANUP: Destroy WASM instance on error ============
+      // Close WASM parser to release Go memory even on error
+      if (typeof (self as any).closeDemoParser === 'function') {
+        try {
+          (self as any).closeDemoParser();
+          console.log(`[Worker] [${uuid}] 🗑️ WASM parser closed after error`);
+        } catch (closeError) {
+          console.warn(`[Worker] [${uuid}] Failed to close WASM parser:`, closeError);
+        }
+      }
+      
+      // Force GC on error
+      if (typeof (self as any).gc === 'function') {
+        (self as any).gc();
+        console.log(`[Worker] [${uuid}] 🗑️ GC triggered after error`);
+      }
+      // ============ END CLEANUP ============
       
       const errorResponse: ErrorMessage = {
         type: 'ERROR',

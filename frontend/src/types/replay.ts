@@ -133,7 +133,10 @@ export interface ReplayMeta {
   totalFrames: number; // Demo 总帧数（来自 header.PlaybackFrames）
   totalDurationMs: number; // Demo 总时长（毫秒，来自 header.PlaybackTime）
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
+  
+  // 文件信息字段（必须在 backfill 时保持不变）
   fileName?: string; // 原始上传文件名（不带.dem后缀）
+  originPath?: string; // 原始上传文件路径（完整路径）
   
   // 解析状态统一字段
   status: number; // 0=解析中, 1=完成, -1=失败
