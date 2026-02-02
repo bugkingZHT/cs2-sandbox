@@ -370,10 +370,22 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	for _, pl := range gs.Participants().Playing() {
 		pos := pl.Position()
 		x, y := pos.X, pos.Y
-		// Extract inventory - only add valid equipment types
+		// Extract inventory - for flashbangs, use FlashbangCount() to get actual count
+		// For other equipment, count based on Weapons() entities
 		var inventory []common.EquipmentType
 		for _, w := range pl.Weapons() {
-			if w.Type != common.EqUnknown {
+			if w.Type == common.EqUnknown {
+				continue
+			}
+			// For flashbangs, use the FlashbangCount() method to get actual count
+			if w.Type == common.EqFlash {
+				// Only add flashbangs once based on FlashbangCount()
+				flashbangCount := int(pl.FlashbangCount())
+				for i := 0; i < flashbangCount; i++ {
+					inventory = append(inventory, w.Type)
+				}
+			} else {
+				// For other equipment, add once per entity
 				inventory = append(inventory, w.Type)
 			}
 		}
@@ -608,23 +620,29 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	}
 	b.activeProjectiles = newActiveProjectiles
 
-	// Extract dropped equipment - only add valid equipment types
+	// Extract dropped equipment - only track grenades/throwables (C4 + grenades)
+	// Ignore dropped weapons to reduce frame data size significantly
 	var droppedEquipment []entity.DroppedEquipment
 	for _, w := range gs.Weapons() {
 		if w.Entity == nil {
 			continue
 		}
-		if w.Owner == nil && w.Type != common.EqUnknown {
-			pos := w.Entity.Position()
-			// Filter out invalid position coordinates
-			if pos.X != 0 || pos.Y != 0 || pos.Z != 0 {
-				droppedEquipment = append(droppedEquipment, entity.DroppedEquipment{
-					Type: w.Type,
-					X:    pos.X,
-					Y:    pos.Y,
-					Z:    pos.Z,
-				})
-			}
+		if w.Owner != nil {
+			continue
+		}
+		// Only track dropped grenades/throwables (no owner and is grenade type)
+		if !entity.IsGrenadeOrThrowable(w.Type) {
+			continue
+		}
+		pos := w.Entity.Position()
+		// Filter out invalid position coordinates
+		if pos.X != 0 || pos.Y != 0 || pos.Z != 0 {
+			droppedEquipment = append(droppedEquipment, entity.DroppedEquipment{
+				Type: w.Type,
+				X:    pos.X,
+				Y:    pos.Y,
+				Z:    pos.Z,
+			})
 		}
 	}
 

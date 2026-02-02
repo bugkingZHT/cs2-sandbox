@@ -554,7 +554,6 @@ const formatMs = (ms: number) => {
 /* === Brush Tool Button === */
 .brush-tool-wrapper {
   flex-shrink: 0;
-  width: 130px; /* 与 playback-info-box 宽度一致 */
   display: flex;
   justify-content: flex-start;
   padding: 0 var(--ds-space-sm); /* 与 playback-info-box 的 padding 一致 */

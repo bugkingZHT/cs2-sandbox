@@ -105,9 +105,55 @@ func SortProjectilesByPriority(projectiles map[int]ProjectileFrame) []int {
 	return entityIDs
 }
 
-// SortInventoryByType sorts inventory equipment types by their numeric value for consistent display
+// SortInventoryByType sorts inventory equipment types with the following priority:
+// 1. Primary weapons (100-399) first
+// 2. Secondary weapons (1-10) second
+// 3. Utilities (400+) last
+// Within each category, items are sorted by their numeric value in ascending order
 func SortInventoryByType(inventory []common.EquipmentType) {
 	sort.Slice(inventory, func(i, j int) bool {
-		return inventory[i] < inventory[j]
+		itemI := int(inventory[i])
+		itemJ := int(inventory[j])
+
+		// Determine category priority for each item
+		priorityI := getInventoryPriority(itemI)
+		priorityJ := getInventoryPriority(itemJ)
+
+		// If different priorities, sort by priority
+		if priorityI != priorityJ {
+			return priorityI < priorityJ
+		}
+
+		// Same priority, sort by value ascending
+		return itemI < itemJ
 	})
+}
+
+// getInventoryPriority returns the sorting priority for an equipment item
+// Lower priority value means it should appear first
+func getInventoryPriority(itemID int) int {
+	if itemID >= 100 && itemID <= 399 {
+		return 1 // Primary weapons
+	} else if itemID >= 1 && itemID <= 10 {
+		return 2 // Secondary weapons
+	} else if itemID >= 400 {
+		return 3 // Utilities
+	}
+	return 4 // Unknown items go last
+}
+
+// IsGrenadeOrThrowable checks if an equipment type is a grenade or throwable item
+// Grenades are in the 501-506 range, C4 is 404
+// This filters dropped equipment to only track throwables, reducing data size
+func IsGrenadeOrThrowable(equipType common.EquipmentType) bool {
+	itemID := int(equipType)
+	// C4/Bomb
+	if itemID == 404 {
+		return true
+	}
+	// Grenades: Decoy(501), Molotov(502), Incendiary(503), Flash(504), Smoke(505), HE(506)
+	if itemID >= 501 && itemID <= 506 {
+		return true
+	}
+	return false
 }

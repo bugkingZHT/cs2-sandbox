@@ -832,7 +832,6 @@ body {
 
 .ds-empty-icon {
   font-size: 48px;
-  margin-bottom: var(--ds-space-lg);
   opacity: 0.5;
 }
 

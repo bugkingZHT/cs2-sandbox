@@ -67,7 +67,7 @@
                   :key="idx"
                   :src="getWeaponIconPath(item)" 
                   class="equipment-icon"
-                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
                   :title="getEquipmentName(item)"
                   @error="onWeaponIconError"
                 />
@@ -91,7 +91,7 @@
                   :key="idx"
                   :src="getWeaponIconPath(item)" 
                   class="equipment-icon"
-                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
                   :title="getEquipmentName(item)"
                   @error="onWeaponIconError"
                 />
@@ -120,7 +120,7 @@
                   :key="idx"
                   :src="getWeaponIconPath(item)" 
                   class="equipment-icon"
-                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
                   :title="getEquipmentName(item)"
                   @error="onWeaponIconError"
                 />
@@ -144,7 +144,7 @@
                   :key="idx"
                   :src="getWeaponIconPath(item)" 
                   class="equipment-icon"
-                  :class="{ 'is-active': Number(p.activeWeapon) === Number(item) }"
+                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
                   :title="getEquipmentName(item)"
                   @error="onWeaponIconError"
                 />
@@ -681,6 +681,20 @@ const getAllEquipment = (player: PlayerState) => {
   return player.inventory; // Show all equipment including knife
 };
 
+// Check if equipment at index should be highlighted as active
+// Only the first item matching activeWeapon will be highlighted
+const isEquipmentActive = (player: PlayerState, item: string, idx: number): boolean => {
+  if (!player.activeWeapon) return false;
+  const activeId = Number(player.activeWeapon);
+  const itemId = Number(item);
+  
+  if (activeId !== itemId) return false;
+  
+  // Find the first index of this equipment type in inventory
+  const firstMatchIndex = player.inventory?.findIndex(invItem => Number(invItem) === activeId) ?? -1;
+  return idx === firstMatchIndex;
+};
+
 // Get equipment name for tooltip
 const getEquipmentName = (equipmentId: string): string => {
   const id = Number(equipmentId);
@@ -837,17 +851,17 @@ onBeforeUnmount(() => {
 }
 
 .player-card-bottom {
-  width: 170px; /* Enough for 9 equipment icons */
-  min-height: 52px; /* Tighter height calculation */
-  max-height: 52px;
+  width: 220px; /* Increased width for better equipment display */
+  min-height: 60px; /* Increased height for better spacing */
+  max-height: 60px;
   background: rgba(0, 0, 0, 0.7); /* Darker, matching DemoLib cards */
   backdrop-filter: blur(12px);
   border: 1px solid rgba(200, 200, 200, 0.3); /* 2px gray-white border */
   border-radius: var(--ds-radius-sm);
-  padding: 4px 8px; /* Further reduced top/bottom padding */
+  padding: 6px 10px; /* Increased padding for more breathing room */
   display: flex;
   flex-direction: column;
-  gap: 2px; /* Further reduced gap */
+  gap: 3px; /* Increased gap between rows */
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); /* Deeper shadow like DemoLib */
   position: relative;
@@ -874,7 +888,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100px; /* Adjusted for wider card */
+  max-width: 120px; /* Increased for wider card */
   line-height: 1; /* Tight line height */
 }
 
@@ -914,20 +928,20 @@ onBeforeUnmount(() => {
 .p-all-equipment {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px; /* Reduced gap for tighter spacing */
-  min-height: 18px; /* Match icon height */
-  padding: 0; /* Remove padding for tighter layout */
+  gap: 3px; /* Increased gap for better spacing */
+  min-height: 20px; /* Slightly increased to match icon size */
+  padding: 0;
   align-items: center;
 }
 
 .equipment-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px; /* Slightly larger icons */
+  height: 20px;
   object-fit: contain;
   opacity: 0.6;
   transition: all var(--ds-transition-base);
   filter: brightness(0.8);
-  padding: 1px; /* Reduced padding */
+  padding: 1px;
 }
 
 .equipment-icon.is-active {

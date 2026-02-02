@@ -124,7 +124,9 @@
 
     <!-- Empty State -->
     <div v-else-if="demoList.length === 0" class="ds-empty">
-      <div class="ds-empty-icon">📂</div>
+      <div class="ds-empty-icon">
+        <img src="/icons/replay.svg" alt="No demos" class="empty-icon-svg" />
+      </div>
       <h3 class="ds-empty-title">暂无 Demo 文件</h3>
       <p class="ds-empty-description">点击"上传"按钮开始解析 Demo</p>
     </div>
@@ -804,6 +806,13 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   opacity: 0.5;
 }
 
+.empty-icon-svg {
+  width: 80px;
+  height: 80px;
+  opacity: 0.5;
+  filter: brightness(0.8);
+}
+
 .ds-empty-title {
   font-size: var(--ds-text-2xl);
   font-weight: 700;
@@ -1027,9 +1036,8 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  margin-bottom: 5px;
+  padding-bottom: 4px;
 }
 
 .quota-icon {
