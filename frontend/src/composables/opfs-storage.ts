@@ -64,7 +64,13 @@ export class OPFSReplayStorage {
     const replaysDir = await this.getReplaysDir();
     try {
       await replaysDir.removeEntry(uuid, { recursive: true });
-    } catch (e) {
+      console.log(`[OPFS] ✅ Successfully deleted replay ${uuid}`);
+    } catch (e: any) {
+      // If file/directory doesn't exist, consider deletion successful
+      if (e.name === 'NotFoundError') {
+        console.warn(`[OPFS] ⚠️ Replay ${uuid} not found, treating as already deleted`);
+        return;
+      }
       console.error(`[OPFS] Failed to delete replay ${uuid}:`, e);
       throw e;
     }

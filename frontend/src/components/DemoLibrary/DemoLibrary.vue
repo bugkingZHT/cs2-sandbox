@@ -64,6 +64,24 @@
       </div>
     </div>
 
+    <!-- Parsing Info Banner (Dismissible) -->
+    <div v-if="hasParsingDemos && !isDismissed" class="parsing-info-banner">
+      <div class="banner-content">
+        <svg class="banner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        <span class="banner-text">解析过程中可将该页面置于后台，但不要刷新或关闭</span>
+      </div>
+      <button class="banner-close" @click="dismissBanner" title="关闭提示">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
     <!-- Loading State -->
     <div v-if="loading" class="ds-empty">
       <div class="ds-spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
@@ -269,6 +287,23 @@ const isLoadingDemo = ref(false);
 const selectedDemoId = ref<string | null>(null);
 const showDeleteModal = ref(false);
 const demoToDelete = ref<ReplayData | null>(null);
+const isDismissed = ref(false);
+
+// Check if any demos are currently parsing (parsingMonitor controls this)
+const hasParsingDemos = computed(() => {
+  return props.demoList.some(demo => demo.status === 0);
+});
+
+// Reset dismiss state when parsing starts
+watch(hasParsingDemos, (newVal) => {
+  if (newVal) {
+    isDismissed.value = false;
+  }
+});
+
+const dismissBanner = () => {
+  isDismissed.value = true;
+};
 
 // Storage quota tracking
 const storageUsed = ref(0);
@@ -502,6 +537,86 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   flex-shrink: 0;
   background: var(--ds-bg-secondary);
   min-height: 60px;
+}
+
+/* === Parsing Info Banner === */
+.parsing-info-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ds-space-md) var(--ds-space-xl);
+  background: linear-gradient(135deg, rgba(78, 204, 163, 0.15) 0%, rgba(96, 165, 250, 0.15) 100%);
+  border-bottom: 1px solid rgba(78, 204, 163, 0.3);
+  border-top: 1px solid rgba(78, 204, 163, 0.2);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-md);
+  flex: 1;
+}
+
+.banner-icon {
+  color: var(--ds-primary);
+  flex-shrink: 0;
+  animation: pulse-info 2s ease-in-out infinite;
+}
+
+@keyframes pulse-info {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+.banner-text {
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  color: var(--ds-text-primary);
+  line-height: 1.5;
+}
+
+.banner-close {
+  padding: var(--ds-space-xs);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.banner-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--ds-border-subtle);
+  color: var(--ds-text-primary);
+}
+
+.banner-close:active {
+  transform: scale(0.95);
 }
 
 .header-content {
