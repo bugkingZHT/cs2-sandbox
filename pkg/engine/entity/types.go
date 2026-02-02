@@ -245,6 +245,8 @@ type ReplayMeta struct {
 	UploaderUID string `json:"uploaderUid"`
 	// 上传时间戳 (Unix milliseconds)
 	UploadTime int64 `json:"uploadTime"`
+	// 引擎版本号
+	EngineVersion string `json:"engineVersion"`
 
 	// 服务器玩家信息
 	ServerPlayer []PlayerInfo `json:"serverPlayer"`

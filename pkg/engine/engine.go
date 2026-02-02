@@ -110,11 +110,12 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 		UUID:             e.uuid,
 		UploaderUID:      "000000", // Default uploader UID (6 digits)
 		UploadTime:       time.Now().UnixMilli(),
+		EngineVersion:    EngineVersion, // Set engine version from config
 		ProjectileRender: entity.GetProjectileConfig(),
 		MapName:          mapName,
 	}
 
-	log.Printf("[ExtractMetadata] Metadata extracted: Map=%s, UUID=%s", mapName, e.uuid)
+	log.Printf("[ExtractMetadata] Metadata extracted: Map=%s, UUID=%s, EngineVersion=%s", mapName, e.uuid, EngineVersion)
 	return meta, nil
 }
 
@@ -266,6 +267,7 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		UUID:             meta.UUID,
 		UploaderUID:      meta.UploaderUID,
 		UploadTime:       meta.UploadTime,
+		EngineVersion:    meta.EngineVersion, // Preserve engine version
 		ProjectileRender: meta.ProjectileRender,
 		MapName:          meta.MapName,
 		FileName:         meta.FileName,   // Preserve original filename

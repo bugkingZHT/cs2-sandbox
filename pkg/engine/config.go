@@ -4,6 +4,12 @@ type EngineConfig struct {
 	ResolveFreezeTime bool
 }
 
+// Engine version
+const (
+	// EngineVersion is the version of the demo parsing engine
+	EngineVersion = "v1.0.0"
+)
+
 // Default game timing parameters (CS2 standard competitive settings)
 const (
 	// DefaultFreezeTime is the default freeze time in seconds

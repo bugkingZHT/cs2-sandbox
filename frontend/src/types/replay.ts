@@ -120,6 +120,7 @@ export interface ReplayMeta {
   uuid: string;
   uploaderUid: string; // 上传用户 UID (6位字符串)
   uploadTime: number; // 上传时间戳 (Unix milliseconds)
+  engineVersion?: string; // 引擎版本号
   serverPlayer?: PlayerInfo[]; // 对局中出现的所有玩家信息（按ID排序）
   mapName: string;
   teamCT: string;

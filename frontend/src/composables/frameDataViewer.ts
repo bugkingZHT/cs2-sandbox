@@ -12,21 +12,6 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
   // Format frame data as JSON
   const frameData = JSON.stringify(currentFrame, null, 2);
   
-  // Format meta data as JSON
-  const metaData = replayMeta ? JSON.stringify({
-    uuid: replayMeta.uuid,
-    uploaderUid: replayMeta.uploaderUid,
-    uploadTime: replayMeta.uploadTime,
-    mapName: replayMeta.mapName,
-    teamCT: replayMeta.teamCT,
-    teamT: replayMeta.teamT,
-    scoreCT: replayMeta.scoreCT,
-    scoreT: replayMeta.scoreT,
-    totalRounds: replayMeta.totalRounds,
-    roundResults: replayMeta.roundResults,
-    fileName: replayMeta.fileName,
-  }, null, 2) : 'No meta data available';
-  
   // Extract key statistics
   const playerCount = Object.keys(currentFrame.players || {}).length;
   const projectileCount = Object.keys(currentFrame.projectiles || {}).length;
@@ -242,7 +227,7 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
     <div class="action-bar">
       <button class="btn" onclick="copyToClipboard()">
         <span>📋</span>
-        <span>Copy All Data</span>
+        <span>Copy Frame Data</span>
       </button>
       <button class="btn" onclick="downloadJSON()">
         <span>💾</span>
@@ -271,6 +256,10 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
         <div class="stat-label">Frame Data Size</div>
         <div class="stat-value">${(dataSize / 1024).toFixed(1)} KB</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Engine Version</div>
+        <div class="stat-value">${replayMeta?.engineVersion || 'N/A'}</div>
+      </div>
     </div>
     
     <div class="data-container">
@@ -281,14 +270,6 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
       <pre id="frameData"></pre>
     </div>
     
-    <div class="data-container" style="margin-top: 30px;">
-      <div class="data-header">
-        <h3>🎯 Meta Data</h3>
-        <span class="copy-hint">Replay metadata information</span>
-      </div>
-      <pre id="metaData"></pre>
-    </div>
-    
     <div class="info-banner">
       <strong>💡 Tip:</strong> This data represents the game state at frame ${currentFrameIndex}. 
       You can use this for debugging rendering issues, analyzing player positions, or verifying projectile trajectories.
@@ -297,15 +278,12 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
   
   <script>
     const frameDataRaw = ${JSON.stringify(frameData)};
-    const metaDataRaw = ${JSON.stringify(metaData)};
     
     // Set text content safely
     document.getElementById('frameData').textContent = frameDataRaw;
-    document.getElementById('metaData').textContent = metaDataRaw;
     
     function copyToClipboard() {
-      const combined = 'FRAME DATA:\\n\\n' + frameDataRaw + '\\n\\n' + 'META DATA:\\n\\n' + metaDataRaw;
-      navigator.clipboard.writeText(combined).then(() => {
+      navigator.clipboard.writeText(frameDataRaw).then(() => {
         showToast();
       }).catch(err => {
         console.error('Failed to copy:', err);
@@ -314,11 +292,8 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
     }
     
     function downloadJSON() {
-      const combined = {
-        frameData: JSON.parse(frameDataRaw),
-        metaData: JSON.parse(metaDataRaw)
-      };
-      const blob = new Blob([JSON.stringify(combined, null, 2)], { type: 'application/json' });
+      const data = JSON.parse(frameDataRaw);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
