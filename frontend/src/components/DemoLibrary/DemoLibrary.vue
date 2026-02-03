@@ -3,8 +3,138 @@
     <!-- Modern Header -->
     <div class="library-header">
       <div class="header-content">
-        <h1 class="library-title">Counter-Strike 2 Demos</h1>
-        <p class="library-subtitle">Manage and replay your game recordings</p>
+        <!-- Filter Controls -->
+        <div class="filter-controls">
+          <div class="filter-group">
+            <div class="filter-buttons">
+              <button 
+                class="filter-btn" 
+                :class="{ active: filterStatus === 'all' }"
+                @click="filterStatus = 'all'"
+              >
+                全部
+              </button>
+              <button 
+                class="filter-btn" 
+                :class="{ active: filterStatus === 'parsed' }"
+                @click="filterStatus = 'parsed'"
+              >
+                已解析
+              </button>
+              <button 
+                class="filter-btn" 
+                :class="{ active: filterStatus === 'unparsed' }"
+                @click="filterStatus = 'unparsed'"
+              >
+                未解析
+              </button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <div class="filter-dropdown-wrapper">
+              <div class="filter-tags-input" @click="showPlayerDropdown = true">
+                <div v-if="filterPlayerNames.length > 0" class="filter-tags">
+                  <span 
+                    v-for="playerName in filterPlayerNames" 
+                    :key="playerName"
+                    class="filter-tag"
+                  >
+                    {{ playerName }}
+                    <button class="filter-tag-remove" @click.stop="removePlayerTag(playerName)">×</button>
+                  </span>
+                </div>
+                <input 
+                  type="text" 
+                  v-model="filterPlayerNameInput" 
+                  @focus="showPlayerDropdown = true"
+                  @input="onPlayerInputChange"
+                  :placeholder="filterPlayerNames.length === 0 ? '按玩家名称筛选...' : ''"
+                  class="filter-tags-input-field"
+                  autocomplete="off"
+                />
+              </div>
+              <button 
+                v-if="filterPlayerNames.length > 0"
+                class="filter-clear-btn-tags"
+                @click="clearAllPlayerTags"
+                title="清除全部"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+              <div v-if="showPlayerDropdown && filteredPlayerOptions.length > 0" class="filter-dropdown">
+                <div 
+                  v-for="playerName in filteredPlayerOptions" 
+                  :key="playerName"
+                  class="filter-dropdown-item"
+                  :class="{ selected: filterPlayerNames.includes(playerName) }"
+                  @click="togglePlayerName(playerName)"
+                >
+                  <span class="dropdown-checkbox">
+                    <svg v-if="filterPlayerNames.includes(playerName)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </span>
+                  {{ playerName }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <div class="filter-dropdown-wrapper">
+              <div class="filter-tags-input" @click="showTeamDropdown = true">
+                <div v-if="filterTeamNames.length > 0" class="filter-tags">
+                  <span 
+                    v-for="teamName in filterTeamNames" 
+                    :key="teamName"
+                    class="filter-tag"
+                  >
+                    {{ teamName }}
+                    <button class="filter-tag-remove" @click.stop="removeTeamTag(teamName)">×</button>
+                  </span>
+                </div>
+                <input 
+                  type="text" 
+                  v-model="filterTeamNameInput" 
+                  @focus="showTeamDropdown = true"
+                  @input="onTeamInputChange"
+                  :placeholder="filterTeamNames.length === 0 ? '按队伍名称筛选...' : ''"
+                  class="filter-tags-input-field"
+                  autocomplete="off"
+                />
+              </div>
+              <button 
+                v-if="filterTeamNames.length > 0"
+                class="filter-clear-btn-tags"
+                @click="clearAllTeamTags"
+                title="清除全部"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+              <div v-if="showTeamDropdown && filteredTeamOptions.length > 0" class="filter-dropdown">
+                <div 
+                  v-for="teamName in filteredTeamOptions" 
+                  :key="teamName"
+                  class="filter-dropdown-item"
+                  :class="{ selected: filterTeamNames.includes(teamName) }"
+                  @click="toggleTeamName(teamName)"
+                >
+                  <span class="dropdown-checkbox">
+                    <svg v-if="filterTeamNames.includes(teamName)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </span>
+                  {{ teamName }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="library-actions">
         <input
@@ -395,6 +525,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 import type { ReplayData } from '@/types/replay';
 import { MAP_CONFIGS } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
+import { getMetaStorage } from '@/composables/indexdb-storage';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -432,6 +563,130 @@ const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(nul
 // Force delete modal state
 const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
+
+// Filter state (real-time filtering)
+const filterTeamNames = ref<string[]>([]);
+const filterPlayerNames = ref<string[]>([]);
+const filterStatus = ref<'all' | 'parsed' | 'unparsed'>('all');
+
+// Input states
+const filterTeamNameInput = ref('');
+const filterPlayerNameInput = ref('');
+const showTeamDropdown = ref(false);
+const showPlayerDropdown = ref(false);
+const allTeamNames = ref<string[]>([]);
+const allPlayerNames = ref<string[]>([]);
+
+// Filtered team options based on input
+const filteredTeamOptions = computed(() => {
+  if (!filterTeamNameInput.value.trim()) {
+    return allTeamNames.value;
+  }
+  const search = filterTeamNameInput.value.toLowerCase();
+  return allTeamNames.value.filter(name => 
+    name.toLowerCase().includes(search)
+  );
+});
+
+// Filtered player options based on input
+const filteredPlayerOptions = computed(() => {
+  if (!filterPlayerNameInput.value.trim()) {
+    return allPlayerNames.value;
+  }
+  const search = filterPlayerNameInput.value.toLowerCase();
+  return allPlayerNames.value.filter(name => 
+    name.toLowerCase().includes(search)
+  );
+});
+
+// Load team names from IndexedDB
+const loadTeamNames = async () => {
+  try {
+    const metaStorage = await getMetaStorage();
+    allTeamNames.value = await metaStorage.getAllTeamNames();
+  } catch (error) {
+    console.error('[DemoLibrary] Failed to load team names:', error);
+  }
+};
+
+// Load player names from IndexedDB
+const loadPlayerNames = async () => {
+  try {
+    const metaStorage = await getMetaStorage();
+    allPlayerNames.value = await metaStorage.getAllPlayerNames();
+  } catch (error) {
+    console.error('[DemoLibrary] Failed to load player names:', error);
+  }
+};
+
+// Toggle player name (multi-select)
+const togglePlayerName = (playerName: string) => {
+  const index = filterPlayerNames.value.indexOf(playerName);
+  if (index > -1) {
+    filterPlayerNames.value.splice(index, 1);
+  } else {
+    filterPlayerNames.value.push(playerName);
+  }
+  filterPlayerNameInput.value = ''; // Clear input after selection
+};
+
+// Remove player tag
+const removePlayerTag = (playerName: string) => {
+  const index = filterPlayerNames.value.indexOf(playerName);
+  if (index > -1) {
+    filterPlayerNames.value.splice(index, 1);
+  }
+};
+
+// Clear all player tags
+const clearAllPlayerTags = () => {
+  filterPlayerNames.value = [];
+  filterPlayerNameInput.value = '';
+};
+
+// Toggle team name (multi-select)
+const toggleTeamName = (teamName: string) => {
+  const index = filterTeamNames.value.indexOf(teamName);
+  if (index > -1) {
+    filterTeamNames.value.splice(index, 1);
+  } else {
+    filterTeamNames.value.push(teamName);
+  }
+  filterTeamNameInput.value = ''; // Clear input after selection
+};
+
+// Remove team tag
+const removeTeamTag = (teamName: string) => {
+  const index = filterTeamNames.value.indexOf(teamName);
+  if (index > -1) {
+    filterTeamNames.value.splice(index, 1);
+  }
+};
+
+// Clear all team tags
+const clearAllTeamTags = () => {
+  filterTeamNames.value = [];
+  filterTeamNameInput.value = '';
+};
+
+// Handle team input change
+const onTeamInputChange = () => {
+  showTeamDropdown.value = true;
+};
+
+// Handle player input change
+const onPlayerInputChange = () => {
+  showPlayerDropdown.value = true;
+};
+
+// Close dropdown when clicking outside
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement;
+  if (!target.closest('.filter-dropdown-wrapper')) {
+    showTeamDropdown.value = false;
+    showPlayerDropdown.value = false;
+  }
+};
 
 // Check if any demos are currently parsing (parsingMonitor controls this)
 const hasParsingDemos = computed(() => {
@@ -566,25 +821,73 @@ const updateWasmMemory = () => {
 onMounted(() => {
   updateStorageQuota();
   updateWasmMemory();
+  loadTeamNames(); // Load team names from IndexedDB
+  loadPlayerNames(); // Load player names from IndexedDB
   
   // Update memory stats every 2 seconds
   const memoryUpdateInterval = setInterval(() => {
     updateWasmMemory();
   }, 2000);
   
+  // Add click outside listener for dropdown
+  document.addEventListener('click', handleClickOutside);
+  
   // Cleanup on unmount
   return () => {
     clearInterval(memoryUpdateInterval);
+    document.removeEventListener('click', handleClickOutside);
   };
 });
 
 watch(() => props.demoList.length, () => {
   updateStorageQuota();
   updateWasmMemory();
+  loadTeamNames(); // Reload team names when demo list changes
+  loadPlayerNames(); // Reload player names when demo list changes
 });
 
 const sortedDemoList = computed(() => {
-  return [...props.demoList].sort((a, b) => {
+  let filteredList = [...props.demoList];
+  
+  // Filter by team names (multiple)
+  if (filterTeamNames.value.length > 0) {
+    filteredList = filteredList.filter(demo => {
+      const teamCT = (demo.teamCT || '').toLowerCase();
+      const teamT = (demo.teamT || '').toLowerCase();
+      return filterTeamNames.value.some(searchTerm => {
+        const term = searchTerm.toLowerCase();
+        return teamCT.includes(term) || teamT.includes(term);
+      });
+    });
+  }
+  
+  // Filter by player names (multiple)
+  if (filterPlayerNames.value.length > 0) {
+    filteredList = filteredList.filter(demo => {
+      if (!demo.serverPlayer || !Array.isArray(demo.serverPlayer)) {
+        return false;
+      }
+      return filterPlayerNames.value.some(searchTerm => {
+        const term = searchTerm.toLowerCase();
+        return demo.serverPlayer!.some(player => 
+          player.name && player.name.toLowerCase().includes(term)
+        );
+      });
+    });
+  }
+  
+  // Filter by status
+  if (filterStatus.value === 'parsed') {
+    // status === 1 means parsed successfully
+    filteredList = filteredList.filter(demo => demo.status === 1);
+  } else if (filterStatus.value === 'unparsed') {
+    // status === 0 (parsing) or status === -1 (failed) means not successfully parsed
+    filteredList = filteredList.filter(demo => demo.status === 0 || demo.status === -1);
+  }
+  // 'all' shows everything, no filtering needed
+  
+  // Sort by timestamp (newest first)
+  return filteredList.sort((a, b) => {
     return (b.timestamp || 0) - (a.timestamp || 0);
   });
 });
@@ -829,7 +1132,7 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 
 /* === Header Styles === */
 .library-header {
-  padding: var(--ds-space-lg) var(--ds-space-xl);
+  padding: 4px var(--ds-space-xl) var(--ds-space-lg) var(--ds-space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -935,6 +1238,335 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   font-size: var(--ds-text-sm);
   color: var(--ds-text-tertiary);
   margin: 0;
+}
+
+/* === Filter Controls === */
+.filter-controls {
+  display: flex;
+  gap: var(--ds-space-xl);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-md);
+}
+
+.filter-label {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+}
+
+.filter-tags-input {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 36px 4px 8px;
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  min-width: 200px;
+  max-width: 300px;
+  min-height: 36px;
+  cursor: text;
+  transition: all var(--ds-transition-base);
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Hide scrollbar but keep functionality */
+.filter-tags-input::-webkit-scrollbar {
+  height: 0;
+  display: none;
+}
+
+.filter-tags-input {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.filter-tags-input:hover {
+  border-color: var(--ds-border-strong);
+}
+
+.filter-tags-input:focus-within {
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+}
+
+.filter-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(78, 204, 163, 0.15);
+  border: 1px solid rgba(78, 204, 163, 0.3);
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.filter-tag-remove {
+  padding: 0;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--ds-primary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--ds-transition-base);
+}
+
+.filter-tag-remove:hover {
+  background: rgba(78, 204, 163, 0.25);
+  color: var(--ds-text-primary);
+}
+
+.filter-tags-input-field {
+  flex: 1 1 auto;
+  min-width: 60px;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.filter-tags-input-field::placeholder {
+  color: var(--ds-text-tertiary);
+  font-weight: 400;
+}
+
+.filter-input {
+  padding: var(--ds-space-xs) var(--ds-space-md);
+  padding-right: 36px; /* Make room for clear button */
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  min-width: 200px;
+  height: 36px;
+  transition: all var(--ds-transition-base);
+  box-sizing: border-box;
+}
+
+.filter-clear-btn-tags {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--ds-transition-base);
+  z-index: 1;
+}
+
+.filter-clear-btn-tags:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.filter-clear-btn-tags:active {
+  transform: translateY(-50%) scale(0.9);
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+}
+
+.filter-input::placeholder {
+  color: var(--ds-text-tertiary);
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-xl);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  animation: slideDown 0.15s ease;
+}
+
+/* Custom scrollbar styling */
+.filter-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.filter-dropdown::-webkit-scrollbar-track {
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-md);
+  margin: 4px 0;
+}
+
+.filter-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(78, 204, 163, 0.3);
+  border-radius: var(--ds-radius-md);
+  transition: background var(--ds-transition-base);
+}
+
+.filter-dropdown::-webkit-scrollbar-thumb:hover {
+  background: rgba(78, 204, 163, 0.5);
+}
+
+.filter-dropdown::-webkit-scrollbar-thumb:active {
+  background: var(--ds-primary);
+}
+
+/* Firefox scrollbar styling */
+.filter-dropdown {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(78, 204, 163, 0.3) var(--ds-surface-base);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filter-dropdown-item {
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  border-bottom: 1px solid var(--ds-border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dropdown-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--ds-transition-base);
+}
+
+.filter-dropdown-item:hover .dropdown-checkbox {
+  border-color: var(--ds-primary);
+}
+
+.filter-dropdown-item.selected .dropdown-checkbox {
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+}
+
+.dropdown-checkbox svg {
+  stroke: white;
+}
+
+.filter-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.filter-dropdown-item:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.filter-dropdown-item.selected {
+  background: rgba(78, 204, 163, 0.1);
+  color: var(--ds-primary);
+  font-weight: 600;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: var(--ds-space-xs);
+  background: var(--ds-surface-base);
+  padding: 3px;
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-subtle);
+  height: 36px;
+  box-sizing: border-box;
+}
+
+.filter-btn {
+  padding: 4px var(--ds-space-md);
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  white-space: nowrap;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.filter-btn:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.filter-btn.active {
+  background: var(--ds-primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.3);
 }
 
 .library-actions {
@@ -1132,16 +1764,10 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 
 .demo-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--ds-space-lg);
   max-width: 100%;
   margin: 0 auto;
-}
-
-@media (max-width: 1800px) {
-  .demo-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
 }
 
 @media (max-width: 1400px) {

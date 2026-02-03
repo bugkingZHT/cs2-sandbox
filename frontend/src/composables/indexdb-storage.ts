@@ -20,10 +20,11 @@ export class IndexedDBMetaStorage {
       
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        
+
         // Create meta store with uuid as key
         if (!db.objectStoreNames.contains(META_STORE)) {
           const store = db.createObjectStore(META_STORE, { keyPath: 'uuid' });
+          // Subindexes
           store.createIndex('uploadTime', 'uploadTime', { unique: false });
           store.createIndex('status', 'status', { unique: false });
           console.log('[IndexedDB] Created meta store with indexes');
@@ -124,6 +125,73 @@ export class IndexedDBMetaStorage {
       const request = index.getAll(0); // status = 0 (parsing)
       
       request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Get all unique team names from both teamCT and teamT
+  async getAllTeamNames(): Promise<string[]> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readonly');
+      const store = tx.objectStore(META_STORE);
+      const request = store.getAll();
+      
+      request.onsuccess = () => {
+        const metas = request.result || [];
+        const teamNamesSet = new Set<string>();
+        
+        metas.forEach((meta: ReplayMeta) => {
+          if (meta.teamCT && meta.teamCT.trim()) {
+            teamNamesSet.add(meta.teamCT.trim());
+          }
+          if (meta.teamT && meta.teamT.trim()) {
+            teamNamesSet.add(meta.teamT.trim());
+          }
+        });
+        
+        // Convert to sorted array
+        const teamNames = Array.from(teamNamesSet).sort((a, b) => 
+          a.toLowerCase().localeCompare(b.toLowerCase())
+        );
+        
+        resolve(teamNames);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Get all unique player names from serverPlayer
+  async getAllPlayerNames(): Promise<string[]> {
+    if (!this.db) throw new Error('DB not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(META_STORE, 'readonly');
+      const store = tx.objectStore(META_STORE);
+      const request = store.getAll();
+      
+      request.onsuccess = () => {
+        const metas = request.result || [];
+        const playerNamesSet = new Set<string>();
+        
+        metas.forEach((meta: ReplayMeta) => {
+          if (meta.serverPlayer && Array.isArray(meta.serverPlayer)) {
+            meta.serverPlayer.forEach(player => {
+              if (player.name && player.name.trim()) {
+                playerNamesSet.add(player.name.trim());
+              }
+            });
+          }
+        });
+        
+        // Convert to sorted array
+        const playerNames = Array.from(playerNamesSet).sort((a, b) => 
+          a.toLowerCase().localeCompare(b.toLowerCase())
+        );
+        
+        resolve(playerNames);
+      };
       request.onerror = () => reject(request.error);
     });
   }

@@ -278,10 +278,12 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		ParsingStatus:   meta.ParsingStatus,
 		LastTickTime:    meta.LastTickTime,
 		// Update team info and scores
-		TeamCT:       gs.TeamCounterTerrorists().ClanName(),
-		TeamT:        gs.TeamTerrorists().ClanName(),
-		ScoreCT:      gs.TeamCounterTerrorists().Score(),
-		ScoreT:       gs.TeamTerrorists().Score(),
+		// ATTENTION: This is the last frame, so need to switch T and CT to represent starting actual teams
+		TeamCT:  gs.TeamTerrorists().ClanName(),
+		TeamT:   gs.TeamCounterTerrorists().ClanName(),
+		ScoreCT: gs.TeamTerrorists().Score(),
+		ScoreT:  gs.TeamCounterTerrorists().Score(),
+
 		TotalRounds:  e.builder.currentRound,
 		RoundResults: e.builder.roundResults, // Add round results from builder
 		ServerPlayer: serverPlayers,          // Add sorted player info
