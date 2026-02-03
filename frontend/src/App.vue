@@ -1,77 +1,96 @@
 <template>
   <div class="app">
-    <!-- Top Navigation Bar -->
-    <header class="app-top-bar">
-      <div class="app-branding">
-        <img src="/logo/logo.png" alt="Snowbo" class="app-logo" @error="onLogoError" />
-        <h1 class="app-title">Snowbo 🧀 雪豹</h1>
+    <!-- Collapsible Sidebar -->
+    <aside class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <!-- Sidebar Header -->
+      <div class="sidebar-header">
+        <div class="app-branding" v-show="!sidebarCollapsed">
+          <img src="/logo/logo.png" alt="Snowbo" class="app-logo" @error="onLogoError" />
+          <div class="app-title-group">
+            <h1 class="app-title">Snowbo 🧀 雪豹</h1>
+            <p class="app-subtitle">CS2 Demo Workshop</p>
+          </div>
+        </div>
+        
+        <!-- Collapse Toggle Button -->
+        <button class="collapse-btn" @click="toggleSidebar" :title="sidebarCollapsed ? '展开' : '折叠'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline :points="sidebarCollapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6'"/>
+          </svg>
+        </button>
       </div>
-      
-      <nav class="app-tabs">
+
+      <!-- Navigation -->
+      <nav class="sidebar-nav">
         <button 
-          class="tab-btn" 
+          class="nav-btn" 
           :class="{ active: currentPage === 'library' }"
           @click="currentPage = 'library'"
+          :title="sidebarCollapsed ? 'Demo 库' : ''"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
-          <span>Demo 库</span>
+          <span v-show="!sidebarCollapsed" class="nav-text">Demo 库</span>
         </button>
+        
         <button 
-          class="tab-btn" 
+          class="nav-btn" 
           :class="{ active: currentPage === 'player' }"
           @click="currentPage = 'player'"
           :disabled="!hasSelectedDemo"
+          :title="sidebarCollapsed ? '2D 播放器' : ''"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3"/>
           </svg>
-          <span>2D 播放器</span>
+          <span v-show="!sidebarCollapsed" class="nav-text">2D 播放器</span>
         </button>
       </nav>
 
-      <!-- Debug Dropdown Menu -->
-      <div v-if="DEBUG_CONFIG.enableFrameDataViewer || DEBUG_CONFIG.enableOPFSStorageViewer" class="debug-dropdown" ref="debugDropdownRef">
-        <button class="debug-btn" @click="toggleDebugMenu" title="Debug Tools">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg>
-          <svg class="chevron" :class="{ open: showDebugMenu }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-
-        <div v-if="showDebugMenu" class="debug-menu">
+      <!-- Debug Menu (Bottom Section) -->
+      <div v-if="DEBUG_CONFIG.enableFrameDataViewer || DEBUG_CONFIG.enableOPFSStorageViewer" class="sidebar-footer">
+        <div class="debug-dropdown" ref="debugDropdownRef">
+          <!-- Debug Toggle Button -->
           <button 
-            v-if="DEBUG_CONFIG.enableFrameDataViewer && currentPage === 'player'"
-            class="debug-menu-item"
-            @click="handleFrameDataViewer"
-            title="查看当前帧数据"
+            class="debug-toggle-btn"
+            @click="toggleDebugMenu"
+            :title="sidebarCollapsed ? 'Debug Tools' : 'Debug 工具'"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
-            <span>帧数据查看器</span>
+            <img src="/icons/debug.svg" alt="Debug" class="debug-icon" />
+            <span v-show="!sidebarCollapsed" class="debug-label">Debug</span>
           </button>
 
-          <button 
-            v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
-            class="debug-menu-item"
-            @click="handleOPFSViewer"
-            title="查看 OPFS 存储详情"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            <span>OPFS 存储查看器</span>
-          </button>
+          <!-- Upward Expanding Menu -->
+          <div v-if="showDebugMenu" class="debug-menu-upward">
+            <button 
+              v-if="DEBUG_CONFIG.enableFrameDataViewer && currentPage === 'player'"
+              class="debug-menu-item"
+              @click="handleFrameDataViewer"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+              </svg>
+              <span v-show="!sidebarCollapsed">帧数据查看器</span>
+            </button>
+
+            <button 
+              v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+              class="debug-menu-item"
+              @click="handleOPFSViewer"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span v-show="!sidebarCollapsed">OPFS 存储查看器</span>
+            </button>
+          </div>
         </div>
       </div>
-    </header>
+    </aside>
 
-    <main class="app-main">
+    <main class="app-main" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <!-- Demo Library Page -->
       <DemoLibrary
         v-if="currentPage === 'library'"
@@ -108,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
 import { useReplayData } from '@/composables/useReplayData';
@@ -128,10 +147,26 @@ const {
 
 const currentPage = ref<'library' | 'player'>('library');
 const currentDemoId = ref<string | null>(null);
+const sidebarCollapsed = ref(false);
 const showDebugMenu = ref(false);
 const debugDropdownRef = ref<HTMLElement | null>(null);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
+
+const toggleSidebar = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+};
+
+const toggleDebugMenu = () => {
+  showDebugMenu.value = !showDebugMenu.value;
+};
+
+// Auto-collapse sidebar when switching to player page
+watch(currentPage, (newPage) => {
+  if (newPage === 'player' && !sidebarCollapsed.value) {
+    sidebarCollapsed.value = true;
+  }
+});
 
 const onLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement;
@@ -165,10 +200,6 @@ const onExitReplay = () => {
 };
 
 // Debug menu handlers
-const toggleDebugMenu = () => {
-  showDebugMenu.value = !showDebugMenu.value;
-};
-
 const handleFrameDataViewer = () => {
   showDebugMenu.value = false;
   // Emit event to ReplayPlayer to trigger frame data viewer
@@ -200,7 +231,6 @@ onUnmounted(() => {
 /* === App Layout === */
 .app {
   display: flex;
-  flex-direction: column;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
@@ -208,22 +238,45 @@ onUnmounted(() => {
   color: var(--ds-text-secondary);
 }
 
-/* === Top Bar === */
-.app-top-bar {
-  height: 64px;
+/* === Sidebar === */
+.app-sidebar {
+  width: 260px;
   background: var(--ds-bg-secondary);
-  border-bottom: 2px solid var(--ds-border-accent);
+  border-right: 2px solid var(--ds-border-accent);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width var(--ds-transition-slow);
+  overflow: hidden;
+}
+
+.app-sidebar.collapsed {
+  width: 72px;
+}
+
+/* === Sidebar Header === */
+.sidebar-header {
+  height: 72px;
+  padding: var(--ds-space-lg) var(--ds-space-lg);
+  border-bottom: 1px solid var(--ds-border-subtle);
   display: flex;
   align-items: center;
-  padding: 0 var(--ds-space-2xl);
+  justify-content: space-between;
   flex-shrink: 0;
-  gap: var(--ds-space-3xl);
+  gap: var(--ds-space-md);
+}
+
+.collapsed .sidebar-header {
+  justify-content: center;
+  padding: var(--ds-space-lg) var(--ds-space-md);
 }
 
 .app-branding {
   display: flex;
   align-items: center;
   gap: var(--ds-space-md);
+  min-width: 0;
+  flex: 1;
 }
 
 .app-logo {
@@ -231,76 +284,157 @@ onUnmounted(() => {
   height: 32px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  flex-shrink: 0;
+}
+
+.app-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .app-title {
-  font-size: var(--ds-text-xl);
+  font-size: var(--ds-text-lg);
   font-weight: 700;
   color: var(--ds-text-primary);
   margin: 0;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
-/* === Tabs === */
-.app-tabs {
+.app-subtitle {
+  font-size: var(--ds-text-xs);
+  font-weight: 500;
+  color: var(--ds-text-tertiary);
+  margin: 0;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  opacity: 0.8;
+}
+
+.collapse-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
   display: flex;
-  gap: var(--ds-space-sm);
-  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.tab-btn {
-  padding: var(--ds-space-md) var(--ds-space-xl);
+.collapse-btn:hover {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text-primary);
+}
+
+.collapse-btn svg {
+  transition: transform var(--ds-transition-base);
+}
+
+/* === Sidebar Navigation === */
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--ds-space-lg) var(--ds-space-md);
+  gap: var(--ds-space-sm);
+  overflow-y: auto;
+}
+
+.nav-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--ds-space-md) var(--ds-space-lg);
   background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-tertiary);
   font-size: var(--ds-text-base);
   font-weight: 600;
   cursor: pointer;
   transition: all var(--ds-transition-base);
-  white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: var(--ds-space-sm);
+  gap: var(--ds-space-md);
+  text-align: left;
 }
 
-.tab-btn svg {
+.collapsed .nav-btn {
+  justify-content: center;
+  padding: var(--ds-space-md);
+}
+
+.nav-btn svg {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  transition: all var(--ds-transition-base);
 }
 
-.tab-btn:hover:not(:disabled) {
-  color: var(--ds-text-primary);
+.nav-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity var(--ds-transition-base);
+}
+
+.collapsed .nav-text {
+  opacity: 0;
+  width: 0;
+}
+
+.nav-btn:hover:not(:disabled) {
   background: var(--ds-surface-base);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-default);
 }
 
-.tab-btn.active {
+.nav-btn.active {
+  background: var(--ds-surface-elevated);
   color: var(--ds-primary);
-  border-bottom-color: var(--ds-primary);
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
 }
 
-.tab-btn.active svg {
+.nav-btn.active svg {
   stroke: var(--ds-primary);
 }
 
-.tab-btn:disabled {
+.nav-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* === Debug Dropdown === */
-.debug-dropdown {
-  position: relative;
-  margin-left: auto;
+/* === Sidebar Footer (Debug Section) === */
+.sidebar-footer {
+  padding: var(--ds-space-lg) var(--ds-space-md);
+  border-top: 1px solid var(--ds-border-subtle);
+  flex-shrink: 0;
 }
 
-.debug-btn {
-  height: 38px;
-  padding: 0 var(--ds-space-md);
-  background: rgba(74, 171, 247, 0.15);
-  border: 1px solid rgba(74, 171, 247, 0.4);
-  border-radius: var(--ds-radius-sm);
+.debug-dropdown {
+  position: relative;
+}
+
+.debug-toggle-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  background: rgba(74, 171, 247, 0.1);
+  border: 1px solid rgba(74, 171, 247, 0.3);
+  border-radius: var(--ds-radius-md);
   color: #4dabf7;
   font-size: var(--ds-text-sm);
   font-weight: 600;
@@ -308,51 +442,70 @@ onUnmounted(() => {
   transition: all var(--ds-transition-base);
   display: flex;
   align-items: center;
-  gap: var(--ds-space-sm);
-  white-space: nowrap;
+  gap: var(--ds-space-md);
+  text-align: left;
 }
 
-.debug-btn:hover {
-  background: rgba(74, 171, 247, 0.25);
-  border-color: rgba(74, 171, 247, 0.6);
-  box-shadow: 0 2px 8px rgba(74, 171, 247, 0.3);
+.collapsed .debug-toggle-btn {
+  justify-content: center;
+  padding: var(--ds-space-md);
 }
 
-.debug-btn svg {
+.debug-toggle-btn:hover {
+  background: rgba(74, 171, 247, 0.2);
+  border-color: rgba(74, 171, 247, 0.5);
+  box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
+}
+
+.debug-icon {
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
+  filter: brightness(0) saturate(100%) invert(67%) sepia(46%) saturate(1593%) hue-rotate(179deg) brightness(101%) contrast(93%);
 }
 
-.debug-btn .chevron {
-  transition: transform var(--ds-transition-base);
+.debug-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity var(--ds-transition-base);
 }
 
-.debug-btn .chevron.open {
-  transform: rotate(180deg);
+.collapsed .debug-label {
+  opacity: 0;
+  width: 0;
 }
 
-.debug-menu {
+/* Upward Expanding Menu */
+.debug-menu-upward {
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
+  left: 0;
   right: 0;
-  min-width: 200px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
   box-shadow: var(--ds-shadow-xl);
   overflow: hidden;
-  z-index: 100;
-  animation: slideDown 0.2s ease;
+  z-index: var(--ds-z-dropdown);
+  animation: slideUp 0.2s ease;
 }
 
-@keyframes slideDown {
+@keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.collapsed .debug-menu-upward {
+  min-width: 200px;
+  left: auto;
+  right: 0;
 }
 
 .debug-menu-item {
@@ -390,12 +543,17 @@ onUnmounted(() => {
   opacity: 1;
 }
 
+.collapsed .debug-menu-item span {
+  display: inline;
+}
+
 /* === Main Content === */
 .app-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: margin-left var(--ds-transition-slow);
 }
 
 /* === Parsing Modal === */
