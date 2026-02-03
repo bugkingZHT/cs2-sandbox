@@ -48,45 +48,16 @@
         </button>
       </nav>
 
-      <!-- Debug Menu (Bottom Section) -->
+      <!-- Debug Button (Bottom Section) -->
       <div v-if="DEBUG_CONFIG.enableFrameDataViewer || DEBUG_CONFIG.enableOPFSStorageViewer" class="sidebar-footer">
-        <div class="debug-dropdown" ref="debugDropdownRef">
-          <!-- Debug Toggle Button -->
-          <button 
-            class="debug-toggle-btn"
-            @click="toggleDebugMenu"
-            :title="sidebarCollapsed ? 'Debug Tools' : 'Debug 工具'"
-          >
-            <img src="/icons/debug.svg" alt="Debug" class="debug-icon" />
-            <span v-show="!sidebarCollapsed" class="debug-label">Debug</span>
-          </button>
-
-          <!-- Upward Expanding Menu -->
-          <div v-if="showDebugMenu" class="debug-menu-upward">
-            <button 
-              v-if="DEBUG_CONFIG.enableFrameDataViewer && currentPage === 'player'"
-              class="debug-menu-item"
-              @click="handleFrameDataViewer"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.35-4.35"/>
-              </svg>
-              <span v-show="!sidebarCollapsed">帧数据查看器</span>
-            </button>
-
-            <button 
-              v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
-              class="debug-menu-item"
-              @click="handleOPFSViewer"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span v-show="!sidebarCollapsed">OPFS 存储查看器</span>
-            </button>
-          </div>
-        </div>
+        <button 
+          class="debug-toggle-btn"
+          @click="showDebugModal = true"
+          :title="sidebarCollapsed ? 'Debug Tools' : 'Debug 工具'"
+        >
+          <img src="/icons/debug.svg" alt="Debug" class="debug-icon" />
+          <span v-show="!sidebarCollapsed" class="debug-label">Debug</span>
+        </button>
       </div>
     </aside>
 
@@ -123,11 +94,51 @@
         <p class="parsing-status">{{ parsingStatus }}</p>
       </div>
     </div>
+
+    <!-- Debug Tools Modal -->
+    <div v-if="showDebugModal" class="debug-modal-overlay" @click="showDebugModal = false">
+      <div class="debug-modal" @click.stop>
+        <button class="modal-close-btn" @click="showDebugModal = false" title="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <div class="modal-icon">
+          <img src="/icons/debug.svg" alt="Debug" class="debug-icon-large" />
+        </div>
+        <h3 class="modal-title">Debug Tools</h3>
+        <p class="modal-message">Select a debug tool to use</p>
+        <div class="modal-actions-vertical">
+          <button 
+            v-if="DEBUG_CONFIG.enableFrameDataViewer && currentPage === 'player'"
+            class="ds-btn ds-btn-debug"
+            @click="handleFrameDataViewer"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <span>帧数据查看器</span>
+          </button>
+          <button 
+            v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+            class="ds-btn ds-btn-debug"
+            @click="handleOPFSViewer"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>OPFS 存储查看器</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
 import { useReplayData } from '@/composables/useReplayData';
@@ -148,17 +159,12 @@ const {
 const currentPage = ref<'library' | 'player'>('library');
 const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
-const showDebugMenu = ref(false);
-const debugDropdownRef = ref<HTMLElement | null>(null);
+const showDebugModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value;
-};
-
-const toggleDebugMenu = () => {
-  showDebugMenu.value = !showDebugMenu.value;
 };
 
 // Auto-collapse sidebar when switching to player page
@@ -199,32 +205,17 @@ const onExitReplay = () => {
   currentPage.value = 'library';
 };
 
-// Debug menu handlers
+// Debug modal handlers
 const handleFrameDataViewer = () => {
-  showDebugMenu.value = false;
+  showDebugModal.value = false;
   // Emit event to ReplayPlayer to trigger frame data viewer
   window.dispatchEvent(new CustomEvent('debug:show-frame-data'));
 };
 
 const handleOPFSViewer = async () => {
-  showDebugMenu.value = false;
+  showDebugModal.value = false;
   await showOPFSStorageDetails();
 };
-
-// Close debug menu when clicking outside
-const handleClickOutside = (event: MouseEvent) => {
-  if (debugDropdownRef.value && !debugDropdownRef.value.contains(event.target as Node)) {
-    showDebugMenu.value = false;
-  }
-};
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-});
 </script>
 
 <style scoped>
@@ -424,10 +415,6 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.debug-dropdown {
-  position: relative;
-}
-
 .debug-toggle-btn {
   width: 100%;
   min-height: 48px;
@@ -474,77 +461,6 @@ onUnmounted(() => {
 .collapsed .debug-label {
   opacity: 0;
   width: 0;
-}
-
-/* Upward Expanding Menu */
-.debug-menu-upward {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--ds-radius-md);
-  box-shadow: var(--ds-shadow-xl);
-  overflow: hidden;
-  z-index: var(--ds-z-dropdown);
-  animation: slideUp 0.2s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.collapsed .debug-menu-upward {
-  min-width: 200px;
-  left: auto;
-  right: 0;
-}
-
-.debug-menu-item {
-  width: 100%;
-  padding: var(--ds-space-md) var(--ds-space-lg);
-  background: transparent;
-  border: none;
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-md);
-  text-align: left;
-  border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.debug-menu-item:last-child {
-  border-bottom: none;
-}
-
-.debug-menu-item:hover {
-  background: var(--ds-surface-base);
-  color: var(--ds-text-primary);
-}
-
-.debug-menu-item svg {
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-.debug-menu-item:hover svg {
-  opacity: 1;
-}
-
-.collapsed .debug-menu-item span {
-  display: inline;
 }
 
 /* === Main Content === */
@@ -646,5 +562,132 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* === Debug Modal === */
+.debug-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--ds-bg-overlay);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--ds-z-modal);
+  animation: fadeIn 0.2s ease;
+}
+
+.debug-modal {
+  max-width: 440px;
+  width: 90vw;
+  padding: var(--ds-space-3xl);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-xl);
+  text-align: center;
+  animation: slideUp 0.3s ease;
+  position: relative;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: var(--ds-space-lg);
+  right: var(--ds-space-lg);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close-btn:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.modal-close-btn:active {
+  transform: scale(0.95);
+}
+
+.modal-icon {
+  margin-bottom: var(--ds-space-xl);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.debug-icon-large {
+  width: 64px;
+  height: 64px;
+  filter: brightness(0) saturate(100%) invert(67%) sepia(46%) saturate(1593%) hue-rotate(179deg) brightness(101%) contrast(93%);
+}
+
+.modal-title {
+  margin: 0 0 var(--ds-space-md) 0;
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-xl);
+  font-weight: 600;
+}
+
+.modal-message {
+  margin: 0 0 var(--ds-space-2xl) 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-base);
+  line-height: 1.6;
+}
+
+.modal-actions-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-md);
+}
+
+.ds-btn-debug {
+  width: 100%;
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  background: rgba(74, 171, 247, 0.1);
+  border: 1px solid rgba(74, 171, 247, 0.3);
+  border-radius: var(--ds-radius-md);
+  color: #4dabf7;
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-md);
+}
+
+.ds-btn-debug:hover {
+  background: rgba(74, 171, 247, 0.2);
+  border-color: rgba(74, 171, 247, 0.5);
+  box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
+}
+
+.ds-btn-debug svg {
+  flex-shrink: 0;
 }
 </style>

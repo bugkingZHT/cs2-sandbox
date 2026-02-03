@@ -32,38 +32,34 @@
           </div>
           <div class="filter-group">
             <div class="filter-dropdown-wrapper">
-              <div class="filter-tags-input" @click="showPlayerDropdown = true">
-                <div v-if="filterPlayerNames.length > 0" class="filter-tags">
-                  <span 
-                    v-for="playerName in filterPlayerNames" 
-                    :key="playerName"
-                    class="filter-tag"
-                  >
-                    {{ playerName }}
-                    <button class="filter-tag-remove" @click.stop="removePlayerTag(playerName)">×</button>
-                  </span>
-                </div>
+              <div 
+                class="filter-tags-input" 
+                :class="{ 'has-selection': filterPlayerNames.length > 0 }"
+                @click="handlePlayerDropdownClick"
+              >
+                <span v-if="filterPlayerNames.length > 0" class="filter-selection-text">
+                  {{ filterPlayerNames.join(', ') }}
+                </span>
                 <input 
+                  v-else
                   type="text" 
                   v-model="filterPlayerNameInput" 
                   @focus="showPlayerDropdown = true"
                   @input="onPlayerInputChange"
-                  :placeholder="filterPlayerNames.length === 0 ? '按玩家名称筛选...' : ''"
+                  placeholder="按玩家名称筛选"
                   class="filter-tags-input-field"
                   autocomplete="off"
                 />
+                <span class="filter-icon" @click.stop="handlePlayerIconClick">
+                  <svg v-if="filterPlayerNames.length === 0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </span>
               </div>
-              <button 
-                v-if="filterPlayerNames.length > 0"
-                class="filter-clear-btn-tags"
-                @click="clearAllPlayerTags"
-                title="清除全部"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
               <div v-if="showPlayerDropdown && filteredPlayerOptions.length > 0" class="filter-dropdown">
                 <div 
                   v-for="playerName in filteredPlayerOptions" 
@@ -77,45 +73,42 @@
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   </span>
-                  {{ playerName }}
+                  <span class="dropdown-item-name">{{ playerName }}</span>
+                  <span class="dropdown-item-count">({{ getPlayerDemoCount(playerName) }})</span>
                 </div>
               </div>
             </div>
           </div>
           <div class="filter-group">
             <div class="filter-dropdown-wrapper">
-              <div class="filter-tags-input" @click="showTeamDropdown = true">
-                <div v-if="filterTeamNames.length > 0" class="filter-tags">
-                  <span 
-                    v-for="teamName in filterTeamNames" 
-                    :key="teamName"
-                    class="filter-tag"
-                  >
-                    {{ teamName }}
-                    <button class="filter-tag-remove" @click.stop="removeTeamTag(teamName)">×</button>
-                  </span>
-                </div>
+              <div 
+                class="filter-tags-input" 
+                :class="{ 'has-selection': filterTeamNames.length > 0 }"
+                @click="handleTeamDropdownClick"
+              >
+                <span v-if="filterTeamNames.length > 0" class="filter-selection-text">
+                  {{ filterTeamNames.join(', ') }}
+                </span>
                 <input 
+                  v-else
                   type="text" 
                   v-model="filterTeamNameInput" 
                   @focus="showTeamDropdown = true"
                   @input="onTeamInputChange"
-                  :placeholder="filterTeamNames.length === 0 ? '按队伍名称筛选...' : ''"
+                  placeholder="按队伍名称筛选"
                   class="filter-tags-input-field"
                   autocomplete="off"
                 />
+                <span class="filter-icon" @click.stop="handleTeamIconClick">
+                  <svg v-if="filterTeamNames.length === 0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </span>
               </div>
-              <button 
-                v-if="filterTeamNames.length > 0"
-                class="filter-clear-btn-tags"
-                @click="clearAllTeamTags"
-                title="清除全部"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
               <div v-if="showTeamDropdown && filteredTeamOptions.length > 0" class="filter-dropdown">
                 <div 
                   v-for="teamName in filteredTeamOptions" 
@@ -129,7 +122,8 @@
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   </span>
-                  {{ teamName }}
+                  <span class="dropdown-item-name">{{ teamName }}</span>
+                  <span class="dropdown-item-count">({{ getTeamDemoCount(teamName) }})</span>
                 </div>
               </div>
             </div>
@@ -301,12 +295,26 @@
                 <span>{{ demo.mapName || 'Unknown Map' }}</span>
               </div>
               
-              <!-- Current Playing Badge -->
-              <div v-if="demo.id === currentDemoId" class="playing-badge">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-                <span>PLAYING</span>
+              <div class="badge-group">
+                <!-- Player Win/Loss Badge (only when single player filter is active) -->
+                <div 
+                  v-if="filterPlayerNames.length === 1 && getPlayerWinLoss(demo, filterPlayerNames[0])"
+                  class="player-result-badge"
+                  :class="getPlayerWinLoss(demo, filterPlayerNames[0])"
+                >
+                  {{ 
+                    getPlayerWinLoss(demo, filterPlayerNames[0]) === 'win' ? '胜' : 
+                    getPlayerWinLoss(demo, filterPlayerNames[0]) === 'loss' ? '负' : '平'
+                  }}
+                </div>
+                
+                <!-- Current Playing Badge -->
+                <div v-if="demo.id === currentDemoId" class="playing-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                  <span>PLAYING</span>
+                </div>
               </div>
             </div>
 
@@ -470,7 +478,9 @@
         <div v-if="uploadBlockedInfo" class="modal-info">
           <div class="modal-info-row">
             <span class="info-label">正在解析:</span>
-            <span class="info-value">{{ uploadBlockedInfo.fileName }}</span>
+            <span class="info-value filename-truncate" :title="uploadBlockedInfo.fileName">
+              {{ uploadBlockedInfo.fileName }}
+            </span>
           </div>
           <div class="modal-info-row">
             <span class="info-label">解析进度:</span>
@@ -496,7 +506,7 @@
         </div>
         <h3 class="modal-title">Force Delete Parsing Demo</h3>
         <p class="modal-message">
-          Demo <strong>{{ demoToForceDelete?.fileName || demoToForceDelete?.mapName }}</strong> is currently being parsed.
+          Demo <strong class="filename-truncate" :title="demoToForceDelete?.fileName || demoToForceDelete?.mapName">{{ demoToForceDelete?.fileName || demoToForceDelete?.mapName }}</strong> is currently being parsed.
         </p>
         <div v-if="demoToForceDelete" class="modal-info">
           <div class="modal-info-row">
@@ -579,25 +589,89 @@ const allPlayerNames = ref<string[]>([]);
 
 // Filtered team options based on input
 const filteredTeamOptions = computed(() => {
-  if (!filterTeamNameInput.value.trim()) {
-    return allTeamNames.value;
+  // Count demos for each team
+  const teamCounts = new Map<string, number>();
+  props.demoList.forEach(demo => {
+    if (demo.teamCT && demo.teamCT.trim()) {
+      teamCounts.set(demo.teamCT.trim(), (teamCounts.get(demo.teamCT.trim()) || 0) + 1);
+    }
+    if (demo.teamT && demo.teamT.trim()) {
+      teamCounts.set(demo.teamT.trim(), (teamCounts.get(demo.teamT.trim()) || 0) + 1);
+    }
+  });
+  
+  let teams = allTeamNames.value;
+  
+  // Filter by input if provided
+  if (filterTeamNameInput.value.trim()) {
+    const search = filterTeamNameInput.value.toLowerCase();
+    teams = teams.filter(name => name.toLowerCase().includes(search));
   }
-  const search = filterTeamNameInput.value.toLowerCase();
-  return allTeamNames.value.filter(name => 
-    name.toLowerCase().includes(search)
-  );
+  
+  // Sort by demo count (descending)
+  return teams.sort((a, b) => {
+    const countA = teamCounts.get(a) || 0;
+    const countB = teamCounts.get(b) || 0;
+    return countB - countA;
+  });
 });
 
 // Filtered player options based on input
 const filteredPlayerOptions = computed(() => {
-  if (!filterPlayerNameInput.value.trim()) {
-    return allPlayerNames.value;
+  // Count demos for each player
+  const playerCounts = new Map<string, number>();
+  props.demoList.forEach(demo => {
+    if (demo.serverPlayer && Array.isArray(demo.serverPlayer)) {
+      demo.serverPlayer.forEach(player => {
+        if (player.name && player.name.trim()) {
+          const name = player.name.trim();
+          playerCounts.set(name, (playerCounts.get(name) || 0) + 1);
+        }
+      });
+    }
+  });
+  
+  let players = allPlayerNames.value;
+  
+  // Filter by input if provided
+  if (filterPlayerNameInput.value.trim()) {
+    const search = filterPlayerNameInput.value.toLowerCase();
+    players = players.filter(name => name.toLowerCase().includes(search));
   }
-  const search = filterPlayerNameInput.value.toLowerCase();
-  return allPlayerNames.value.filter(name => 
-    name.toLowerCase().includes(search)
-  );
+  
+  // Sort by demo count (descending)
+  return players.sort((a, b) => {
+    const countA = playerCounts.get(a) || 0;
+    const countB = playerCounts.get(b) || 0;
+    return countB - countA;
+  });
 });
+
+// Get demo count for a team
+const getTeamDemoCount = (teamName: string): number => {
+  let count = 0;
+  props.demoList.forEach(demo => {
+    if ((demo.teamCT && demo.teamCT.trim() === teamName) || 
+        (demo.teamT && demo.teamT.trim() === teamName)) {
+      count++;
+    }
+  });
+  return count;
+};
+
+// Get demo count for a player
+const getPlayerDemoCount = (playerName: string): number => {
+  let count = 0;
+  props.demoList.forEach(demo => {
+    if (demo.serverPlayer && Array.isArray(demo.serverPlayer)) {
+      const hasPlayer = demo.serverPlayer.some(player => 
+        player.name && player.name.trim() === playerName
+      );
+      if (hasPlayer) count++;
+    }
+  });
+  return count;
+};
 
 // Load team names from IndexedDB
 const loadTeamNames = async () => {
@@ -625,15 +699,18 @@ const loadPlayerNames = async () => {
   }
 };
 
-// Toggle player name (multi-select)
+// Toggle player name (single-select)
 const togglePlayerName = (playerName: string) => {
   const index = filterPlayerNames.value.indexOf(playerName);
   if (index > -1) {
+    // If clicking the same player, deselect it
     filterPlayerNames.value.splice(index, 1);
   } else {
-    filterPlayerNames.value.push(playerName);
+    // Single-select: replace current selection
+    filterPlayerNames.value = [playerName];
   }
   filterPlayerNameInput.value = ''; // Clear input after selection
+  showPlayerDropdown.value = false; // Close dropdown after selection
 };
 
 // Remove player tag
@@ -650,15 +727,18 @@ const clearAllPlayerTags = () => {
   filterPlayerNameInput.value = '';
 };
 
-// Toggle team name (multi-select)
+// Toggle team name (single-select)
 const toggleTeamName = (teamName: string) => {
   const index = filterTeamNames.value.indexOf(teamName);
   if (index > -1) {
+    // If clicking the same team, deselect it
     filterTeamNames.value.splice(index, 1);
   } else {
-    filterTeamNames.value.push(teamName);
+    // Single-select: replace current selection
+    filterTeamNames.value = [teamName];
   }
   filterTeamNameInput.value = ''; // Clear input after selection
+  showTeamDropdown.value = false; // Close dropdown after selection
 };
 
 // Remove team tag
@@ -683,6 +763,30 @@ const onTeamInputChange = () => {
 // Handle player input change
 const onPlayerInputChange = () => {
   showPlayerDropdown.value = true;
+};
+
+// Handle player dropdown click
+const handlePlayerDropdownClick = () => {
+  showPlayerDropdown.value = true;
+};
+
+// Handle player icon click (clear or toggle dropdown)
+const handlePlayerIconClick = () => {
+  if (filterPlayerNames.value.length > 0) {
+    clearAllPlayerTags();
+  }
+};
+
+// Handle team dropdown click
+const handleTeamDropdownClick = () => {
+  showTeamDropdown.value = true;
+};
+
+// Handle team icon click (clear or toggle dropdown)
+const handleTeamIconClick = () => {
+  if (filterTeamNames.value.length > 0) {
+    clearAllTeamTags();
+  }
 };
 
 // Close dropdown when clicking outside
@@ -852,10 +956,27 @@ watch(() => props.demoList.length, () => {
   loadPlayerNames(); // Reload player names when demo list changes
 });
 
+// Watch for parsing completion (status change from 0 to 1)
+watch(() => props.demoList.map(d => ({ id: d.id, status: d.status })), (newList, oldList) => {
+  if (!oldList) return;
+  
+  // Check if any demo changed from parsing (0) to complete (1)
+  const hasCompletedParsing = newList.some((newDemo, index) => {
+    const oldDemo = oldList[index];
+    return oldDemo && oldDemo.status === 0 && newDemo.status === 1;
+  });
+  
+  if (hasCompletedParsing) {
+    console.log('[DemoLibrary] Demo parsing completed, refreshing player and team indexes');
+    loadTeamNames();
+    loadPlayerNames();
+  }
+}, { deep: true });
+
 const sortedDemoList = computed(() => {
   let filteredList = [...props.demoList];
   
-  // Filter by team names (multiple)
+  // Filter by team names (support multiple)
   if (filterTeamNames.value.length > 0) {
     filteredList = filteredList.filter(demo => {
       const teamCT = (demo.teamCT || '').toLowerCase();
@@ -867,7 +988,7 @@ const sortedDemoList = computed(() => {
     });
   }
   
-  // Filter by player names (multiple)
+  // Filter by player names (support multiple)
   if (filterPlayerNames.value.length > 0) {
     filteredList = filteredList.filter(demo => {
       if (!demo.serverPlayer || !Array.isArray(demo.serverPlayer)) {
@@ -1087,6 +1208,41 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   }
   return 'loser';
 };
+
+// Get player win/loss status for a demo
+const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' | 'draw' | null => {
+  if (!demo.serverPlayer || !Array.isArray(demo.serverPlayer)) {
+    return null;
+  }
+  
+  // Find the player in serverPlayer array
+  const player = demo.serverPlayer.find(p => p.name === playerName);
+  if (!player) {
+    return null;
+  }
+  
+  // Check for draw
+  const scoreCT = demo.scoreCT || 0;
+  const scoreT = demo.scoreT || 0;
+  if (scoreCT === scoreT) {
+    return 'draw';
+  }
+  
+  // Determine which team won
+  const ctWon = scoreCT > scoreT;
+  
+  // Check if player's team won
+  // team: 2 = T, 3 = CT
+  if (player.team === 3) {
+    // Player is CT
+    return ctWon ? 'win' : 'loss';
+  } else if (player.team === 2) {
+    // Player is T
+    return ctWon ? 'loss' : 'win';
+  }
+  
+  return null;
+};
 </script>
 
 <style scoped>
@@ -1275,19 +1431,29 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
-  padding: 4px 36px 4px 8px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
-  min-width: 200px;
-  max-width: 300px;
+  width: 200px;
   min-height: 36px;
-  cursor: text;
+  cursor: pointer;
   transition: all var(--ds-transition-base);
   box-sizing: border-box;
-  overflow-x: auto;
-  overflow-y: hidden;
+  position: relative;
+}
+
+/* Selected state - green background */
+.filter-tags-input.has-selection {
+  background: rgba(78, 204, 163, 0.15);
+  border-color: rgba(78, 204, 163, 0.5);
+}
+
+.filter-tags-input.has-selection:hover {
+  background: rgba(78, 204, 163, 0.2);
+  border-color: rgba(78, 204, 163, 0.6);
 }
 
 /* Hide scrollbar but keep functionality */
@@ -1308,6 +1474,38 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 .filter-tags-input:focus-within {
   border-color: var(--ds-primary);
   box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+}
+
+/* Selection text display */
+.filter-selection-text {
+  flex: 1;
+  color: var(--ds-primary);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Filter icon on the right */
+.filter-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ds-text-tertiary);
+  transition: all var(--ds-transition-base);
+  pointer-events: none;
+}
+
+.filter-tags-input.has-selection .filter-icon {
+  color: var(--ds-primary);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.filter-icon:hover {
+  color: var(--ds-text-primary);
 }
 
 .filter-tags {
@@ -1357,9 +1555,9 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
 }
 
 .filter-tags-input-field {
-  flex: 1 1 auto;
-  min-width: 60px;
-  padding: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
   background: transparent;
   border: none;
   outline: none;
@@ -1535,6 +1733,43 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   background: rgba(78, 204, 163, 0.1);
   color: var(--ds-primary);
   font-weight: 600;
+}
+
+.filter-dropdown-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.filter-dropdown-item.disabled .dropdown-checkbox {
+  border-color: var(--ds-border-subtle);
+  background: var(--ds-surface-base);
+}
+
+.dropdown-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-item-count {
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: var(--ds-space-sm);
+}
+
+.filter-dropdown-item:hover .dropdown-item-count {
+  color: var(--ds-text-secondary);
+}
+
+.filter-dropdown-item.selected .dropdown-item-count {
+  color: var(--ds-primary);
+  opacity: 0.8;
 }
 
 .filter-buttons {
@@ -1950,6 +2185,50 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   text-overflow: ellipsis;
 }
 
+.badge-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.player-result-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.player-result-badge.win {
+  background: rgba(16, 185, 129, 0.9);
+  border: 1px solid rgba(16, 185, 129, 1);
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.player-result-badge.loss {
+  background: rgba(239, 68, 68, 0.9);
+  border: 1px solid rgba(239, 68, 68, 1);
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.player-result-badge.draw {
+  background: rgba(107, 114, 128, 0.9);
+  border: 1px solid rgba(107, 114, 128, 1);
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 .playing-badge {
   display: flex;
   align-items: center;
@@ -2359,6 +2638,11 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   font-weight: 500;
   backdrop-filter: blur(4px);
   z-index: 10;
+  opacity: 0;
+}
+
+.parsing-overlay-card:hover .delete-btn-parsing {
+  opacity: 1;
 }
 
 .delete-btn-parsing:hover {
@@ -2429,6 +2713,15 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   color: var(--ds-primary);
 }
 
+.modal-message .filename-truncate {
+  display: inline-block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .modal-warning {
   font-size: var(--ds-text-sm);
   color: var(--ds-warning);
@@ -2466,6 +2759,13 @@ const getTeamClass = (demo: ReplayData, type: 'winner' | 'loser') => {
   color: var(--ds-text-primary);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.info-value.filename-truncate {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-actions {
