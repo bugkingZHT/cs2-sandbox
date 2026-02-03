@@ -603,9 +603,12 @@ const filteredPlayerOptions = computed(() => {
 const loadTeamNames = async () => {
   try {
     const metaStorage = await getMetaStorage();
-    allTeamNames.value = await metaStorage.getAllTeamNames();
+    if (metaStorage) {
+      allTeamNames.value = await metaStorage.getAllTeamNames();
+    }
   } catch (error) {
     console.error('[DemoLibrary] Failed to load team names:', error);
+    allTeamNames.value = [];
   }
 };
 
@@ -613,9 +616,12 @@ const loadTeamNames = async () => {
 const loadPlayerNames = async () => {
   try {
     const metaStorage = await getMetaStorage();
-    allPlayerNames.value = await metaStorage.getAllPlayerNames();
+    if (metaStorage) {
+      allPlayerNames.value = await metaStorage.getAllPlayerNames();
+    }
   } catch (error) {
     console.error('[DemoLibrary] Failed to load player names:', error);
+    allPlayerNames.value = [];
   }
 };
 

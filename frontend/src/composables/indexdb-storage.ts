@@ -2,11 +2,15 @@ import type { ReplayMeta } from '../types/replay';
 
 // Database schema
 const DB_NAME = 'cs-demobox';
-const DB_VERSION = 1;
+const DB_VERSION = 6; // Simplified structure without separate indexes
 const META_STORE = 'replay-meta';
 
 export class IndexedDBMetaStorage {
   private db: IDBDatabase | null = null;
+
+  isInitialized(): boolean {
+    return this.db !== null;
+  }
 
   async init(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -199,11 +203,34 @@ export class IndexedDBMetaStorage {
 
 // Singleton
 let metaStorageInstance: IndexedDBMetaStorage | null = null;
+let initPromise: Promise<IndexedDBMetaStorage> | null = null;
 
 export async function getMetaStorage(): Promise<IndexedDBMetaStorage> {
-  if (!metaStorageInstance) {
-    metaStorageInstance = new IndexedDBMetaStorage();
-    await metaStorageInstance.init();
+  // If instance exists and is initialized, return it
+  if (metaStorageInstance && metaStorageInstance.isInitialized()) {
+    return metaStorageInstance;
   }
-  return metaStorageInstance;
+  
+  // If initialization is in progress, wait for it
+  if (initPromise) {
+    return initPromise;
+  }
+  
+  // Start new initialization
+  initPromise = (async () => {
+    try {
+      metaStorageInstance = new IndexedDBMetaStorage();
+      await metaStorageInstance.init();
+      return metaStorageInstance;
+    } catch (error) {
+      console.error('[IndexedDB] Failed to initialize:', error);
+      metaStorageInstance = null;
+      initPromise = null;
+      throw error;
+    } finally {
+      initPromise = null;
+    }
+  })();
+  
+  return initPromise;
 }
