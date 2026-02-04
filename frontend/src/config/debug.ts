@@ -37,4 +37,19 @@ export const DEBUG_CONFIG = {
    * Set to `false` in production to disable this feature.
    */
   enableOPFSStorageViewer: true,
+
+  /**
+   * Enable Storage Quota Display
+   * 
+   * When enabled, displays browser storage quota usage information
+   * in the debug console modal.
+   * 
+   * Useful for:
+   * - Monitoring local storage usage
+   * - Identifying storage limitations
+   * - Debugging storage-related issues
+   * 
+   * Set to `false` in production to disable this feature.
+   */
+  enableStorageQuotaDisplay: true,
 };

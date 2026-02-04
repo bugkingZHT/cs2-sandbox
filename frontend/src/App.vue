@@ -53,13 +53,13 @@
         <button 
           class="console-toggle-btn"
           @click="showConsoleModal = true"
-          :title="sidebarCollapsed ? 'Console' : '控制台'"
+          :title="sidebarCollapsed ? 'ContolPanel' : '系统管理'"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
             <line x1="12" y1="2" x2="12" y2="12"></line>
           </svg>
-          <span v-show="!sidebarCollapsed" class="console-label">控制台</span>
+          <span v-show="!sidebarCollapsed" class="console-label">系统管理</span>
         </button>
       </div>
     </aside>
@@ -113,7 +113,7 @@
 import { ref, computed, watch } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
-import ConsoleModal from '@/components/Settings/ConsoleModal.vue';
+import ConsoleModal from '@/components/Settings/PanelModal.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
