@@ -451,7 +451,7 @@
         </div>
         <h3 class="modal-title">Confirm Deletion</h3>
         <p class="modal-message">
-          Are you sure you want to delete <strong>{{ demoToDelete?.mapName || 'this demo' }}</strong>?
+          Are you sure you want to delete <strong class="filename-truncate" :title="demoToDelete?.fileName || demoToDelete?.mapName">{{ demoToDelete?.fileName || demoToDelete?.mapName || 'this demo' }}</strong>?
         </p>
         <p class="modal-warning">This action cannot be undone</p>
         <div class="modal-actions">
@@ -2450,7 +2450,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(26, 26, 46, 0.95);
+  background: rgba(26, 26, 46, 0.5); /* Match ConsoleModal transparency */
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -2564,7 +2564,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(26, 26, 46, 0.95);
+  background: rgba(26, 26, 46, 0.5); /* Match ConsoleModal transparency */
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -2658,7 +2658,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   left: 0;
   width: 100%;
   height: 100%;
-  background: var(--ds-bg-overlay);
+  background: rgba(0, 0, 0, 0.5); /* Match ConsoleModal transparency */
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;

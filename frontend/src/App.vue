@@ -51,12 +51,15 @@
       <!-- Debug Button (Bottom Section) -->
       <div v-if="DEBUG_CONFIG.enableFrameDataViewer || DEBUG_CONFIG.enableOPFSStorageViewer" class="sidebar-footer">
         <button 
-          class="debug-toggle-btn"
-          @click="showDebugModal = true"
-          :title="sidebarCollapsed ? 'Debug Tools' : 'Debug 工具'"
+          class="console-toggle-btn"
+          @click="showConsoleModal = true"
+          :title="sidebarCollapsed ? 'Console' : '控制台'"
         >
-          <img src="/icons/debug.svg" alt="Debug" class="debug-icon" />
-          <span v-show="!sidebarCollapsed" class="debug-label">Debug</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+            <line x1="12" y1="2" x2="12" y2="12"></line>
+          </svg>
+          <span v-show="!sidebarCollapsed" class="console-label">控制台</span>
         </button>
       </div>
     </aside>
@@ -95,45 +98,14 @@
       </div>
     </div>
 
-    <!-- Debug Tools Modal -->
-    <div v-if="showDebugModal" class="debug-modal-overlay" @click="showDebugModal = false">
-      <div class="debug-modal" @click.stop>
-        <button class="modal-close-btn" @click="showDebugModal = false" title="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-        <div class="modal-icon">
-          <img src="/icons/debug.svg" alt="Debug" class="debug-icon-large" />
-        </div>
-        <h3 class="modal-title">Debug Tools</h3>
-        <p class="modal-message">Select a debug tool to use</p>
-        <div class="modal-actions-vertical">
-          <button 
-            v-if="DEBUG_CONFIG.enableFrameDataViewer && currentPage === 'player'"
-            class="ds-btn ds-btn-debug"
-            @click="handleFrameDataViewer"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
-            <span>帧数据查看器</span>
-          </button>
-          <button 
-            v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
-            class="ds-btn ds-btn-debug"
-            @click="handleOPFSViewer"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            <span>OPFS 存储查看器</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Console Modal -->
+    <ConsoleModal 
+      :show-modal="showConsoleModal" 
+      :current-page="currentPage"
+      @close="showConsoleModal = false"
+      @open-frame-data-viewer="handleFrameDataViewer"
+      @open-opfs-viewer="handleOPFSViewer"
+    />
   </div>
 </template>
 
@@ -141,6 +113,7 @@
 import { ref, computed, watch } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
+import ConsoleModal from '@/components/Settings/ConsoleModal.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
@@ -159,7 +132,7 @@ const {
 const currentPage = ref<'library' | 'player'>('library');
 const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
-const showDebugModal = ref(false);
+const showConsoleModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
 
@@ -205,15 +178,15 @@ const onExitReplay = () => {
   currentPage.value = 'library';
 };
 
-// Debug modal handlers
+// Console modal handlers
 const handleFrameDataViewer = () => {
-  showDebugModal.value = false;
+  showConsoleModal.value = false;
   // Emit event to ReplayPlayer to trigger frame data viewer
   window.dispatchEvent(new CustomEvent('debug:show-frame-data'));
 };
 
 const handleOPFSViewer = async () => {
-  showDebugModal.value = false;
+  showConsoleModal.value = false;
   await showOPFSStorageDetails();
 };
 </script>
@@ -415,7 +388,7 @@ const handleOPFSViewer = async () => {
   flex-shrink: 0;
 }
 
-.debug-toggle-btn {
+.console-toggle-btn {
   width: 100%;
   min-height: 48px;
   padding: var(--ds-space-md) var(--ds-space-lg);
@@ -433,32 +406,26 @@ const handleOPFSViewer = async () => {
   text-align: left;
 }
 
-.collapsed .debug-toggle-btn {
+.collapsed .console-toggle-btn {
   justify-content: center;
   padding: var(--ds-space-md);
 }
 
-.debug-toggle-btn:hover {
+.console-toggle-btn:hover {
   background: rgba(74, 171, 247, 0.2);
   border-color: rgba(74, 171, 247, 0.5);
   box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
 }
 
-.debug-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  filter: brightness(0) saturate(100%) invert(67%) sepia(46%) saturate(1593%) hue-rotate(179deg) brightness(101%) contrast(93%);
-}
-
-.debug-label {
+.console-label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: opacity var(--ds-transition-base);
+  font-size: 14px;
 }
 
-.collapsed .debug-label {
+.collapsed .console-label {
   opacity: 0;
   width: 0;
 }
