@@ -7,7 +7,7 @@
         <div class="app-branding" v-show="!sidebarCollapsed">
           <img src="/logo/logo.png" alt="Snowbo" class="app-logo" @error="onLogoError" />
           <div class="app-title-group">
-            <h1 class="app-title">Snowbo 🧀 雪豹</h1>
+            <h1 class="app-title">Snowbo | 雪豹</h1>
             <p class="app-subtitle">CS2 Demo Workshop</p>
           </div>
         </div>
@@ -231,7 +231,7 @@ const handleOPFSViewer = async () => {
 
 /* === Sidebar === */
 .app-sidebar {
-  width: 260px;
+  width: 250px;
   background: var(--ds-bg-secondary);
   border-right: 2px solid var(--ds-border-accent);
   display: flex;

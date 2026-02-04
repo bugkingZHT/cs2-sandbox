@@ -48,6 +48,7 @@ export class ParsingMonitor {
   private config: Required<ParsingMonitorConfig>;
   private intervalId: number | null = null;
   private gcCounter: number = 0;
+  private beforeUnloadHandler: ((e: BeforeUnloadEvent) => string | undefined) | null = null;
 
   constructor(config: ParsingMonitorConfig) {
     this.config = {
@@ -80,6 +81,9 @@ export class ParsingMonitor {
       }
     }, this.config.checkInterval) as unknown as number;
 
+    // 注册 beforeunload 事件监听器
+    this.setupBeforeUnloadHandler();
+
     console.log(
       `[ParsingMonitor] Started monitoring (every ${this.config.checkInterval}ms, GC every ${this.config.gcCycle} cycles)`
     );
@@ -93,6 +97,45 @@ export class ParsingMonitor {
       clearInterval(this.intervalId);
       this.intervalId = null;
       console.log('[ParsingMonitor] Stopped monitoring');
+    }
+
+    // 移除 beforeunload 事件监听器
+    this.removeBeforeUnloadHandler();
+  }
+
+  /**
+   * 设置 beforeunload 事件处理器
+   * 当有正在解析的任务时，阻止用户刷新或关闭页面
+   */
+  private setupBeforeUnloadHandler(): void {
+    if (this.beforeUnloadHandler) {
+      return; // 已经设置，避免重复
+    }
+
+    this.beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+      // 检查是否有正在解析的任务（status === 0）
+      const hasParsingDemos = this.config.replayList.value.some(demo => demo.status === 0);
+      
+      if (hasParsingDemos) {
+        const message = '将导致正在运行的解析任务失败';
+        e.preventDefault();
+        e.returnValue = message; // For legacy browsers
+        return message;
+      }
+    };
+
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
+    console.log('[ParsingMonitor] Browser navigation guard enabled');
+  }
+
+  /**
+   * 移除 beforeunload 事件处理器
+   */
+  private removeBeforeUnloadHandler(): void {
+    if (this.beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+      this.beforeUnloadHandler = null;
+      console.log('[ParsingMonitor] Browser navigation guard disabled');
     }
   }
 
