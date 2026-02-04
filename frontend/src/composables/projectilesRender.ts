@@ -8,11 +8,7 @@ import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/confi
  */
 const textureCache: Record<string, Texture> = {};
 
-/**
- * 掉落道具出现时间缓存，用于实现掉落动画
- */
-const droppedAppearanceCache = new Map<string, number>();
-let lastFrameTime = 0;
+
 
 /**
  * 预加载所有投掷物和 C4 的 SVG 图标
@@ -317,73 +313,36 @@ const drawIcon = async (
 };
 
 /**
- * 绘制掉落的投掷物图标（原色 + 偏移 + 掉落动画）
+ * 绘制掉落的投掷物图标（直接按数据渲染，通过视觉区分避免混淆）
  */
 const drawDroppedIcon = async (
   eq: DroppedEquipment,
   typeKey: string,
   ctx: RenderContext,
-  scale: number = 0.6,
+  scale: number = 0.85, // 放大图标
 ) => {
-  const { worldToMap, projectileLayer, timeMs = 0 } = ctx;
+  const { worldToMap, projectileLayer } = ctx;
   const assetPath = PROJECTILE_ASSETS[typeKey];
 
   if (!assetPath) return;
 
-  // 1. 计算确定性随机偏移，避免与尸体中心重合
-  // 使用坐标作为种子，保证同一个道具在同一个位置的偏移是一致的
-  const seed = (Math.floor(eq.x) * 1000) + Math.floor(eq.y) + Number(eq.type);
-  const pseudoRandom = (s: number) => {
-    const x = Math.sin(s) * 10000;
-    return x - Math.floor(x);
-  };
-  
-  const angle = pseudoRandom(seed) * Math.PI * 2;
-  const dist = 12 + pseudoRandom(seed + 1) * 8; // 偏移 12-20 像素
-  const offsetX = Math.cos(angle) * dist;
-  const offsetY = Math.sin(angle) * dist;
-
-  // 2. 动画逻辑：记录初次出现时间
-  const itemKey = `${eq.type}_${Math.floor(eq.x)}_${Math.floor(eq.y)}`;
-  
-  // 如果时间倒退（如拖动进度条），清理缓存重新开始动画
-  if (timeMs < lastFrameTime - 500) {
-    droppedAppearanceCache.clear();
-  }
-  lastFrameTime = timeMs;
-
-  if (!droppedAppearanceCache.has(itemKey)) {
-    droppedAppearanceCache.set(itemKey, timeMs);
-  }
-  
-  const firstSeen = droppedAppearanceCache.get(itemKey) || timeMs;
-  const elapsed = timeMs - firstSeen;
-  const animDuration = 400; // 400ms 掉落动画
-  const progress = Math.min(1, elapsed / animDuration);
-  
-  // 3. 渲染
   try {
+    const mapPos = worldToMap(eq.x, eq.y);
+    
+    // 直接画图标（淡黄色，透明度适中）
     const texture = textureCache[assetPath] || await Assets.load(assetPath);
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
     
     const sprite = new Sprite(texture);
     const baseSize = 20;
     
-    // 动画效果：从上方掉落，从大变小
-    const dropHeight = 25 * (1 - progress); // 从 25px 高度掉落
-    const animScale = scale * (progress + 0.4 * (1 - progress)); // 略微从大变小
-    
-    sprite.width = baseSize * animScale;
-    sprite.height = baseSize * animScale;
+    sprite.width = baseSize * scale;
+    sprite.height = baseSize * scale;
     sprite.anchor.set(0.5);
-
-    const mapPos = worldToMap(eq.x, eq.y);
-    sprite.x = mapPos.x + offsetX;
-    sprite.y = mapPos.y + offsetY - dropHeight; // Y 轴负方向是上方
-
-    // 渐显效果
-    sprite.alpha = 0.4 + 0.6 * progress;
-    sprite.tint = 0xffffff;
+    sprite.x = mapPos.x;
+    sprite.y = mapPos.y;
+    sprite.alpha = 0.75; // 透明度适中，方便识别
+    sprite.tint = 0xFFFF99; // 淡黄色
 
     projectileLayer.addChild(sprite);
   } catch (error) {
@@ -710,6 +669,7 @@ export const drawProjectilesForFrame = async (options: {
   }
 
   // 渲染掉落的投掷物 (Dropped Equipment)
+  // 直接按数据位置渲染，淡黄色放大图标
   if (droppedEquipment) {
     for (const de of droppedEquipment) {
       const typeId = Number(de.type);
