@@ -504,12 +504,22 @@ function createReplayData() {
         worker.terminate();
       };
 
+      // Load round limit from localStorage if available
+      const roundLimitStr = localStorage.getItem('demoParsingRoundLimit');
+      let roundLimit: number | undefined;
+      if (roundLimitStr) {
+        const parsedLimit = parseInt(roundLimitStr, 10);
+        // If parsed limit is <= 0, use undefined to indicate no limit (same as -1 in engine)
+        roundLimit = parsedLimit > 0 ? parsedLimit : undefined;
+      }
+
       // Start worker parsing
       worker.postMessage({
         type: 'PARSE_ROUNDS',
         demoBytes: demoBytes,
         uuid: meta.uuid,
-        estimatedTotalTicks
+        estimatedTotalTicks,
+        roundLimit
       });
       
       // ⚠️ CRITICAL: Release main thread's reference to file bytes immediately

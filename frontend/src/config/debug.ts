@@ -52,4 +52,14 @@ export const DEBUG_CONFIG = {
    * Set to `false` in production to disable this feature.
    */
   enableStorageQuotaDisplay: true,
+
+  /**
+   * Enable Round Limit Configuration
+   * 
+   * When enabled, adds a configuration option in the debug panel
+   * to limit the number of rounds parsed from a demo file.
+   * 
+   * Set to `false` in production to hide this feature.
+   */
+  enableRoundLimitConfig: true,
 };

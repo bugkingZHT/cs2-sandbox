@@ -2257,7 +2257,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(26, 26, 46, 0.5); /* Match ConsoleModal transparency */
+  background: rgba(26, 26, 46, 0.95); /* Match ConsoleModal transparency */
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -2371,7 +2371,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(26, 26, 46, 0.5); /* Match ConsoleModal transparency */
+  background: rgba(26, 26, 46, 0.95); /* Match ConsoleModal transparency */
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -2465,7 +2465,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5); /* Match ConsoleModal transparency */
+  background: rgba(0, 0, 0, 0.7); /* Match ConsoleModal transparency */
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;

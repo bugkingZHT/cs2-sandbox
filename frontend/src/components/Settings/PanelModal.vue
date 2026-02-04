@@ -147,6 +147,20 @@
             </div>
           </div>
           
+          <!-- Round Limit Configuration -->
+          <div v-if="DEBUG_CONFIG.enableRoundLimitConfig" class="round-limit-section">
+            <div class="input-group">
+              <label class="input-label">限制解析回合数</label>
+              <input
+                v-model.number="roundLimit"
+                type="number"
+                min="-1"
+                class="ds-input round-limit-input"
+                @change="saveRoundLimit"
+              />
+            </div>
+          </div>
+          
           <div class="modal-actions-horizontal">
             <button 
               v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
@@ -270,6 +284,34 @@ const updateStorageQuota = async () => {
   }
 };
 
+// Round limit configuration
+const roundLimit = ref<number>(-1); // Default value is -1 (no limit)
+
+// Load round limit from localStorage on component mount
+onMounted(() => {
+  if (DEBUG_CONFIG.enableStorageQuotaDisplay) {
+    updateStorageQuota();
+    updateWasmMemory();
+    
+    // Update memory stats every 2 seconds
+    memoryUpdateInterval = window.setInterval(() => {
+      updateWasmMemory();
+    }, 2000);
+  }
+  
+  // Load round limit from localStorage
+  if (DEBUG_CONFIG.enableRoundLimitConfig) {
+    const savedLimit = localStorage.getItem('demoParsingRoundLimit');
+    if (savedLimit !== null) {
+      const parsedLimit = parseInt(savedLimit, 10);
+      if (!isNaN(parsedLimit)) {
+        // Only set the value if it's a valid number (values <= 0 mean no limit, default to -1)
+        roundLimit.value = parsedLimit <= 0 ? -1 : parsedLimit;
+      }
+    }
+  }
+});
+
 // Update WASM memory usage
 const updateWasmMemory = () => {
   try {
@@ -311,20 +353,24 @@ const updateWasmMemory = () => {
   }
 };
 
-let memoryUpdateInterval: number | null = null;
-
-// Update storage quota and WASM memory when the debug tab becomes active
-onMounted(() => {
-  if (DEBUG_CONFIG.enableStorageQuotaDisplay) {
-    updateStorageQuota();
-    updateWasmMemory();
-    
-    // Update memory stats every 2 seconds
-    memoryUpdateInterval = window.setInterval(() => {
-      updateWasmMemory();
-    }, 2000);
+// Save round limit to localStorage
+const saveRoundLimit = () => {
+  if (roundLimit.value <= 0) {
+    // Store -1 to indicate no limit
+    roundLimit.value = -1;
+    localStorage.setItem('demoParsingRoundLimit', '-1');
+  } else {
+    localStorage.setItem('demoParsingRoundLimit', roundLimit.value.toString());
   }
-});
+};
+
+// Clear round limit
+const clearRoundLimit = () => {
+  roundLimit.value = -1;
+  localStorage.setItem('demoParsingRoundLimit', '-1');
+};
+
+let memoryUpdateInterval: number | null = null;
 
 onUnmounted(() => {
   if (memoryUpdateInterval !== null) {
@@ -716,5 +762,54 @@ const handleOPFSViewer = () => {
   color: var(--ds-text-secondary);
   min-width: 30px;
   text-align: right;
+}
+
+/* Round Limit Configuration Styles */
+.round-limit-section {
+  margin-bottom: var(--ds-space-lg);
+  padding: var(--ds-space-md);
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-xs);
+}
+
+.input-label {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  margin-bottom: var(--ds-space-xs);
+}
+
+.ds-input {
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  background: var(--ds-bg-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-base);
+  outline: none;
+  transition: border-color var(--ds-transition-base);
+}
+
+.ds-input:focus {
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 2px rgba(var(--ds-primary-rgb), 0.2);
+}
+
+/* 回合限制输入框：隐藏数字上下箭头，仅允许用户手动输入 */
+.round-limit-input::-webkit-inner-spin-button,
+.round-limit-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.round-limit-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 </style>

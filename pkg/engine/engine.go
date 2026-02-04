@@ -27,6 +27,7 @@ type Engine interface {
 
 type DemoEngine struct {
 	resolveFreezeTime bool
+	roundLimit        int // Limit for number of rounds to parse (0 = no limit)
 	// Singleton state for streaming parsing
 	parser            demoinfocs.Parser
 	builder           *replayBuilder
@@ -39,6 +40,7 @@ type DemoEngine struct {
 func NewDemoEngine(config EngineConfig) *DemoEngine {
 	return &DemoEngine{
 		resolveFreezeTime: config.ResolveFreezeTime,
+		roundLimit:        config.RoundLimit,
 	}
 }
 
@@ -130,6 +132,13 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		return nil, nil
 	}
 
+	// Check if we've reached the round limit
+	// If roundLimit <= 0, no limit is applied (-1 means no limit)
+	if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
+		log.Printf("[ParseNextRound] Round limit (%d) reached, stopping parsing", e.roundLimit)
+		return nil, nil
+	}
+
 	// Capture current round number at start
 	startRound := e.builder.currentRound
 	var frames []entity.Frame
@@ -138,6 +147,21 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 	log.Printf("[ParseNextRound] Starting to parse round %d...", startRound)
 
 	for {
+		// Check if we've reached the round limit during parsing
+		// If roundLimit <= 0, no limit is applied (-1 means no limit)
+		if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
+			log.Printf("[ParseNextRound] Round limit (%d) exceeded, stopping parsing", e.roundLimit)
+			// Return any accumulated frames if we're in the middle of parsing
+			if len(frames) > 0 {
+				return &entity.ReplayRound{
+					UUID:   e.uuid,
+					Round:  startRound,
+					Frames: frames,
+				}, nil
+			}
+			return nil, nil
+		}
+
 		// Boundary detection: stop if entered next round
 		if e.builder.currentRound > startRound && len(frames) > 0 {
 			log.Printf("[ParseNextRound] Round boundary detected (moved from %d to %d), returning %d frames", startRound, e.builder.currentRound, len(frames))

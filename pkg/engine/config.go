@@ -2,6 +2,7 @@ package engine
 
 type EngineConfig struct {
 	ResolveFreezeTime bool
+	RoundLimit        int  // Limit for number of rounds to parse (0 = no limit)
 }
 
 // Engine version

@@ -53,7 +53,7 @@
         <button 
           class="console-toggle-btn"
           @click="showConsoleModal = true"
-          :title="sidebarCollapsed ? 'ContolPanel' : '系统管理'"
+          :title="sidebarCollapsed ? 'Dashboard' : '系统管理'"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
 import ConsoleModal from '@/components/Settings/PanelModal.vue';
@@ -129,12 +129,25 @@ const {
   deleteReplayById,
 } = useReplayData();
 
+const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
+
 const currentPage = ref<'library' | 'player'>('library');
 const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
 const showConsoleModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
+
+onMounted(() => {
+  const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+  if (stored !== null) {
+    sidebarCollapsed.value = stored === 'true';
+  }
+});
+
+watch(sidebarCollapsed, (val) => {
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(val));
+});
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value;
@@ -446,7 +459,7 @@ const handleOPFSViewer = async () => {
   left: 0;
   width: 100%;
   height: 100%;
-  background: var(--ds-bg-overlay);
+  background: var(--ds-bg-primary);
   backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
