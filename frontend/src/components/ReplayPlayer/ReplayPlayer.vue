@@ -189,11 +189,11 @@
           <div class="score-divider">
             <div class="score-display">
               <div class="team-score" :class="currentRound <= 12 ? 't-score' : 'ct-score'">
-                {{ currentRound <= 12 ? (replay?.scoreT || 0) : (replay?.scoreCT || 0) }}
+                {{ currentRound <= 12 ? currentScoreT : currentScoreCT }}
               </div>
               <div class="score-separator">:</div>
               <div class="team-score" :class="currentRound <= 12 ? 'ct-score' : 't-score'">
-                {{ currentRound <= 12 ? (replay?.scoreCT || 0) : (replay?.scoreT || 0) }}
+                {{ currentRound <= 12 ? currentScoreCT : currentScoreT }}
               </div>
             </div>
           </div>
@@ -597,6 +597,35 @@ const currentRound = computed(() => {
 // 判断是否在后半场（使用配置中的常量）
 const isSecondHalf = computed(() => {
   return currentRound.value >= MATCH_CONFIG.SECOND_HALF_START_ROUND;
+});
+
+// 计算实时比分（基于roundResults）
+const currentScoreCT = computed(() => {
+  if (!replay.value?.roundResults || currentRound.value === 0) return 0;
+  
+  // 统计到当前回合为止CT队赢得的回合数
+  let score = 0;
+  for (const result of replay.value.roundResults) {
+    if (result.round >= currentRound.value) break; // 只统计到当前回合之前的结果
+    if (result.result === 'ct_win' || result.result === 'bomb_defused') {
+      score++;
+    }
+  }
+  return score;
+});
+
+const currentScoreT = computed(() => {
+  if (!replay.value?.roundResults || currentRound.value === 0) return 0;
+  
+  // 统计到当前回合为止T队赢得的回合数
+  let score = 0;
+  for (const result of replay.value.roundResults) {
+    if (result.round >= currentRound.value) break; // 只统计到当前回合之前的结果
+    if (result.result === 't_win' || result.result === 'bomb_exploded') {
+      score++;
+    }
+  }
+  return score;
 });
 
 const currentRoundFrames = computed(() => {
@@ -1303,16 +1332,21 @@ onBeforeUnmount(() => {
   transition: all var(--ds-transition-base);
 }
 
-/* 步枪/狙击枪/冲锋枪缩小以匹配手枪大小 */
 .weapon-icon.is-rifle {
-  transform: scale(1.3); /* 放上去就是这个大小 */
+  transform: scale(1.4); 
 }
 
 /* 激活状态只改变亮度，不改变大小 */
 .weapon-icon.is-active {
   opacity: 1;
-  transform: scale(1.4);
-  filter: brightness(1.1) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+  transform: scale(1.2);
+  filter: brightness(1.2) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+}
+
+.weapon-icon.is-rifle.is-active {
+  opacity: 1;
+  transform: scale(1.6);
+  filter: brightness(1.2) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
 }
 
 .utility-items {

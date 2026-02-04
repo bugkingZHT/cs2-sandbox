@@ -12,21 +12,29 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
   5: 'fiveseven',    // EqFiveSeven
   6: 'elite',        // EqDualBerettas
   7: 'tec9',         // EqTec9
-  8: 'tec9',         // EqCZ (fallback to tec9)
+  8: 'cz',           // EqCZ
   9: 'usp_silencer', // EqUSP
-  10: 'hkp2000',     // EqRevolver (fallback to p2000)
+  10: 'revolver',    // EqRevolver
 
   // Heavy (200-299)
   // SMGs
   201: 'mac10',      // EqMac10
   202: 'mp9',        // EqMP9
-  203: 'mp9',        // EqMP7 (fallback to mp9)
-  204: 'mp9',        // EqMP5 (fallback to mp9)
-  205: 'mac10',      // EqUMP (fallback to mac10)
-  206: 'mac10',      // EqP90 (fallback to mac10)
-  207: 'mac10',      // EqBizon (fallback to mac10)
+  203: 'mp7',        // EqMP7
+  204: 'mp5',        // EqMP5
+  205: 'ump',        // EqUMP
+  206: 'p90',        // EqP90
+  207: 'bizon',      // EqBizon
 
   // Shotguns
+  211: 'nova',       // EqNova
+  212: 'xm1014',     // EqXM1014
+  213: 'mag7',       // EqMag7
+  214: 'sawedoff',   // EqSawedOff
+  
+  // Machine Guns
+  221: 'm249',       // EqM249
+  222: 'negev',      // EqNegev
   
   // Rifles (300-399)
   301: 'galilar',    // EqGalil
@@ -35,15 +43,16 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
   304: 'm4a4',       // EqM4A4
   305: 'm4a1_silencer', // EqM4A1
   306: 'ssg08',      // EqScout / SSG08
-  307: 'ak47',       // EqSG556 (fallback to ak47)
-  308: 'famas',      // EqAUG (fallback to famas)
+  307: 'sg556',      // EqSG556
+  308: 'aug',        // EqAUG
   309: 'awp',        // EqAWP
-  310: 'awp',        // EqG3SG1 (fallback to awp)
-  311: 'awp',        // EqScar20 (fallback to awp)
+  310: 'g3sg1',      // EqG3SG1
+  311: 'scar20',     // EqScar20
 
   // Equipment
   404: 'c4',         // EqBomb (在 utility 目录下)
   405: 'knife',      // EqKnife (在 weapons 目录下)
+  406: 'zeus',       // EqZeus (电击枪)
 
   // Grenades (在 utility 目录下)
   501: 'decoy',      // EqDecoy
