@@ -12,17 +12,6 @@ github.com/golang/snappy
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/markus-wa/demoinfocs-golang/v5 v5.1.0
-## explicit; go 1.24
-github.com/markus-wa/demoinfocs-golang/v5/internal/bitread
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/constants
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/cstv
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/msg
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/sendtables
-github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/sendtables/sendtablescs2
 # github.com/markus-wa/go-unassert v0.1.3
 ## explicit; go 1.11
 github.com/markus-wa/go-unassert

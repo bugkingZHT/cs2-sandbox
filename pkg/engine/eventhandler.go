@@ -3,8 +3,8 @@ package engine
 import (
 	"log"
 
-	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
-	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
+	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
+	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/events"
 
 	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 )

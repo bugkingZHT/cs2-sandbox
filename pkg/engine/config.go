@@ -2,7 +2,8 @@ package engine
 
 type EngineConfig struct {
 	ResolveFreezeTime bool
-	RoundLimit        int  // Limit for number of rounds to parse (0 = no limit)
+	RoundLimit        int // Limit for number of rounds to parse (0 = no limit)
+	FrameRatio        int // Parse 1 frame every N game frames: 1=1:1, 2=1:2, 4=1:4
 }
 
 // Engine version

@@ -8,9 +8,9 @@ import (
 	"sort"
 	"time"
 
+	demoinfocs "github.com/bugkingzht/cs-demobox/pkg/demoinfocs"
+	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
 	"github.com/google/uuid"
-	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
-	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
 
 	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 	"github.com/bugkingzht/cs-demobox/pkg/engine/reflector"
@@ -28,19 +28,26 @@ type Engine interface {
 type DemoEngine struct {
 	resolveFreezeTime bool
 	roundLimit        int // Limit for number of rounds to parse (0 = no limit)
+	frameRatio        int // Parse 1 frame every N game frames: 1=1:1, 2=1:2, 4=1:4
 	// Singleton state for streaming parsing
 	parser            demoinfocs.Parser
 	builder           *replayBuilder
 	uuid              string
 	initialized       bool
 	eofReached        bool // Track if EOF has been reached
-	totalParsedFrames int  // Track total frames parsed across all rounds
+	totalParsedFrames int  // Output frames (after frame ratio)
+	totalRawFrames    int  // Game frames advanced (raw, for progress reporting)
 }
 
 func NewDemoEngine(config EngineConfig) *DemoEngine {
+	fr := config.FrameRatio
+	if fr < 1 {
+		fr = 1
+	}
 	return &DemoEngine{
 		resolveFreezeTime: config.ResolveFreezeTime,
 		roundLimit:        config.RoundLimit,
+		frameRatio:        fr,
 	}
 }
 
@@ -70,7 +77,8 @@ func (e *DemoEngine) InitParser(r io.Reader) error {
 
 	e.builder.registerEventHandlers()
 	e.initialized = true
-	e.totalParsedFrames = 0 // Reset frame counter
+	e.totalParsedFrames = 0
+	e.totalRawFrames = 0
 
 	log.Println("[InitParser] Parser initialized successfully")
 	return nil
@@ -168,9 +176,8 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 			break
 		}
 
-		// Skip frames during freeze time if resolveFreezeTime is false
+		// During freeze time when not resolving it: advance one frame (parse to get events so inFreezeTime can flip) but do not build frames.
 		if !e.builder.resolveFreezeTime && e.builder.inFreezeTime {
-			// Still need to parse next frame even if skipping
 			more, err := e.parser.ParseNextFrame()
 			if err != nil {
 				if err == io.EOF {
@@ -193,26 +200,31 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		}
 
 		frameCount++
-		e.totalParsedFrames++ // Increment global frame counter
+		e.totalRawFrames++ // Raw game frames advanced (for progress)
 		gs := e.parser.GameState()
 		currentTick := gs.IngameTick()
 
-		// Log status and notify callback every 1000 frames
-		if frameCount%1000 == 0 {
-			msg := fmt.Sprintf("%d", e.totalParsedFrames) // Send only frame count
-			log.Printf("  Parsed %d total frames (round %d, tick: %d)\n", e.totalParsedFrames, startRound, currentTick)
-			if onStatus != nil {
-				onStatus(msg)
-			}
-			// Yield to JS main thread to keep UI responsive
-			time.Sleep(time.Millisecond)
-		}
+		// Only build and output a frame every frameRatio game frames (1:1, 1:2, 1:4)
+		outputThisFrame := (frameCount-1)%e.frameRatio == 0
+		if outputThisFrame {
+			e.totalParsedFrames++ // Count only output (parsed) frames
 
-		// Frame construction - process current frame
-		if len(frames) > 0 {
-			e.builder.prevFrame = &frames[len(frames)-1]
+			// Log status and notify callback every 1000 output frames; report totalRawFrames for progress bar.
+			if e.totalParsedFrames%1000 == 0 {
+				msg := fmt.Sprintf("%d", e.totalRawFrames)
+				log.Printf("  Parsed %d total frames (round %d, tick: %d)\n", e.totalParsedFrames, startRound, currentTick)
+				if onStatus != nil {
+					onStatus(msg)
+				}
+				time.Sleep(time.Millisecond)
+			}
+
+			// Frame construction - process current frame
+			if len(frames) > 0 {
+				e.builder.prevFrame = &frames[len(frames)-1]
+			}
+			frames = append(frames, e.builder.frameOne())
 		}
-		frames = append(frames, e.builder.frameOne())
 
 		// Parse next frame at the END of loop
 		more, err := e.parser.ParseNextFrame()
@@ -336,7 +348,8 @@ func (e *DemoEngine) Close() error {
 	e.uuid = ""
 	e.initialized = false
 	e.eofReached = false
-	e.totalParsedFrames = 0 // Reset frame counter
+	e.totalParsedFrames = 0
+	e.totalRawFrames = 0
 
 	// Force GC to release parser and builder memory
 	runtime.GC()

@@ -1,7 +1,7 @@
 package entity
 
 import (
-	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
+	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
 )
 
 var ButtonWatching = []common.ButtonBitMask{

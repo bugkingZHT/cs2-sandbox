@@ -75,7 +75,7 @@
               <line x1="12" y1="9" x2="12" y2="13"/>
               <line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
-            <span>不要随意修改此页面中的任何配置，否则可能导致致命错误</span>
+            <span>不要随意修改此页面中的配置，否则可能导致致命错误</span>
           </div>
           
           <!-- Storage Quota Display -->
@@ -147,20 +147,37 @@
             </div>
           </div>
           
-          <!-- Round Limit Configuration -->
-          <div v-if="DEBUG_CONFIG.enableRoundLimitConfig" class="round-limit-section">
-            <div class="input-group">
-              <label class="input-label">限制解析回合数</label>
-              <input
-                v-model.number="roundLimit"
-                type="number"
-                min="-1"
-                class="ds-input round-limit-input"
-                @change="saveRoundLimit"
-              />
+          <!-- Parse options: round limit + frame ratio in one row -->
+          <div
+            v-if="DEBUG_CONFIG.enableRoundLimitConfig || DEBUG_CONFIG.enableParseFrameRatioConfig"
+            class="debug-parse-options-row"
+          >
+            <div v-if="DEBUG_CONFIG.enableRoundLimitConfig" class="parse-option-cell">
+              <div class="input-group">
+                <label class="input-label">限制解析回合数</label>
+                <input
+                  v-model.number="roundLimit"
+                  type="number"
+                  min="-1"
+                  class="ds-input round-limit-input"
+                  @change="saveRoundLimit"
+                />
+              </div>
+            </div>
+            <div v-if="DEBUG_CONFIG.enableParseFrameRatioConfig" class="parse-option-cell">
+              <div class="input-group">
+                <label class="input-label">解析帧采样比</label>
+                <input
+                  v-model.number="parseFrameRatio"
+                  type="number"
+                  min="1"
+                  class="ds-input round-limit-input"
+                  @change="saveParseFrameRatio"
+                />
+              </div>
             </div>
           </div>
-          
+
           <div class="modal-actions-horizontal">
             <button 
               v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
@@ -287,7 +304,11 @@ const updateStorageQuota = async () => {
 // Round limit configuration
 const roundLimit = ref<number>(-1); // Default value is -1 (no limit)
 
-// Load round limit from localStorage on component mount
+// Parse frame ratio: 1=1:1, 2=1:2, N=1:N (positive integer >= 1)
+const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
+const parseFrameRatio = ref<number>(1);
+
+// Load round limit and parse frame ratio from localStorage on component mount
 onMounted(() => {
   if (DEBUG_CONFIG.enableStorageQuotaDisplay) {
     updateStorageQuota();
@@ -305,8 +326,18 @@ onMounted(() => {
     if (savedLimit !== null) {
       const parsedLimit = parseInt(savedLimit, 10);
       if (!isNaN(parsedLimit)) {
-        // Only set the value if it's a valid number (values <= 0 mean no limit, default to -1)
         roundLimit.value = parsedLimit <= 0 ? -1 : parsedLimit;
+      }
+    }
+  }
+
+  // Load parse frame ratio from localStorage
+  if (DEBUG_CONFIG.enableParseFrameRatioConfig) {
+    const saved = localStorage.getItem(PARSE_FRAME_RATIO_KEY);
+    if (saved !== null) {
+      const n = parseInt(saved, 10);
+      if (!isNaN(n) && n >= 1) {
+        parseFrameRatio.value = n;
       }
     }
   }
@@ -368,6 +399,16 @@ const saveRoundLimit = () => {
 const clearRoundLimit = () => {
   roundLimit.value = -1;
   localStorage.setItem('demoParsingRoundLimit', '-1');
+};
+
+// Save parse frame ratio to localStorage (ensure >= 1)
+const saveParseFrameRatio = () => {
+  let v = parseFrameRatio.value;
+  if (typeof v !== 'number' || isNaN(v) || v < 1) {
+    v = 1;
+    parseFrameRatio.value = 1;
+  }
+  localStorage.setItem(PARSE_FRAME_RATIO_KEY, String(v));
 };
 
 let memoryUpdateInterval: number | null = null;
@@ -764,13 +805,26 @@ const handleOPFSViewer = () => {
   text-align: right;
 }
 
-/* Round Limit Configuration Styles */
-.round-limit-section {
+/* Parse options row: same layout as storage-quota-container above (50% each, same gap) */
+.debug-parse-options-row {
+  width: 100%;
+  display: flex;
+  gap: var(--ds-space-md);
   margin-bottom: var(--ds-space-lg);
+}
+
+.parse-option-cell {
+  flex: 0 0 calc(50% - var(--ds-space-md) / 2);
+  min-width: 0;
   padding: var(--ds-space-md);
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
+}
+
+.parse-option-cell .ds-input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .input-group {
@@ -812,4 +866,5 @@ const handleOPFSViewer = () => {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
 </style>

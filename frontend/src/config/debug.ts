@@ -62,4 +62,14 @@ export const DEBUG_CONFIG = {
    * Set to `false` in production to hide this feature.
    */
   enableRoundLimitConfig: true,
+
+  /**
+   * Enable Parse Frame Ratio Configuration
+   * 
+   * When enabled, adds a dropdown in the debug panel to set parse frame ratio
+   * (positive integer ≥1, e.g. 1=1:1, 2=1:2) — parse 1 frame every N game frames.
+   * 
+   * Set to `false` in production to hide this feature.
+   */
+  enableParseFrameRatioConfig: true,
 };

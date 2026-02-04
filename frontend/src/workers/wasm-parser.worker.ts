@@ -15,6 +15,7 @@ interface ParseRoundsMessage {
   uuid: string;
   estimatedTotalTicks: number;
   roundLimit?: number;
+  frameRatio?: number; // positive integer >= 1 (1=1:1, 2=1:2, N=1:N)
 }
 
 interface RoundCompleteMessage {
@@ -110,8 +111,12 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       
       console.log(`[Worker] [${uuid}] Starting round parsing`);
       
-      // Initialize parser with demo bytes and round limit
-      const initError = (self as any).initDemoParser(demoBytes, e.data.roundLimit || 0);
+      // Initialize parser with demo bytes, round limit, and frame ratio
+      const initError = (self as any).initDemoParser(
+        demoBytes,
+        e.data.roundLimit ?? -1,
+        e.data.frameRatio ?? 1
+      );
       if (initError) {
         throw new Error(`initDemoParser failed: ${initError}`);
       }

@@ -509,8 +509,17 @@ function createReplayData() {
       let roundLimit: number | undefined;
       if (roundLimitStr) {
         const parsedLimit = parseInt(roundLimitStr, 10);
-        // If parsed limit is <= 0, use undefined to indicate no limit (same as -1 in engine)
         roundLimit = parsedLimit > 0 ? parsedLimit : undefined;
+      }
+
+      // Load parse frame ratio from localStorage (positive integer >= 1)
+      let frameRatio = 1;
+      const frameRatioStr = localStorage.getItem('demoParsingFrameRatio');
+      if (frameRatioStr) {
+        const n = parseInt(frameRatioStr, 10);
+        if (!isNaN(n) && n >= 1) {
+          frameRatio = n;
+        }
       }
 
       // Start worker parsing
@@ -519,7 +528,8 @@ function createReplayData() {
         demoBytes: demoBytes,
         uuid: meta.uuid,
         estimatedTotalTicks,
-        roundLimit
+        roundLimit,
+        frameRatio
       });
       
       // ⚠️ CRITICAL: Release main thread's reference to file bytes immediately

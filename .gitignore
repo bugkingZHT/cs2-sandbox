@@ -32,6 +32,7 @@ coverage.html
 # IDE and editor files
 .idea/
 .vscode/
+.qcoder/
 *.swp
 *.swo
 *~

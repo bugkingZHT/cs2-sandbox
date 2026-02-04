@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	demoinfocs "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
+	demoinfocs "github.com/bugkingzht/cs-demobox/pkg/demoinfocs"
 )
 
 // getHeaderValue is a helper function to extract a field value from the unexported header

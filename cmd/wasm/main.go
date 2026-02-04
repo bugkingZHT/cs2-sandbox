@@ -38,7 +38,7 @@ func main() {
 // initDemoParser initializes the parser with demo file bytes
 func initDemoParser(this js.Value, args []js.Value) interface{} {
 	if len(args) < 1 {
-		log.Println("initDemoParser expects (Uint8Array, optional roundLimit)")
+		log.Println("initDemoParser expects (Uint8Array, optional roundLimit, optional frameRatio)")
 		return "Missing demo file bytes"
 	}
 
@@ -50,7 +50,6 @@ func initDemoParser(this js.Value, args []js.Value) interface{} {
 	log.Printf("[2/5] Copied %d bytes\n", len(demoReaderBytes))
 
 	// Get round limit from args if provided
-	// Use -1 as default to indicate no limit
 	roundLimit := -1
 	if len(args) >= 2 {
 		roundLimit = args[1].Int()
@@ -59,10 +58,20 @@ func initDemoParser(this js.Value, args []js.Value) interface{} {
 		}
 	}
 
-	// Create engine instance with round limit
+	// Get frame ratio from args if provided (positive integer >= 1)
+	frameRatio := 1
+	if len(args) >= 3 {
+		frameRatio = args[2].Int()
+		if frameRatio < 1 {
+			frameRatio = 1
+		}
+	}
+
+	// Create engine instance with round limit and frame ratio
 	engineInstance = engine.NewDemoEngine(engine.EngineConfig{
 		ResolveFreezeTime: false,
 		RoundLimit:        roundLimit,
+		FrameRatio:        frameRatio,
 	})
 
 	// Initialize parser with reader

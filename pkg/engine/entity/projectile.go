@@ -3,7 +3,7 @@ package entity
 import (
 	"sort"
 
-	"github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
+	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
 )
 
 // 投掷物渲染配置
