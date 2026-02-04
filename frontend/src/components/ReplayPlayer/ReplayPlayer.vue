@@ -52,102 +52,284 @@
           <!-- First Team (T for rounds 1-12, CT for rounds 13+) -->
           <div v-if="currentRound <= 12" class="team-cards-container t">
             <div v-for="p in teamTPlayers" :key="p.id" class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
-              <div class="player-info-row">
-                <span class="p-name">{{ p.name }}</span>
-                <span class="p-money">${{ p.money }}</span>
+              <!-- Column 1: Player Info -->
+              <div class="card-col col-info">
+                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-stats">
+                  <div class="stat-item">
+                    <img src="/icons/kill.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.kills || 0 }}</span>
+                  </div>
+                  <div class="stat-item">
+                    <img src="/icons/death.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.deaths || 0 }}</span>
+                  </div>
+                </div>
+                <div class="player-money">
+                  <span class="money-symbol">$</span>
+                  <span class="money-value">{{ (p.money || 0).toLocaleString() }}</span>
+                </div>
               </div>
-              <div class="p-stats-row">
-                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
-                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              
+              <!-- Column 2: Equipment -->
+              <div class="card-col col-equipment">
+                <div class="active-weapon">
+                  <img 
+                    v-if="getPrimaryWeapon(p)"
+                    :src="getWeaponIconPath(getPrimaryWeapon(p))" 
+                    class="weapon-icon"
+                    :class="{ 
+                      'is-active': isWeaponActive(p, getPrimaryWeapon(p)),
+                      'is-rifle': isRifleWeapon(getPrimaryWeapon(p))
+                    }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
+                <div class="utility-items">
+                  <img 
+                    v-for="(item, idx) in getUtilityItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="utility-icon"
+                    :class="{ 'is-active': isWeaponActive(p, item) }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
-              <!-- All Equipment -->
-              <div class="p-all-equipment">
-                <img 
-                  v-for="(item, idx) in getAllEquipment(p)" 
-                  :key="idx"
-                  :src="getWeaponIconPath(item)" 
-                  class="equipment-icon"
-                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
-                  :title="getEquipmentName(item)"
-                  @error="onWeaponIconError"
-                />
+              
+              <!-- Column 3: Status -->
+              <div class="card-col col-status">
+                <div class="health-display">
+                  <div class="health-value">{{ Math.round(p.health || 0) }}</div>
+                </div>
+                <div class="armor-display">
+                  <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
+                </div>
+                <div class="gear-items">
+                  <img 
+                    v-for="(item, idx) in getGearItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="gear-icon"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
             </div>
           </div>
           <div v-else class="team-cards-container ct">
             <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
-              <div class="player-info-row">
-                <span class="p-name">{{ p.name }}</span>
-                <span class="p-money">${{ p.money }}</span>
+              <!-- Column 1: Player Info -->
+              <div class="card-col col-info">
+                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-stats">
+                  <div class="stat-item">
+                    <img src="/icons/kill.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.kills || 0 }}</span>
+                  </div>
+                  <div class="stat-item">
+                    <img src="/icons/death.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.deaths || 0 }}</span>
+                  </div>
+                </div>
+                <div class="player-money">
+                  <span class="money-symbol">$</span>
+                  <span class="money-value">{{ (p.money || 0).toLocaleString() }}</span>
+                </div>
               </div>
-              <div class="p-stats-row">
-                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
-                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              
+              <!-- Column 2: Equipment -->
+              <div class="card-col col-equipment">
+                <div class="active-weapon">
+                  <img 
+                    v-if="getPrimaryWeapon(p)"
+                    :src="getWeaponIconPath(getPrimaryWeapon(p))" 
+                    class="weapon-icon"
+                    :class="{ 
+                      'is-active': isWeaponActive(p, getPrimaryWeapon(p)),
+                      'is-rifle': isRifleWeapon(getPrimaryWeapon(p))
+                    }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
+                <div class="utility-items">
+                  <img 
+                    v-for="(item, idx) in getUtilityItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="utility-icon"
+                    :class="{ 'is-active': isWeaponActive(p, item) }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
-              <!-- All Equipment -->
-              <div class="p-all-equipment">
-                <img 
-                  v-for="(item, idx) in getAllEquipment(p)" 
-                  :key="idx"
-                  :src="getWeaponIconPath(item)" 
-                  class="equipment-icon"
-                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
-                  :title="getEquipmentName(item)"
-                  @error="onWeaponIconError"
-                />
+              
+              <!-- Column 3: Status -->
+              <div class="card-col col-status">
+                <div class="health-display">
+                  <div class="health-value">{{ Math.round(p.health || 0) }}</div>
+                </div>
+                <div class="armor-display">
+                  <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
+                </div>
+                <div class="gear-items">
+                  <img 
+                    v-for="(item, idx) in getGearItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="gear-icon"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Team Divider -->
-          <div class="team-divider"></div>
+          <!-- Score Display (Between Teams) -->
+          <div class="score-divider">
+            <div class="score-display">
+              <div class="team-score" :class="currentRound <= 12 ? 't-score' : 'ct-score'">
+                {{ currentRound <= 12 ? currentScoreT : currentScoreCT }}
+              </div>
+              <div class="score-separator">:</div>
+              <div class="team-score" :class="currentRound <= 12 ? 'ct-score' : 't-score'">
+                {{ currentRound <= 12 ? currentScoreCT : currentScoreT }}
+              </div>
+            </div>
+          </div>
 
           <!-- Second Team (CT for rounds 1-12, T for rounds 13+) -->
           <div v-if="currentRound <= 12" class="team-cards-container ct">
             <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
-              <div class="player-info-row">
-                <span class="p-name">{{ p.name }}</span>
-                <span class="p-money">${{ p.money }}</span>
+              <!-- Column 1: Player Info -->
+              <div class="card-col col-info">
+                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-stats">
+                  <div class="stat-item">
+                    <img src="/icons/kill.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.kills || 0 }}</span>
+                  </div>
+                  <div class="stat-item">
+                    <img src="/icons/death.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.deaths || 0 }}</span>
+                  </div>
+                </div>
+                <div class="player-money">
+                  <span class="money-symbol">$</span>
+                  <span class="money-value">{{ (p.money || 0).toLocaleString() }}</span>
+                </div>
               </div>
-              <div class="p-stats-row">
-                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
-                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              
+              <!-- Column 2: Equipment -->
+              <div class="card-col col-equipment">
+                <div class="active-weapon">
+                  <img 
+                    v-if="getPrimaryWeapon(p)"
+                    :src="getWeaponIconPath(getPrimaryWeapon(p))" 
+                    class="weapon-icon"
+                    :class="{ 
+                      'is-active': isWeaponActive(p, getPrimaryWeapon(p)),
+                      'is-rifle': isRifleWeapon(getPrimaryWeapon(p))
+                    }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
+                <div class="utility-items">
+                  <img 
+                    v-for="(item, idx) in getUtilityItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="utility-icon"
+                    :class="{ 'is-active': isWeaponActive(p, item) }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
-              <!-- All Equipment -->
-              <div class="p-all-equipment">
-                <img 
-                  v-for="(item, idx) in getAllEquipment(p)" 
-                  :key="idx"
-                  :src="getWeaponIconPath(item)" 
-                  class="equipment-icon"
-                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
-                  :title="getEquipmentName(item)"
-                  @error="onWeaponIconError"
-                />
+              
+              <!-- Column 3: Status -->
+              <div class="card-col col-status">
+                <div class="health-display">
+                  <div class="health-value">{{ Math.round(p.health || 0) }}</div>
+                </div>
+                <div class="armor-display">
+                  <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
+                </div>
+                <div class="gear-items">
+                  <img 
+                    v-for="(item, idx) in getGearItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="gear-icon"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
             </div>
           </div>
           <div v-else class="team-cards-container t">
             <div v-for="p in teamTPlayers" :key="p.id" class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
-              <div class="player-info-row">
-                <span class="p-name">{{ p.name }}</span>
-                <span class="p-money">${{ p.money }}</span>
+              <!-- Column 1: Player Info -->
+              <div class="card-col col-info">
+                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-stats">
+                  <div class="stat-item">
+                    <img src="/icons/kill.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.kills || 0 }}</span>
+                  </div>
+                  <div class="stat-item">
+                    <img src="/icons/death.svg" class="stat-icon" />
+                    <span class="stat-value">{{ p.deaths || 0 }}</span>
+                  </div>
+                </div>
+                <div class="player-money">
+                  <span class="money-symbol">$</span>
+                  <span class="money-value">{{ (p.money || 0).toLocaleString() }}</span>
+                </div>
               </div>
-              <div class="p-stats-row">
-                <div class="p-kda">{{ p.kills || 0 }}/{{ p.assists || 0 }}/{{ p.deaths || 0 }}</div>
-                <div class="p-hp-text">{{ Math.round(p.health || 0) }}</div>
+              
+              <!-- Column 2: Equipment -->
+              <div class="card-col col-equipment">
+                <div class="active-weapon">
+                  <img 
+                    v-if="getPrimaryWeapon(p)"
+                    :src="getWeaponIconPath(getPrimaryWeapon(p))" 
+                    class="weapon-icon"
+                    :class="{ 
+                      'is-active': isWeaponActive(p, getPrimaryWeapon(p)),
+                      'is-rifle': isRifleWeapon(getPrimaryWeapon(p))
+                    }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
+                <div class="utility-items">
+                  <img 
+                    v-for="(item, idx) in getUtilityItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="utility-icon"
+                    :class="{ 'is-active': isWeaponActive(p, item) }"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
-              <!-- All Equipment -->
-              <div class="p-all-equipment">
-                <img 
-                  v-for="(item, idx) in getAllEquipment(p)" 
-                  :key="idx"
-                  :src="getWeaponIconPath(item)" 
-                  class="equipment-icon"
-                  :class="{ 'is-active': isEquipmentActive(p, item, idx) }"
-                  :title="getEquipmentName(item)"
-                  @error="onWeaponIconError"
-                />
+              
+              <!-- Column 3: Status -->
+              <div class="card-col col-status">
+                <div class="health-display">
+                  <div class="health-value">{{ Math.round(p.health || 0) }}</div>
+                </div>
+                <div class="armor-display">
+                  <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
+                </div>
+                <div class="gear-items">
+                  <img 
+                    v-for="(item, idx) in getGearItems(p)" 
+                    :key="idx"
+                    :src="getWeaponIconPath(item)" 
+                    class="gear-icon"
+                    @error="onWeaponIconError"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -417,6 +599,35 @@ const isSecondHalf = computed(() => {
   return currentRound.value >= MATCH_CONFIG.SECOND_HALF_START_ROUND;
 });
 
+// 计算实时比分（基于roundResults）
+const currentScoreCT = computed(() => {
+  if (!replay.value?.roundResults || currentRound.value === 0) return 0;
+  
+  // 统计到当前回合为止CT队赢得的回合数
+  let score = 0;
+  for (const result of replay.value.roundResults) {
+    if (result.round >= currentRound.value) break; // 只统计到当前回合之前的结果
+    if (result.result === 'ct_win' || result.result === 'bomb_defused') {
+      score++;
+    }
+  }
+  return score;
+});
+
+const currentScoreT = computed(() => {
+  if (!replay.value?.roundResults || currentRound.value === 0) return 0;
+  
+  // 统计到当前回合为止T队赢得的回合数
+  let score = 0;
+  for (const result of replay.value.roundResults) {
+    if (result.round >= currentRound.value) break; // 只统计到当前回合之前的结果
+    if (result.result === 't_win' || result.result === 'bomb_exploded') {
+      score++;
+    }
+  }
+  return score;
+});
+
 const currentRoundFrames = computed(() => {
   if (!safeFrames.value.length || currentRound.value === 0) return [];
   return safeFrames.value.filter(f => f.round === currentRound.value);
@@ -636,12 +847,19 @@ const getCardBackgroundStyle = (player: PlayerState, team: 'ct' | 't') => {
 const getWeaponIconPath = (weaponId: any) => {
   if (weaponId === undefined || weaponId === null) return '/weapons/default.svg';
   
+  // Handle special gear identifiers (not in EQUIPMENT_ID_MAP)
+  if (typeof weaponId === 'string') {
+    if (weaponId === 'defuser') return '/utility/defuser.svg';
+    if (weaponId === 'armor_full') return '/utility/armor_full.svg';
+    if (weaponId === 'armor') return '/utility/armor.svg';
+  }
+  
   const id = Number(weaponId);
   const fileName = EQUIPMENT_ID_MAP[id];
   
   if (!fileName) return '/weapons/default.svg';
 
-  // 只有手雷和C4在 utility 目录下，其他武器（包括刀）都在 weapons 目录下
+  // Grenades and C4 are in utility folder, knife and all other weapons are in weapons folder
   const isUtilityFolder = (id >= 501 && id <= 506) || id === 404;
   const folder = isUtilityFolder ? 'utility' : 'weapons';
   return `/${folder}/${fileName}.svg`;
@@ -700,6 +918,85 @@ const getEquipmentName = (equipmentId: string): string => {
   const id = Number(equipmentId);
   const fileName = EQUIPMENT_ID_MAP[id];
   return fileName || 'Unknown';
+};
+
+// Helper functions for new card layout
+
+// Get primary weapon (rifles, snipers, SMGs, pistols - prioritized)
+const getPrimaryWeapon = (player: PlayerState): string | null => {
+  if (!player.inventory) return null;
+  
+  // Priority order: Rifles/Snipers (300-399) > SMGs/Heavy (200-299 or legacy 100s) > Pistols (1-99)
+  // Exclude: Knife (405), C4 (404), Grenades (501-506)
+  
+  // First try to find rifles/snipers (highest priority)
+  const rifle = player.inventory.find(item => {
+    const id = Number(item);
+    return id >= 300 && id < 400;
+  });
+  if (rifle) return rifle;
+  
+  // Then try SMGs and heavy weapons (200-299 or legacy 100-199)
+  const smg = player.inventory.find(item => {
+    const id = Number(item);
+    return (id >= 200 && id < 300) || (id >= 100 && id < 200);
+  });
+  if (smg) return smg;
+  
+  // Finally pistols (exclude knife 405)
+  const pistol = player.inventory.find(item => {
+    const id = Number(item);
+    return id >= 1 && id < 100 && id !== 405;
+  });
+  if (pistol) return pistol;
+  
+  return null;
+};
+
+// Get utility items (grenades and C4)
+const getUtilityItems = (player: PlayerState): string[] => {
+  if (!player.inventory) return [];
+  return player.inventory.filter(item => {
+    const id = Number(item);
+    return (id >= 501 && id <= 506) || id === 404;
+  });
+};
+
+// Get gear items (armor, helmet, defuse kit)
+const getGearItems = (player: PlayerState): string[] => {
+  const items: string[] = [];
+  if (!player) return items;
+  
+  // Note: These are not in inventory, they are separate properties
+  // We'll show them as icons if the player has them
+  if (player.hasDefuseKit) {
+    items.push('defuser'); // Special identifier for defuse kit
+  }
+  
+  // Armor display - distinguish between armor only and armor + helmet
+  if (player.armor && player.armor > 0) {
+    if (player.hasHelmet) {
+      items.push('armor_full'); // Armor with helmet
+    } else {
+      items.push('armor'); // Armor only
+    }
+  }
+  
+  return items;
+};
+
+// Check if weapon is currently active
+const isWeaponActive = (player: PlayerState, weaponId: string | null): boolean => {
+  if (!weaponId || !player.activeWeapon) return false;
+  return Number(player.activeWeapon) === Number(weaponId);
+};
+
+// Check if weapon is a rifle/sniper (needs scaling adjustment)
+const isRifleWeapon = (weaponId: string | null): boolean => {
+  if (!weaponId) return false;
+  const id = Number(weaponId);
+  // Rifles, snipers, SMGs need scaling (200-399 range)
+  return (id >= 200 && id < 400) || (id >= 100 && id < 200);
 };
 
 // Load specific round data from IndexedDB
@@ -833,121 +1130,296 @@ onBeforeUnmount(() => {
 .team-cards-container {
   display: flex;
   flex-direction: column;
-  gap: 4px; /* Reduced gap between cards */
-  padding: 6px; /* Reduced padding */
+  gap: 5px; /* 增大卡片间距 */
+  padding: 4px;
   pointer-events: auto;
 }
 
-.team-divider {
-  height: 2px;
+.score-divider {
+  height: 42px; /* 降低高度 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 4px; /* 减小边距 */
+  position: relative;
+}
+
+.score-divider::before,
+.score-divider::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
   background: linear-gradient(
     to right,
     transparent 0%,
-    rgba(255, 255, 255, 0.2) 20%,
-    rgba(255, 255, 255, 0.2) 80%,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0.15) 80%,
     transparent 100%
   );
-  margin: 4px 6px; /* Reduced margin to match padding */
+}
+
+.score-divider::before {
+  top: 0;
+}
+
+.score-divider::after {
+  bottom: 0;
+}
+
+.score-display {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* 略小间隙 */
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--ds-radius-sm);
+  padding: 6px 14px; /* 减小内边距 */
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.team-score {
+  font-size: 24px; /* 略小字号 */
+  font-weight: 800;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+  min-width: 28px; /* 略小宽度 */
+  text-align: center;
+}
+
+.team-score.t-score {
+  color: #fb923c; /* T team orange */
+}
+
+.team-score.ct-score {
+  color: #60a5fa; /* CT team blue */
+}
+
+.score-separator {
+  font-size: 20px; /* 略小字号 */
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1;
 }
 
 .player-card-bottom {
-  width: 220px; /* Increased width for better equipment display */
-  min-height: 60px; /* Increased height for better spacing */
-  max-height: 60px;
-  background: rgba(0, 0, 0, 0.7); /* Darker, matching DemoLib cards */
+  width: 280px;
+  min-height: 60px; /* 调整高度为60 */
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(200, 200, 200, 0.3); /* 2px gray-white border */
+  border: 1px solid rgba(200, 200, 200, 0.25);
   border-radius: var(--ds-radius-sm);
-  padding: 6px 10px; /* Increased padding for more breathing room */
+  padding: 6px; /* 减小内边距给信息更多空间 */
   display: flex;
-  flex-direction: column;
-  gap: 3px; /* Increased gap between rows */
-  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); /* Deeper shadow like DemoLib */
+  gap: 6px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   position: relative;
   overflow: hidden;
 }
 
-/* Remove team-specific border styling - all cards use same gray-white border */
 .player-card-bottom.is-dead {
   opacity: 0.5;
   filter: grayscale(0.8);
 }
 
-.player-info-row {
+/* Three Column Layout */
+.card-col {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  line-height: 1; /* Tight line height */
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
 }
 
-.p-name {
-  font-weight: 700;
-  font-size: 12px; /* Slightly smaller */
-  color: var(--ds-text-primary);
+/* Column 1: Player Info (约35%) */
+.col-info {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Column 2: Equipment (约35%) */
+.col-equipment {
+  flex: 1;
+  align-items: center;
+}
+
+/* Column 3: Status (约30%) */
+.col-status {
+  flex: 0.85;
+  align-items: flex-end;
+}
+
+/* Column 1 Styles - Player Info */
+.player-id {
+  font-weight: 800;
+  font-size: 15px; /* 放大 */
+  color: #f5f5f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px; /* Increased for wider card */
-  line-height: 1; /* Tight line height */
+  letter-spacing: 0.3px;
 }
 
-.p-money {
-  color: var(--ds-primary);
-  font-weight: bold;
-  font-size: 10px; /* Smaller */
-  line-height: 1; /* Tight line height */
-  opacity: 0.9; /* Slightly dimmed */
-}
-
-.p-kda {
-  font-size: 9px; /* Smaller */
-  color: var(--ds-text-tertiary);
-  font-weight: 500;
-  line-height: 1; /* Tight line height */
-  opacity: 0.8; /* Slightly dimmed */
-}
-
-.p-stats-row {
+.player-stats {
   display: flex;
-  justify-content: space-between;
+  gap: 10px;
   align-items: center;
-  margin: 0; /* Remove any margin */
-  line-height: 1; /* Tight line height */
+  line-height: 1;
 }
 
-.p-hp-text {
-  font-size: 12px; /* Slightly smaller */
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stat-icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.9;
+  flex-shrink: 0;
+  filter: brightness(0) invert(1); /* 白色滤镜让SVG显示为白色 */
+}
+
+.stat-value {
+  font-size: 12px; /* 放大 */
+  font-weight: 600;
+  color: #f5f5f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+}
+
+.player-money {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  line-height: 1;
+}
+
+.money-symbol {
+  font-size: 11px; /* 放大 */
   font-weight: 700;
-  color: var(--ds-text-primary);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-  line-height: 1; /* Tight line height */
+  color: #22c55e;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* === Equipment Display === */
-.p-all-equipment {
+.money-value {
+  font-size: 11px; /* 放大 */
+  font-weight: 700;
+  color: #22c55e;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Column 2 Styles - Equipment */
+.active-weapon {
   display: flex;
-  flex-wrap: wrap;
-  gap: 3px; /* Increased gap for better spacing */
-  min-height: 20px; /* Slightly increased to match icon size */
-  padding: 0;
   align-items: center;
+  justify-content: center;
+  flex: 2; /* 占用2/3高度 */
 }
 
-.equipment-icon {
-  width: 20px; /* Slightly larger icons */
-  height: 20px;
+.weapon-icon {
+  width: 48px;
+  height: 24px;
   object-fit: contain;
-  opacity: 0.6;
+  opacity: 0.85;
+  filter: brightness(1.1);
   transition: all var(--ds-transition-base);
-  filter: brightness(0.8);
-  padding: 1px;
 }
 
-.equipment-icon.is-active {
+.weapon-icon.is-rifle {
+  transform: scale(1.4); 
+}
+
+/* 激活状态只改变亮度，不改变大小 */
+.weapon-icon.is-active {
   opacity: 1;
-  filter: none;
-  transform: scale(1.15); /* Slightly reduced scale */
+  transform: scale(1.2);
+  filter: brightness(1.2) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+}
+
+.weapon-icon.is-rifle.is-active {
+  opacity: 1;
+  transform: scale(1.6);
+  filter: brightness(1.2) drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+}
+
+.utility-items {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+  flex: 1; /* 占用1/3高度 */
+  align-items: flex-start;
+}
+
+.utility-icon {
+  width: 16px; /* 略放大 */
+  height: 16px;
+  object-fit: contain;
+  opacity: 0.75;
+  filter: brightness(1.1);
+  transition: all var(--ds-transition-base);
+}
+
+.utility-icon.is-active {
+  opacity: 1;
+  filter: brightness(1.3) drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
+  transform: scale(1.1);
+}
+
+/* Column 3 Styles - Status */
+.health-display {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.health-value {
+  font-size: 18px; /* 大字号 */
+  font-weight: 800;
+  color: #f5f5f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  min-width: 32px;
+  text-align: right;
+}
+
+.armor-display {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.armor-value {
+  font-size: 12px; /* 放大 */
+  font-weight: 700;
+  color: #60a5fa;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+  min-width: 32px;
+  text-align: right;
+}
+
+.gear-items {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-height: 16px;
+}
+
+.gear-icon {
+  width: 16px; /* 放大 */
+  height: 16px;
+  object-fit: contain;
+  opacity: 0.8;
+  filter: brightness(1.1);
+  transition: all var(--ds-transition-base);
 }
 
 /* === Kill Feed === */

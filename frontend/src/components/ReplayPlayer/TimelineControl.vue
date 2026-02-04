@@ -59,7 +59,7 @@
           </button>
         </div>
         <div class="status-meta">
-          <div class="speed-tag">{{ playbackSpeed }}x</div>
+          <div class="speed-tag" @click="cycleSpeed" title="点击切换倍速">{{ playbackSpeed }}x</div>
           <div class="time-display">
             <!-- Show C4 icon when bomb is planted -->
             <img 
@@ -530,6 +530,14 @@ const formatMs = (ms: number) => {
   const s = (totalSeconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 };
+
+// 循环切换播放倍速：1x -> 0.5x -> 2x -> 4x -> 1x
+const cycleSpeed = () => {
+  const speeds = [0.5, 1, 2, 4];
+  const currentIndex = speeds.indexOf(props.playbackSpeed);
+  const nextIndex = (currentIndex + 1) % speeds.length;
+  emit('update-speed', speeds[nextIndex]);
+};
 </script>
 
 <style scoped>
@@ -806,6 +814,17 @@ const formatMs = (ms: number) => {
   position: absolute;
   top: -2px;
   right: 0;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: all var(--ds-transition-base);
+  user-select: none;
+}
+
+.speed-tag:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-primary);
+  transform: scale(1.1);
 }
 
 .time-display {
