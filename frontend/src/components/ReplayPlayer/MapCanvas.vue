@@ -20,6 +20,27 @@
     :getBackgroundCanvas="getCanvasForDrawing"
     @close="emit('close-drawing')"
   />
+
+  <!-- Map Zoom Controls -->
+  <div class="map-zoom-controls">
+    <button class="zoom-btn" @click="zoomIn" title="放大">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
+    <button class="zoom-btn" @click="zoomOut" title="缩小">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
+    <button class="zoom-btn reset-btn" @click="resetZoom" title="重置视图">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+        <polyline points="3 3 3 8 8 8"></polyline>
+      </svg>
+    </button>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -263,6 +284,37 @@ const onWheel = (event: WheelEvent) => {
   worldContainer.position.y = pivotY - worldPosAfter.y;
 };
 
+const zoomBy = (delta: number) => {
+  if (!worldContainer || !app) return;
+  
+  const newScale = Math.min(1.5, Math.max(state.defaultScale, state.scale + delta));
+  if (Math.abs(newScale - state.scale) < 0.001) return;
+
+  // Zoom towards the center of the screen
+  const pivotX = app.renderer.screen.width / 2;
+  const pivotY = app.renderer.screen.height / 2;
+
+  const worldPosBefore = {
+    x: (pivotX - worldContainer.position.x) / state.scale,
+    y: (pivotY - worldContainer.position.y) / state.scale,
+  };
+
+  state.scale = newScale;
+  worldContainer.scale.set(state.scale);
+
+  const worldPosAfter = {
+    x: worldPosBefore.x * state.scale,
+    y: worldPosBefore.y * state.scale,
+  };
+
+  worldContainer.position.x = pivotX - worldPosAfter.x;
+  worldContainer.position.y = pivotY - worldPosAfter.y;
+};
+
+const zoomIn = () => zoomBy(0.1);
+const zoomOut = () => zoomBy(-0.1);
+const resetZoom = () => centerWorld(true);
+
 const clearProjectiles = () => {
   clearProjectilesLayer(projectileLayer);
 };
@@ -496,3 +548,97 @@ onBeforeUnmount(() => {
   }
 });
 </script>
+
+<style scoped>
+.map-canvas-element {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.map-zoom-controls {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.zoom-btn {
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+}
+
+.zoom-btn:active {
+  transform: translateY(0);
+}
+
+.reset-btn {
+  margin-top: 4px;
+  background: rgba(59, 130, 246, 0.6); /* Blueish for reset */
+}
+
+.reset-btn:hover {
+  background: rgba(59, 130, 246, 0.8);
+}
+
+.player-tooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: white;
+  pointer-events: none;
+  z-index: 1000;
+  transform: translate(10px, 10px);
+  min-width: 120px;
+}
+
+.player-tooltip .name {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 2px;
+}
+
+.player-tooltip .meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 2px;
+}
+
+.player-tooltip .team.ct {
+  color: #60a5fa;
+  font-weight: bold;
+}
+
+.player-tooltip .team.t {
+  color: #fb923c;
+  font-weight: bold;
+}
+</style>
