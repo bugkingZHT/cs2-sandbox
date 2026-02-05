@@ -287,12 +287,6 @@ function createReplayData() {
   };
 
   const parseDemo = async (file: File) => {
-    // Check if WASM functions are available
-    if (typeof (window as any).initDemoParser !== 'function') {
-      error.value = 'WASM 引擎尚未就绪，请稍后再试';
-      return;
-    }
-
     // ============ CONCURRENCY CHECK: Only allow one parsing at a time ============
     const metaStorage = await getMetaStorage();
     const parsingMetas = await metaStorage.getParsingMetas();
@@ -315,106 +309,49 @@ function createReplayData() {
     parsingProgress.value = 0;
     error.value = null;
 
-    let demoUuid: string | null = null;
-    let demoBytes: Uint8Array | null = null; // Track bytes to release later
+    let meta: ReplayMeta | null = null; // Set on META_READY; used for progress/error
+    let demoBytes: Uint8Array | null = null;
 
     try {
       const buffer = await file.arrayBuffer();
       demoBytes = new Uint8Array(buffer);
-      
-      // Calculate estimated total ticks based on file size
-      // Known ratio: 365MB = 131,735 ticks
-      // Ratio: ~360.8 ticks per MB （or less）
+
       const fileSizeMB = file.size / (1024 * 1024);
       const estimatedTotalTicks = Math.round(fileSizeMB * 360);
       console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks}`);
 
-      // ============ SYNCHRONOUS PHASE: Meta extraction ============
-      // Step 1: Initialize parser
-      updateParsingProgress(5, 'Initializing parser...');
-      const initError = (window as any).initDemoParser(demoBytes);
-      if (initError) throw new Error(initError);
-
-      // Step 2: Extract metadata (header only, no frame traversal)
-      updateParsingProgress(50, 'Extracting metadata...');
-      console.log('[ParseDemo] 📦 Calling WASM extractDemoMetadata...');
-      const metaJsonString = await new Promise<string>((resolve, reject) => {
-        (window as any).extractDemoMetadata((res: any, err: string) => {
-          if (err) {
-            console.error('[ParseDemo] ❌ extractDemoMetadata error:', err);
-            reject(new Error(err));
-          } else {
-            console.log('[ParseDemo] ✅ extractDemoMetadata returned JSON, length:', res?.length);
-            resolve(res as string);
-          }
-        });
-      });
-      console.log('[ParseDemo] 🔄 Parsing metadata from JSON...');
-      const meta: ReplayMeta = JSON.parse(metaJsonString);
-      demoUuid = meta.uuid;
-      console.log('[ParseDemo] ✅ Metadata parsed successfully:', {
-        uuid: meta.uuid,
-        fileName: meta.fileName,
-        mapName: meta.mapName
-      });
-
-      // 保存原始文件名（不含 .dem 扩展名）
-      meta.fileName = file.name.replace(/\.dem$/i, '');
-      
-      // 设置初始状态
-      meta.status = 0; // 0 = 解析中
-      meta.parsingProgress = 0;
-      meta.parsingStatus = 'Starting round parsing...';
-      meta.lastTickTime = Date.now();
-
-      // Step 3: 保存初始 meta 到 IndexedDB
-      updateParsingProgress(100, 'Metadata saved!');
-      console.log('[ParseDemo] 💾 保存初始 meta 到 IndexedDB...');
       const metaStorage = await getMetaStorage();
-      await metaStorage.saveMeta(meta);
-      console.log('[ParseDemo] 🔄 刷新回放列表...');
-      await loadAllReplays();
-      console.log('[ParseDemo] ✅ Meta 已保存到 IndexedDB 并刷新列表');
-
-      // Close the global parsing modal - synchronous phase complete
-      parsing.value = false;
-      parsingProgress.value = 0;
-
-      // ============ ASYNCHRONOUS PHASE: Round parsing in Web Worker ============
       const worker = new ParserWorker();
-      // ⚠️ DO NOT accumulate rounds in memory - only track count
       let savedRoundsCount = 0;
       let lastTickTime = Date.now();
       let tickTimeoutHandle: number | null = null;
 
-      // Setup message handler
       worker.onmessage = async (e: MessageEvent) => {
+        if (e.data.type === 'META_READY') {
+          const { metaJsonString, fileName } = e.data;
+          const parsed: ReplayMeta = JSON.parse(metaJsonString);
+          parsed.fileName = fileName.replace(/\.dem$/i, '');
+          parsed.status = 0;
+          parsed.parsingProgress = 0;
+          parsed.parsingStatus = 'Starting round parsing...';
+          parsed.lastTickTime = Date.now();
+          meta = parsed;
+          await metaStorage.saveMeta(parsed);
+          await loadAllReplays();
+          parsing.value = false;
+          parsingProgress.value = 0;
+          console.log('[ParseDemo] ✅ Meta saved (single copy in worker), parsing in progress');
+          return;
+        }
         if (e.data.type === 'PROGRESS') {
-          // Update last tick time on progress
+          if (!meta) return;
           lastTickTime = Date.now();
-          
           const { uuid: workerUuid, parsedTicks } = e.data;
-          
-          // Verify uuid match
-          if (workerUuid !== meta.uuid) {
-            console.error(`[ParseDemo] UUID mismatch! Expected: ${meta.uuid}, Got: ${workerUuid}`);
-            return;
-          }
-          
-          // 更新 IndexedDB 中的进度 (0-95% for parsing phase)
+          if (workerUuid !== meta.uuid) return;
           const progress = Math.min(95, (parsedTicks / estimatedTotalTicks) * 95);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
-          
-          await metaStorage.updateMetaStatus(
-            meta.uuid,
-            0, // status = 0 (解析中)
-            Math.floor(progress),
-            status,
-            Date.now()
-          );
-          
+          await metaStorage.updateMetaStatus(meta.uuid, 0, Math.floor(progress), status, Date.now());
           console.log(`[ParseDemo] [${meta.uuid}] Tick progress: ${parsedTicks.toLocaleString()} ticks (${Math.floor(progress)}%)`);
-          
         } else if (e.data.type === 'ROUND_COMPLETE') {
           const round: ReplayRound = e.data.round;
           
@@ -428,8 +365,8 @@ function createReplayData() {
           // The round data is now safely stored in OPFS
           
         } else if (e.data.type === 'PARSING_COMPLETE') {
+          if (!meta) return;
           try {
-            // Phase 3: 更新 IndexedDB meta 为完成状态
             console.log('[ParseDemo] PARSING_COMPLETE received:', {
               totalRounds: e.data.totalRounds,
               scoreCT: e.data.scoreCT,
@@ -441,8 +378,6 @@ function createReplayData() {
               hasServerPlayer: !!e.data.serverPlayer,
               serverPlayerCount: e.data.serverPlayer?.length || 0,
             });
-            
-            // 从 IndexedDB 加载最新 meta 并更新
             const latestMeta = await metaStorage.loadMeta(meta.uuid);
             if (latestMeta) {
               latestMeta.totalRounds = e.data.totalRounds;
@@ -460,17 +395,11 @@ function createReplayData() {
               console.log(`[ParseDemo] Meta 已更新到 IndexedDB: status=1, progress=100%, serverPlayers=${e.data.serverPlayer?.length || 0}`);
             }
             
-            await loadAllReplays(); // 刷新列表
-            
-            // Close parser on main thread
-            (window as any).closeDemoParser();
-            
+            await loadAllReplays();
             console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
           } catch (e: any) {
             console.error('[ParseDemo] Finalization failed:', e);
-            // 标记为失败
             await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Finalization error: ${e.message}`);
-            (window as any).closeDemoParser();
           } finally {
             // Cleanup worker and tick timeout checker
             if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
@@ -480,77 +409,62 @@ function createReplayData() {
         } else if (e.data.type === 'ERROR') {
           const { uuid: workerUuid, error: errorMessage } = e.data;
           console.error(`[ParseDemo] [${workerUuid}] Worker error:`, errorMessage);
-          
-          // Verify uuid match
-          if (workerUuid !== meta.uuid) {
-            console.error(`[ParseDemo] UUID mismatch in error! Expected: ${meta.uuid}, Got: ${workerUuid}`);
+          if (meta) {
+            await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker error: ${errorMessage}`);
+          } else {
+            error.value = `解析失败: ${errorMessage}`;
+            parsing.value = false;
           }
-          
-          // 标记为失败
-          await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker error: ${errorMessage}`);
-          (window as any).closeDemoParser();
           if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
           worker.terminate();
         }
       };
 
-      // Handle worker errors
-      worker.onerror = async (error: ErrorEvent) => {
-        console.error('[ParseDemo] Worker error event:', error);
-        // 标记为失败
-        await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker crashed: ${error.message}`);
-        (window as any).closeDemoParser();
+      worker.onerror = async (ev: ErrorEvent) => {
+        console.error('[ParseDemo] Worker error event:', ev);
+        if (meta) {
+          await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker crashed: ${ev.message}`);
+        } else {
+          error.value = `解析失败: ${ev.message || String(ev)}`;
+          parsing.value = false;
+        }
         if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
         worker.terminate();
       };
 
-      // Load round limit from localStorage if available
+      let roundLimit: number = -1;
       const roundLimitStr = localStorage.getItem('demoParsingRoundLimit');
-      let roundLimit: number | undefined;
       if (roundLimitStr) {
         const parsedLimit = parseInt(roundLimitStr, 10);
-        roundLimit = parsedLimit > 0 ? parsedLimit : undefined;
+        if (parsedLimit > 0) roundLimit = parsedLimit;
       }
-
-      // Load parse frame ratio from localStorage (positive integer >= 1)
       let frameRatio = 1;
       const frameRatioStr = localStorage.getItem('demoParsingFrameRatio');
       if (frameRatioStr) {
         const n = parseInt(frameRatioStr, 10);
-        if (!isNaN(n) && n >= 1) {
-          frameRatio = n;
-        }
+        if (!isNaN(n) && n >= 1) frameRatio = n;
       }
 
-      // Start worker parsing
-      worker.postMessage({
-        type: 'PARSE_ROUNDS',
-        demoBytes: demoBytes,
-        uuid: meta.uuid,
-        estimatedTotalTicks,
-        roundLimit,
-        frameRatio
-      });
-      
-      // ⚠️ CRITICAL: Release main thread's reference to file bytes immediately
-      // Worker has received a copy (via structured clone), so we can free main thread memory
+      // Single transfer: worker does init + meta + parse; main never holds Go copy
+      const transferList = demoBytes?.buffer ? [demoBytes.buffer] : [];
+      worker.postMessage(
+        {
+          type: 'INIT_AND_PARSE',
+          demoBytes,
+          fileName: file.name.replace(/\.dem$/i, ''),
+          estimatedTotalTicks,
+          roundLimit,
+          frameRatio
+        },
+        transferList
+      );
       demoBytes = null;
-      console.log('[ParseDemo] 🗑️ Released main thread file bytes reference');
+      console.log('[ParseDemo] 🗑️ Transferred file buffer to worker (single copy in worker only)');
 
       statusMsg.value = `后台解析中: ${file.name}`;
     } catch (e: any) {
       error.value = `解析失败: ${e.message || String(e)}`;
-      
-      // Release file bytes on error
       demoBytes = null;
-      
-      if (demoUuid) {
-        // 标记为失败
-        const metaStorage = await getMetaStorage();
-        await metaStorage.updateMetaStatus(demoUuid, -1, undefined, `Parse error: ${e.message}`);
-        await loadAllReplays();
-      }
-      (window as any).closeDemoParser(); // Cleanup on error
       parsing.value = false;
     }
   };

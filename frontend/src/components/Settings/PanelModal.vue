@@ -209,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { DEBUG_CONFIG } from '@/config/debug';
 
 interface Props {
@@ -308,18 +308,29 @@ const roundLimit = ref<number>(-1); // Default value is -1 (no limit)
 const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
 const parseFrameRatio = ref<number>(1);
 
-// Load round limit and parse frame ratio from localStorage on component mount
-onMounted(() => {
-  if (DEBUG_CONFIG.enableStorageQuotaDisplay) {
+// Real-time update for usage info when debug tab is open (1s refresh)
+watch(activeTab, (tab) => {
+  // Clear existing interval when leaving debug tab
+  if (memoryUpdateInterval !== null) {
+    clearInterval(memoryUpdateInterval);
+    memoryUpdateInterval = null;
+  }
+  
+  if (DEBUG_CONFIG.enableStorageQuotaDisplay && tab === 'debug') {
+    // Initial update
     updateStorageQuota();
     updateWasmMemory();
     
-    // Update memory stats every 2 seconds
+    // Update both storage and WASM usage every 1 second
     memoryUpdateInterval = window.setInterval(() => {
+      updateStorageQuota();
       updateWasmMemory();
-    }, 2000);
+    }, 1000);
   }
-  
+});
+
+// Load round limit and parse frame ratio from localStorage on component mount
+onMounted(() => {
   // Load round limit from localStorage
   if (DEBUG_CONFIG.enableRoundLimitConfig) {
     const savedLimit = localStorage.getItem('demoParsingRoundLimit');

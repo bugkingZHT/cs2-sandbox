@@ -8,11 +8,11 @@ import { getMetaStorage } from '@/composables/indexdb-storage';
 declare const Go: any;
 declare const self: DedicatedWorkerGlobalScope;
 
-// Message types
-interface ParseRoundsMessage {
-  type: 'PARSE_ROUNDS';
+// Message types: single entry — init + extract meta + parse in worker (one transfer, one copy)
+interface InitAndParseMessage {
+  type: 'INIT_AND_PARSE';
   demoBytes: Uint8Array;
-  uuid: string;
+  fileName: string;
   estimatedTotalTicks: number;
   roundLimit?: number;
   frameRatio?: number; // positive integer >= 1 (1=1:1, 2=1:2, N=1:N)
@@ -46,8 +46,14 @@ interface ErrorMessage {
   error: string;
 }
 
-type WorkerMessage = ParseRoundsMessage;
-type WorkerResponse = RoundCompleteMessage | ParsingCompleteMessage | ProgressMessage | ErrorMessage;
+interface MetaReadyMessage {
+  type: 'META_READY';
+  metaJsonString: string;
+  fileName: string;
+}
+
+type WorkerMessage = InitAndParseMessage;
+type WorkerResponse = MetaReadyMessage | RoundCompleteMessage | ParsingCompleteMessage | ProgressMessage | ErrorMessage;
 
 let wasmInitialized = false;
 
@@ -68,10 +74,10 @@ async function initializeWASM() {
     const response = await fetch('/main.wasm');
     const buffer = await response.arrayBuffer();
     const wasmModule = await WebAssembly.instantiate(buffer, go.importObject);
-    
+
     // Run Go program (this registers the WASM functions)
     go.run(wasmModule.instance);
-    
+
     wasmInitialized = true;
     console.log('[Worker] WASM initialized successfully');
   } catch (error) {
@@ -99,34 +105,49 @@ function parseNextRoundPromise(onTickProgress: (ticks: number) => void): Promise
   });
 }
 
-// Main message handler
+// Helper to promisify extractDemoMetadata
+function extractDemoMetadataPromise(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    (self as any).extractDemoMetadata((res: any, err: string) => {
+      if (err) reject(new Error(err));
+      else resolve(res as string);
+    });
+  });
+}
+
+// Main message handler: init + extract meta + parse — file lives only in worker (one transfer)
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
-  if (e.data.type === 'PARSE_ROUNDS') {
-    let demoBytes: Uint8Array | null = e.data.demoBytes; // Track to release later
-    const { uuid, estimatedTotalTicks } = e.data;
-    
-    try {
-      // Ensure WASM is initialized
-      await initializeWASM();
-      
-      console.log(`[Worker] [${uuid}] Starting round parsing`);
-      
-      // Initialize parser with demo bytes, round limit, and frame ratio
-      const initError = (self as any).initDemoParser(
-        demoBytes,
-        e.data.roundLimit ?? -1,
-        e.data.frameRatio ?? 1
-      );
-      if (initError) {
-        throw new Error(`initDemoParser failed: ${initError}`);
-      }
-      
-      // ⚠️ CRITICAL: Release worker's reference to file bytes immediately after parser init
-      // WASM has copied the data, so we can free JavaScript memory
-      demoBytes = null;
-      console.log(`[Worker] [${uuid}] 🗑️ Released worker file bytes reference`);
-      
-      console.log(`[Worker] [${uuid}] Parser initialized`);
+  if (e.data.type !== 'INIT_AND_PARSE') return;
+
+  let demoBytes: Uint8Array | null = e.data.demoBytes;
+  const { fileName, estimatedTotalTicks } = e.data;
+  const roundLimit = e.data.roundLimit ?? -1;
+  const frameRatio = e.data.frameRatio ?? 1;
+  let uuid: string = '';
+
+  try {
+    await initializeWASM();
+
+    // Init parser (only copy: JS → Go here; main thread has already released via transfer)
+    const initError = (self as any).initDemoParser(demoBytes, roundLimit, frameRatio);
+    if (initError) {
+      throw new Error(`initDemoParser failed: ${initError}`);
+    }
+
+    // Extract metadata (header only) and send to main so it can saveMeta
+    const metaJsonString = await extractDemoMetadataPromise();
+    const meta = JSON.parse(metaJsonString) as { uuid: string };
+    uuid = meta.uuid;
+
+    self.postMessage({
+      type: 'META_READY',
+      metaJsonString,
+      fileName
+    } satisfies MetaReadyMessage);
+
+    demoBytes = null;
+    console.log(`[Worker] [${uuid}] 🗑️ Released worker file bytes reference (single copy in Go)`);
+    console.log(`[Worker] [${uuid}] Parser initialized, starting round parsing`);
       
       // Parse rounds in loop
       let roundNum = 1;
@@ -195,10 +216,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       }
       
       // Pass complete meta to ensure all fields are preserved during backfill
-      const metaJsonString = JSON.stringify(currentMeta);
+      const currentMetaJson = JSON.stringify(currentMeta);
       
       const backfillJsonString = await new Promise<string>((resolve, reject) => {
-        (self as any).backfillDemoMeta(metaJsonString, (res: any, err: string) => {
+        (self as any).backfillDemoMeta(currentMetaJson, (res: any, err: string) => {
           if (err) reject(new Error(err));
           else resolve(res);
         });
@@ -279,7 +300,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       };
       self.postMessage(errorResponse);
     }
-  }
 };
 
 // Export empty object to satisfy TypeScript module requirements
