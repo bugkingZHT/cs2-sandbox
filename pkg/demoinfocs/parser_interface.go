@@ -59,6 +59,8 @@ type Parser interface {
 	// Might not be 100% correct since it's just based on the reported tick count of the header.
 	// May always return 0 if the demo header is corrupt.
 	Progress() float32
+	// Header returns the demo header. Returns nil if the header has not been parsed yet (e.g. before ParseHeader or first ParseNextFrame).
+	Header() *Header
 	/*
 	   RegisterEventHandler registers a handler for game events.
 

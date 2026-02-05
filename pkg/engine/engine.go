@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
-	"github.com/bugkingzht/cs-demobox/pkg/engine/reflector"
 )
 
 type Engine interface {
@@ -101,10 +100,12 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 	}
 
 	gs := e.parser.GameState()
-	// Get map name using reflection from the unexported header
-	mapName := reflector.GetMapName(e.parser)
-	// Fallback to ConVars if reflection fails
-	if mapName == "unknown" {
+	var mapName string
+	if h := e.parser.Header(); h != nil {
+		mapName = h.MapName
+	}
+	// Fallback to ConVars if header not yet parsed
+	if mapName == "" {
 		if convars := gs.Rules().ConVars(); convars != nil {
 			if name, ok := convars["host_map"]; ok {
 				mapName = name

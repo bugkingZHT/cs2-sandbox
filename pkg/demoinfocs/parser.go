@@ -14,10 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
-	bit "github.com/bugkingzht/cs-demobox/pkg/demoinfocs/internal/bitread"
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/cstv"
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/events"
+	bit "github.com/bugkingzht/cs-demobox/pkg/demoinfocs/internal/bitread"
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/msg"
 	st "github.com/bugkingzht/cs-demobox/pkg/demoinfocs/sendtables"
 )
@@ -35,8 +35,8 @@ type sendTableParser interface {
 	OnEntity(h st.EntityHandler)
 }
 
-// header contains information from a demo's header.
-type header struct {
+// Header contains information from a demo's header.
+type Header struct {
 	Filestamp       string        // aka. File-type, must be HL2DEMO
 	NetworkProtocol int           // Not sure what this is for
 	ServerName      string        // Server's 'hostname' config value
@@ -52,7 +52,7 @@ type header struct {
 // Not necessarily the tick-rate the server ran on during the game.
 //
 // Returns 0 if PlaybackTime or PlaybackFrames are 0 (corrupt demo headers).
-func (h *header) FrameRate() float64 {
+func (h *Header) FrameRate() float64 {
 	if h.PlaybackTime == 0 {
 		return 0
 	}
@@ -63,7 +63,7 @@ func (h *header) FrameRate() float64 {
 // FrameTime returns the time a frame / demo-tick takes in seconds.
 //
 // Returns 0 if PlaybackTime or PlaybackFrames are 0 (corrupt demo headers).
-func (h *header) FrameTime() time.Duration {
+func (h *Header) FrameTime() time.Duration {
 	if h.PlaybackFrames == 0 {
 		return 0
 	}
@@ -106,7 +106,7 @@ type parser struct {
 	eventDispatcher                 *dp.Dispatcher
 	currentFrame                    int     // Demo-frame, not ingame-tick
 	tickInterval                    float32 // Duration between ticks in seconds
-	header                          *header // Pointer so we can check for nil
+	header                          *Header // Pointer so we can check for nil
 	gameState                       *gameState
 	demoInfoProvider                demoInfoProvider // Provides demo infos to other packages that the core package depends on
 	err                             error            // Contains a error that occurred during parsing if any
@@ -196,7 +196,12 @@ func (p *parser) TickRate() float64 {
 	return -1
 }
 
-func legacyTickRate(h header) float64 {
+// Header returns the demo header. Returns nil if the header has not been parsed yet (e.g. before ParseHeader or first ParseNextFrame).
+func (p *parser) Header() *Header {
+	return p.header
+}
+
+func legacyTickRate(h Header) float64 {
 	if h.PlaybackTime == 0 {
 		return 0
 	}
@@ -220,7 +225,7 @@ func (p *parser) TickTime() time.Duration {
 	return -1
 }
 
-func legayTickTime(h header) time.Duration {
+func legayTickTime(h Header) time.Duration {
 	if h.PlaybackTicks == 0 {
 		return 0
 	}

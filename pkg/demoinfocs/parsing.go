@@ -39,8 +39,8 @@ var (
 // If not done manually this will be called by Parser.ParseNextFrame() or Parser.ParseToEnd().
 //
 // Returns ErrInvalidFileType if the filestamp (first 8 bytes) doesn't match HL2DEMO.
-func (p *parser) parseHeader() (header, error) {
-	var h header
+func (p *parser) parseHeader() (Header, error) {
+	var h Header
 
 	isCSTVBroadcast := p.config.Format == DemoFormatCSTVBroadcast
 

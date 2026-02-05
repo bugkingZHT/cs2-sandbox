@@ -410,7 +410,8 @@ function createReplayData() {
           const { uuid: workerUuid, error: errorMessage } = e.data;
           console.error(`[ParseDemo] [${workerUuid}] Worker error:`, errorMessage);
           if (meta) {
-            await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker error: ${errorMessage}`);
+            await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, errorMessage);
+            await loadAllReplays();
           } else {
             error.value = `解析失败: ${errorMessage}`;
             parsing.value = false;
@@ -421,11 +422,13 @@ function createReplayData() {
       };
 
       worker.onerror = async (ev: ErrorEvent) => {
+        const errMsg = ev.message || (ev.error && (ev.error as Error).message) || String(ev);
         console.error('[ParseDemo] Worker error event:', ev);
         if (meta) {
-          await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Worker crashed: ${ev.message}`);
+          await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, errMsg);
+          await loadAllReplays();
         } else {
-          error.value = `解析失败: ${ev.message || String(ev)}`;
+          error.value = `解析失败: ${errMsg}`;
           parsing.value = false;
         }
         if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);

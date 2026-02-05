@@ -340,7 +340,7 @@
             </button>
           </div>
 
-          <!-- Failed Overlay (error/timeout - red, text only, no progress bar) -->
+          <!-- Failed Overlay (error/timeout - red, show failure reason from meta) -->
           <div v-else-if="demo.status === -1" class="failed-overlay-card">
             <div class="failed-content">
               <div class="failed-icon">
@@ -350,7 +350,8 @@
                   <line x1="9" y1="9" x2="15" y2="15"/>
                 </svg>
               </div>
-              <div class="failed-message">{{ demo.parsingStatus || 'Parsing failed' }}</div>
+              <div class="failed-label">解析失败</div>
+              <div class="failed-message" :title="demo.parsingStatus || 'Parsing failed'">{{ demo.parsingStatus || 'Parsing failed' }}</div>
             </div>
             
             <!-- Delete button for failed state -->
@@ -2398,12 +2399,24 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   75% { transform: translateX(10px); }
 }
 
+.failed-label {
+  font-size: var(--ds-text-lg);
+  font-weight: 700;
+  color: var(--ds-danger);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .failed-message {
   font-size: var(--ds-text-base);
-  font-weight: 600;
-  color: var(--ds-danger);
+  font-weight: 500;
+  color: var(--ds-text-secondary);
   text-align: center;
   line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-height: 4.2em;
+  overflow-y: auto;
 }
 
 .delete-btn-failed {

@@ -56,6 +56,8 @@ type WorkerMessage = InitAndParseMessage;
 type WorkerResponse = MetaReadyMessage | RoundCompleteMessage | ParsingCompleteMessage | ProgressMessage | ErrorMessage;
 
 let wasmInitialized = false;
+/** Current parse UUID; set after META_READY so global error handlers can report failure to main */
+let currentParseUuid = '';
 
 // Load WASM runtime
 async function initializeWASM() {
@@ -115,10 +117,36 @@ function extractDemoMetadataPromise(): Promise<string> {
   });
 }
 
+// Global error handler: capture uncaught errors (e.g. Go runtime OOM) and report to main
+function reportWorkerError(message: string) {
+  if (currentParseUuid) {
+    try {
+      self.postMessage({
+        type: 'ERROR',
+        uuid: currentParseUuid,
+        error: message
+      } satisfies ErrorMessage);
+    } catch (_) {
+      // Ignore if postMessage fails (e.g. worker already dying)
+    }
+  }
+}
+
+self.onerror = (ev: ErrorEvent) => {
+  const msg = ev.message || (ev.error && String(ev.error)) || 'Unknown error';
+  reportWorkerError(msg);
+};
+
+self.onunhandledrejection = (ev: PromiseRejectionEvent) => {
+  const msg = ev.reason?.message ?? (typeof ev.reason === 'string' ? ev.reason : String(ev.reason));
+  reportWorkerError(msg);
+};
+
 // Main message handler: init + extract meta + parse — file lives only in worker (one transfer)
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   if (e.data.type !== 'INIT_AND_PARSE') return;
 
+  currentParseUuid = '';
   let demoBytes: Uint8Array | null = e.data.demoBytes;
   const { fileName, estimatedTotalTicks } = e.data;
   const roundLimit = e.data.roundLimit ?? -1;
@@ -138,6 +166,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     const metaJsonString = await extractDemoMetadataPromise();
     const meta = JSON.parse(metaJsonString) as { uuid: string };
     uuid = meta.uuid;
+    currentParseUuid = uuid;
 
     self.postMessage({
       type: 'META_READY',
@@ -267,6 +296,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       }
       
       console.log(`[Worker] [${uuid}] ✅ Cleanup complete`);
+      currentParseUuid = '';
       // ============ END CLEANUP ============
       
     } catch (error: any) {
@@ -293,6 +323,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       }
       // ============ END CLEANUP ============
       
+      currentParseUuid = '';
       const errorResponse: ErrorMessage = {
         type: 'ERROR',
         uuid: uuid,
