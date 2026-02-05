@@ -2,18 +2,6 @@
   <div class="timeline-widget-container">
     <!-- 一、上方：回合选择进度条 -->
     <div class="round-selection-module">
-      <!-- 左侧画笔按钮 -->
-      <div class="brush-tool-wrapper">
-        <button 
-          class="brush-tool-btn" 
-          :class="{ 'active': isDrawingMode }"
-          @click="$emit('toggle-drawing')"
-          title="屏幕编辑"
-        >
-          <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
-        </button>
-      </div>
-
       <!-- 核心进度条主体 -->
       <div class="round-nav-wrapper">
         <div class="round-buttons-grid">
@@ -185,13 +173,11 @@ const props = defineProps<{
   totalRounds?: number;
   roundResults?: RoundResultInfo[];
   replayMeta?: ReplayData | null;
-  isDrawingMode?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'seek-seconds', value: number): void;
   (e: 'toggle-play'): void;
-  (e: 'toggle-drawing'): void;
   (e: 'update-speed', value: number): void;
   (e: 'exit-replay'): void;
   (e: 'dragging-change', value: boolean): void;
@@ -557,44 +543,6 @@ const cycleSpeed = () => {
   align-items: center;
   justify-content: flex-start;
   gap: var(--ds-space-md);
-}
-
-/* === Brush Tool Button === */
-.brush-tool-wrapper {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-start;
-  padding: 0 var(--ds-space-sm); /* 与 playback-info-box 的 padding 一致 */
-}
-
-.brush-tool-btn {
-  width: 32px;
-  height: 32px;
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--ds-radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  color: var(--ds-text-primary);
-}
-
-.brush-tool-btn:hover {
-  background: var(--ds-surface-hover);
-  border-color: var(--ds-border-strong);
-}
-
-.brush-tool-btn.active {
-  background: var(--ds-primary);
-  border-color: var(--ds-primary);
-  color: white;
-}
-
-.brush-tool-btn.active:hover {
-  background: var(--ds-primary-hover);
-  border-color: var(--ds-primary-hover);
 }
 
 /* === Layer Control === */

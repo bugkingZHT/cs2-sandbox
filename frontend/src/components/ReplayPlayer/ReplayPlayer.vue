@@ -24,6 +24,7 @@
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           @close-drawing="isDrawingMode = false"
+          @toggle-drawing="onToggleDrawing"
         />
 
         <!-- 击杀回传 (Kill Feed) -->
@@ -102,9 +103,9 @@
                 <div class="health-display">
                   <div class="health-value">{{ Math.round(p.health || 0) }}</div>
                 </div>
-                <div class="armor-display">
+                <!-- <div class="armor-display">
                   <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
-                </div>
+                </div> -->
                 <div class="gear-items">
                   <img 
                     v-for="(item, idx) in getGearItems(p)" 
@@ -169,9 +170,9 @@
                 <div class="health-display">
                   <div class="health-value">{{ Math.round(p.health || 0) }}</div>
                 </div>
-                <div class="armor-display">
+                <!-- <div class="armor-display">
                   <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
-                </div>
+                </div> -->
                 <div class="gear-items">
                   <img 
                     v-for="(item, idx) in getGearItems(p)" 
@@ -185,15 +186,15 @@
             </div>
           </div>
 
-          <!-- Score Display (Between Teams) -->
+          <!-- Score Display (Between Teams): 左=上方队伍 右=下方队伍，下半场用 isSecondHalf 判断显示颜色 -->
           <div class="score-divider">
             <div class="score-display">
-              <div class="team-score" :class="currentRound <= 12 ? 't-score' : 'ct-score'">
-                {{ currentRound <= 12 ? currentScoreT : currentScoreCT }}
+              <div class="team-score" :class="isSecondHalf(currentRound) ? 'ct-score' : 't-score'">
+                {{ currentScoreT }}
               </div>
               <div class="score-separator">:</div>
-              <div class="team-score" :class="currentRound <= 12 ? 'ct-score' : 't-score'">
-                {{ currentRound <= 12 ? currentScoreCT : currentScoreT }}
+              <div class="team-score" :class="isSecondHalf(currentRound) ? 't-score' : 'ct-score'">
+                {{ currentScoreCT }}
               </div>
             </div>
           </div>
@@ -251,9 +252,9 @@
                 <div class="health-display">
                   <div class="health-value">{{ Math.round(p.health || 0) }}</div>
                 </div>
-                <div class="armor-display">
+                <!-- <div class="armor-display">
                   <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
-                </div>
+                </div> -->
                 <div class="gear-items">
                   <img 
                     v-for="(item, idx) in getGearItems(p)" 
@@ -318,9 +319,9 @@
                 <div class="health-display">
                   <div class="health-value">{{ Math.round(p.health || 0) }}</div>
                 </div>
-                <div class="armor-display">
+                <!-- <div class="armor-display">
                   <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
-                </div>
+                </div> -->
                 <div class="gear-items">
                   <img 
                     v-for="(item, idx) in getGearItems(p)" 
@@ -355,10 +356,8 @@
         :total-rounds="replay?.totalRounds || 0"
         :round-results="replay?.roundResults || []"
         :replay-meta="replay"
-        :is-drawing-mode="isDrawingMode"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
-        @toggle-drawing="onToggleDrawing"
         @update-speed="onUpdateSpeed"
         @exit-replay="emit('exit-replay')"
         @dragging-change="isDraggingTimeline = $event"
@@ -375,7 +374,7 @@ import TimelineControl from './TimelineControl.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import type { Frame, PlayerState, ReplayData } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
-import { MATCH_CONFIG, getDisplayTeam } from '@/config/game';
+import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
@@ -594,35 +593,38 @@ const currentRound = computed(() => {
   return safeFrames.value[currentFrameIndex.value]?.round || 0;
 });
 
-// 判断是否在后半场（使用配置中的常量）
-const isSecondHalf = computed(() => {
-  return currentRound.value >= MATCH_CONFIG.SECOND_HALF_START_ROUND;
-});
-
-// 计算实时比分（基于roundResults）
-const currentScoreCT = computed(() => {
+// 计算实时比分（基于 roundResults，区分上下半场换边）
+// roundResults 存的是「地图方」胜负：ct_win/bomb_defused=CT方赢，t_win/bomb_exploded=T方赢
+// 上半场(1–12)：原T队在T方、原CT队在CT方；下半场(13+)换边，原T队在CT方、原CT队在T方
+const currentScoreT = computed(() => {
   if (!replay.value?.roundResults || currentRound.value === 0) return 0;
-  
-  // 统计到当前回合为止CT队赢得的回合数
   let score = 0;
+  const secondHalfStart = MATCH_CONFIG.SECOND_HALF_START_ROUND;
   for (const result of replay.value.roundResults) {
-    if (result.round >= currentRound.value) break; // 只统计到当前回合之前的结果
-    if (result.result === 'ct_win' || result.result === 'bomb_defused') {
-      score++;
+    if (result.round >= currentRound.value) break;
+    const isSecond = result.round >= secondHalfStart;
+    // 原T队：上半场T方赢=加，下半场CT方赢=加
+    if (isSecond) {
+      if (result.result === 'ct_win' || result.result === 'bomb_defused') score++;
+    } else {
+      if (result.result === 't_win' || result.result === 'bomb_exploded') score++;
     }
   }
   return score;
 });
 
-const currentScoreT = computed(() => {
+const currentScoreCT = computed(() => {
   if (!replay.value?.roundResults || currentRound.value === 0) return 0;
-  
-  // 统计到当前回合为止T队赢得的回合数
   let score = 0;
+  const secondHalfStart = MATCH_CONFIG.SECOND_HALF_START_ROUND;
   for (const result of replay.value.roundResults) {
-    if (result.round >= currentRound.value) break; // 只统计到当前回合之前的结果
-    if (result.result === 't_win' || result.result === 'bomb_exploded') {
-      score++;
+    if (result.round >= currentRound.value) break;
+    const isSecond = result.round >= secondHalfStart;
+    // 原CT队：上半场CT方赢=加，下半场T方赢=加
+    if (isSecond) {
+      if (result.result === 't_win' || result.result === 'bomb_exploded') score++;
+    } else {
+      if (result.result === 'ct_win' || result.result === 'bomb_defused') score++;
     }
   }
   return score;
@@ -1245,16 +1247,18 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-/* Column 3: Status (约30%) */
+/* Column 3: Status (约30%)：顶端对齐，health 顶齐无空隙（护甲已注释） */
 .col-status {
   flex: 0.85;
   align-items: flex-end;
+  justify-content: flex-start;
+  gap: 4px;
 }
 
 /* Column 1 Styles - Player Info */
 .player-id {
   font-weight: 800;
-  font-size: 15px; /* 放大 */
+  font-size: 12px; /* 放大 */
   color: #f5f5f0;
   font-family: system-ui, -apple-system, sans-serif;
   line-height: 1;
@@ -1324,8 +1328,8 @@ onBeforeUnmount(() => {
 }
 
 .weapon-icon {
-  width: 48px;
-  height: 24px;
+  width: 40px;
+  height: 20px;
   object-fit: contain;
   opacity: 0.85;
   filter: brightness(1.1);
@@ -1356,6 +1360,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex: 1; /* 占用1/3高度 */
   align-items: flex-start;
+  min-width: 92px; /* 5 个图标(16px) + 4 个间隙(3px) = 92px，保证一行能放下五个 */
 }
 
 .utility-icon {
@@ -1377,10 +1382,14 @@ onBeforeUnmount(() => {
 .health-display {
   display: flex;
   justify-content: flex-end;
+  align-items: flex-start;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
 }
 
 .health-value {
-  font-size: 18px; /* 大字号 */
+  font-size: 12px; /* 大字号 */
   font-weight: 800;
   color: #f5f5f0;
   font-family: system-ui, -apple-system, sans-serif;

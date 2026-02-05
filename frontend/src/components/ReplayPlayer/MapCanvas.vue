@@ -21,8 +21,16 @@
     @close="emit('close-drawing')"
   />
 
-  <!-- Map Zoom Controls -->
+  <!-- 画笔 + 缩放控件（画笔在左） -->
   <div class="map-zoom-controls">
+    <button
+      class="zoom-btn brush-btn"
+      :class="{ 'active': isDrawingMode || false }"
+      @click="emit('toggle-drawing')"
+      title="屏幕编辑"
+    >
+      <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
+    </button>
     <button class="zoom-btn" @click="zoomIn" title="放大">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -35,10 +43,7 @@
       </svg>
     </button>
     <button class="zoom-btn reset-btn" @click="resetZoom" title="重置视图">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-        <polyline points="3 3 3 8 8 8"></polyline>
-      </svg>
+      <img src="/icons/scale.svg" width="18" height="18" alt="重置" />
     </button>
   </div>
 </template>
@@ -77,6 +82,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close-drawing'): void;
+  (e: 'toggle-drawing'): void;
 }>();
 
 // 根据传入的地图名称动态获取配置
@@ -561,7 +567,8 @@ onBeforeUnmount(() => {
   bottom: 24px;
   right: 24px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 8px;
   z-index: 100;
 }
@@ -593,9 +600,18 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
+.zoom-btn.brush-btn.active {
+  background: rgba(59, 130, 246, 0.5);
+  border-color: rgba(59, 130, 246, 0.8);
+}
+
 .reset-btn {
-  margin-top: 4px;
   background: rgba(59, 130, 246, 0.6); /* Blueish for reset */
+}
+
+.reset-btn img {
+  display: block;
+  filter: brightness(0) invert(1);
 }
 
 .reset-btn:hover {

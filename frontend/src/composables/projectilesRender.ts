@@ -313,13 +313,13 @@ const drawIcon = async (
 };
 
 /**
- * 绘制掉落的投掷物图标（直接按数据渲染，通过视觉区分避免混淆）
+ * 绘制掉落的投掷物图标：纯白图标 + 深色描边，渲染在 projectileLayer（位于 players 之上）
  */
 const drawDroppedIcon = async (
   eq: DroppedEquipment,
   typeKey: string,
   ctx: RenderContext,
-  scale: number = 0.85, // 放大图标
+  scale: number = 0.85,
 ) => {
   const { worldToMap, projectileLayer } = ctx;
   const assetPath = PROJECTILE_ASSETS[typeKey];
@@ -328,23 +328,40 @@ const drawDroppedIcon = async (
 
   try {
     const mapPos = worldToMap(eq.x, eq.y);
-    
-    // 直接画图标（淡黄色，透明度适中）
     const texture = textureCache[assetPath] || await Assets.load(assetPath);
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
-    
-    const sprite = new Sprite(texture);
-    const baseSize = 20;
-    
-    sprite.width = baseSize * scale;
-    sprite.height = baseSize * scale;
-    sprite.anchor.set(0.5);
-    sprite.x = mapPos.x;
-    sprite.y = mapPos.y;
-    sprite.alpha = 0.75; // 透明度适中，方便识别
-    sprite.tint = 0xFFFF99; // 淡黄色
 
-    projectileLayer.addChild(sprite);
+    const baseSize = 20;
+    const iconSize = baseSize * scale;
+    const strokeRadius = iconSize * 0.65;
+    const strokeWidth = 2;
+
+    const container = new Container();
+    container.x = mapPos.x;
+    container.y = mapPos.y;
+
+    // 描边：深色圆环，置于底层
+    const outline = new Graphics();
+    outline.circle(0, 0, strokeRadius).stroke({
+      width: strokeWidth,
+      color: 0x1a1a1a,
+      alpha: 0.9,
+    });
+    container.addChild(outline);
+
+    const sprite = new Sprite(texture);
+    sprite.width = iconSize;
+    sprite.height = iconSize;
+    sprite.anchor.set(0.5);
+    sprite.x = 0;
+    sprite.y = 0;
+    sprite.alpha = 1;
+    sprite.tint = 0xffffff; // 纯白
+
+    container.addChild(sprite);
+
+    // 掉落在 projectileLayer 末尾绘制，保证在 players 及飞行中投掷物之上
+    projectileLayer.addChild(container);
   } catch (error) {
     console.warn('[投掷物] 加载掉落图标失败:', assetPath, error);
   }
