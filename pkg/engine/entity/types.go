@@ -5,8 +5,14 @@ import (
 )
 
 var ButtonWatching = []common.ButtonBitMask{
-	common.ButtonAttack,
-	common.ButtonAttack2,
+	common.ButtonAttack,    // 鼠标左键 (攻击)
+	common.ButtonAttack2,   // 鼠标右键 (瞵准)
+	common.ButtonForward,   // W
+	common.ButtonBack,      // S
+	common.ButtonMoveLeft,  // A
+	common.ButtonMoveRight, // D
+	common.ButtonJump,      // 跳跃
+	common.ButtonDuck,      // 蹲下
 }
 
 type PlayerFrame struct {
