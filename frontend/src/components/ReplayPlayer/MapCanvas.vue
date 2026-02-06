@@ -21,7 +21,7 @@
     @close="emit('close-drawing')"
   />
 
-  <!-- 画笔 + 缩放控件（画笔在左） -->
+  <!-- 画笔 + 追踪 + 缩放控件 -->
   <div class="map-zoom-controls">
     <button
       class="zoom-btn brush-btn"
@@ -31,6 +31,22 @@
     >
       <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
     </button>
+    <button
+      class="zoom-btn tracking-btn"
+      :class="{ 'active': isGrenadeTrackingEnabled || false }"
+      @click="emit('toggle-grenade-tracking')"
+      title="道具追踪"
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="2" x2="12" y2="6" />
+        <line x1="12" y1="18" x2="12" y2="22" />
+        <line x1="2" y1="12" x2="6" y2="12" />
+        <line x1="18" y1="12" x2="22" y2="12" />
+        <circle cx="12" cy="12" r="2" fill="currentColor" />
+      </svg>
+    </button>
+    <div class="controls-divider"></div>
     <button class="zoom-btn" @click="zoomIn" title="放大">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -78,11 +94,15 @@ const props = defineProps<{
   mapName?: string;
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
   isDrawingMode?: boolean;
+  // 投掷物追踪模式相关
+  isGrenadeTrackingEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'close-drawing'): void;
   (e: 'toggle-drawing'): void;
+  (e: 'projectile-click', proj: ProjectileState): void;
+  (e: 'toggle-grenade-tracking'): void;
 }>();
 
 // 根据传入的地图名称动态获取配置
@@ -345,6 +365,11 @@ const onPlayerPointerOut = (p: PlayerState) => {
   }
 };
 
+// 处理投掷物点击事件
+const handleProjectileClick = (proj: ProjectileState) => {
+  emit('projectile-click', proj);
+};
+
 const drawProjectilesForFrame = async (
   projectiles: Record<number, ProjectileState> | undefined, 
   players: PlayerState[],
@@ -364,6 +389,9 @@ const drawProjectilesForFrame = async (
     droppedEquipment,
     timeMs,
     currentRound,
+    // 投掷物追踪模式参数
+    isTrackingEnabled: props.isGrenadeTrackingEnabled,
+    onProjectileClick: handleProjectileClick,
   });
 };
 
@@ -616,6 +644,18 @@ onBeforeUnmount(() => {
 
 .reset-btn:hover {
   background: rgba(59, 130, 246, 0.8);
+}
+
+.tracking-btn.active {
+  background: rgba(74, 171, 247, 0.5);
+  border-color: rgba(74, 171, 247, 0.8);
+  color: #4aabf7;
+}
+
+.controls-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .player-tooltip {

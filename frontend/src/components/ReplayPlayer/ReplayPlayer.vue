@@ -16,15 +16,31 @@
         <MapCanvas 
           :frames="frames" 
           :bounds="bounds" 
-          :current-frame-index="currentFrameIndex"
+          :current-frame-index="effectiveFrameIndex"
           :replay-meta="replay"
           :is-playing="isPlaying"
           :is-dragging="isDraggingTimeline"
           :map-name="replay?.mapName"
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
+          :is-grenade-tracking-enabled="isGrenadeTrackingEnabled"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
+          @projectile-click="handleProjectileClick"
+          @toggle-grenade-tracking="toggleGrenadeTracking"
+        />
+
+        <!-- 投掷物分析蒙版 -->
+        <GrenadeAnalyzeOverlay
+          v-if="isGrenadeAnalyzeMode"
+          :thrower-info="grenadeThrowerInfo"
+          :selected-projectile="selectedProjectile"
+          :button-states="grenadeButtonStates"
+          :local-playback-time-ms="grenadeLocalPlaybackTimeMs"
+          :analyze-time-range="analyzeTimeRange"
+          :throw-frame-time-ms="throwFrameTimeMs"
+          @close="handleGrenadeAnalyzeClose"
+          @seek="handleGrenadeSeek"
         />
 
         <!-- 击杀回传 (Kill Feed) -->
@@ -340,7 +356,7 @@
 
     <section class="timeline-panel">
       <TimelineControl
-        :current-frame-index="currentFrameIndex"
+        :current-frame-index="effectiveFrameIndex"
         :total-frames="totalFrames"
         :is-playing="isPlaying"
         :current-time-ms="currentTimeMs"
@@ -371,8 +387,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
+import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
 import { useReplayData } from '@/composables/useReplayData';
-import type { Frame, PlayerState, ReplayData } from '@/types/replay';
+import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
+import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 
@@ -381,6 +399,38 @@ const emit = defineEmits<{
 }>();
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB } = useReplayData();
+
+// 投掷物分析功能
+const grenadeAnalyzer = useGrenadeAnalyzer(frames, replay);
+const {
+  isTrackingEnabled: isGrenadeTrackingEnabled,
+  isAnalyzeMode: isGrenadeAnalyzeMode,
+  selectedProjectile,
+  throwFrameIndex,
+  analyzeTimeRange,
+  localPlaybackTimeMs: grenadeLocalPlaybackTimeMs,
+  currentAnalyzeFrameIndex,
+  throwerInfo: grenadeThrowerInfo,
+  buttonStates: grenadeButtonStates,
+  toggleTracking: toggleGrenadeTracking,
+  activateAnalyze: activateGrenadeAnalyze,
+  exitAnalyze: exitGrenadeAnalyze,
+  setLocalPlaybackTime: setGrenadeLocalPlaybackTime,
+} = grenadeAnalyzer;
+
+// 计算投掷帧的时间
+const throwFrameTimeMs = computed(() => {
+  if (throwFrameIndex.value === -1 || !frames.value) return 0;
+  return frames.value[throwFrameIndex.value]?.timeMs || 0;
+});
+
+// 有效的帧索引：分析模式下使用分析帧，否则使用普通帧
+const effectiveFrameIndex = computed(() => {
+  if (isGrenadeAnalyzeMode.value && currentAnalyzeFrameIndex.value >= 0) {
+    return currentAnalyzeFrameIndex.value;
+  }
+  return currentFrameIndex.value;
+});
 
 const currentFrameIndex = ref(0);
 const currentPlaybackTimeMs = ref(0);
@@ -417,6 +467,39 @@ const cancelAnimation = () => {
   if (rafId != null) {
     cancelAnimationFrame(rafId);
     rafId = null;
+  }
+};
+
+// 处理投掷物点击事件
+const handleProjectileClick = (proj: ProjectileState) => {
+  if (!isGrenadeTrackingEnabled.value) return;
+  
+  // 暂停主播放
+  if (isPlaying.value) {
+    isPlaying.value = false;
+    cancelAnimation();
+  }
+  
+  // 激活分析模式
+  activateGrenadeAnalyze(proj);
+};
+
+// 处理分析模式的seek事件
+const handleGrenadeSeek = (timeMs: number) => {
+  setGrenadeLocalPlaybackTime(timeMs);
+};
+
+// 退出分析模式时，跳转到投掷帧
+const handleGrenadeAnalyzeClose = () => {
+  // 先记住投掷帧位置
+  const targetFrame = throwFrameIndex.value;
+  
+  exitGrenadeAnalyze();
+  
+  // 跳转到投掷帧
+  if (targetFrame !== -1 && frames.value) {
+    currentFrameIndex.value = targetFrame;
+    currentPlaybackTimeMs.value = frames.value[targetFrame]?.timeMs || 0;
   }
 };
 
