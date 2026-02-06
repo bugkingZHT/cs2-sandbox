@@ -225,7 +225,7 @@ const drawPlayerGraphics = (
   if (player.alive) {
     // Draw direction triangle
     const isAttacking = player.buttons?.includes(1); // 1 = common.ButtonAttack
-    const triColor = isAttacking ? 0xff0000 : color;
+    const triColor = isAttacking ? 0xcc3333 : color; // Darker red (0xcc3333) instead of bright red
 
     const tipX = Math.cos(angleRad) * (radius + PLAYER_STYLE.triLen);
     const tipY = Math.sin(angleRad) * (radius + PLAYER_STYLE.triLen);
@@ -236,18 +236,41 @@ const drawPlayerGraphics = (
     const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * PLAYER_STYLE.triWidth;
     const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * PLAYER_STYLE.triWidth;
 
-    // Triangle fill
-    g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
-
-    // If firing, draw a thin red line extending outward
+    // If firing, draw enhanced team-colored line with glow and gradient
     const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
     const isUtility = isUtilityItem(activeWeaponId);
     if (isAttacking && !isUtility) {
-      const lineLen = PLAYER_STYLE.attackLen * 6;
-      const endX = tipX + Math.cos(angleRad) * lineLen;
-      const endY = tipY + Math.sin(angleRad) * lineLen;
-      g.moveTo(tipX, tipY).lineTo(endX, endY).stroke({ width: 1, color: 0xff0000, alpha: 0.8 });
+      // Line starts from player center (0, 0) and extends outward
+      const lineLen = PLAYER_STYLE.attackLen * 8; // Increased from 6 to 8 for longer line
+      const endX = Math.cos(angleRad) * lineLen;
+      const endY = Math.sin(angleRad) * lineLen;
+      
+      // Get team color (blue for CT, yellow/orange for T)
+      const teamColor = color; // Use the same team color as player circle
+      
+      // Draw gradient line: from opaque at player to transparent at end
+      // Create multiple segments for gradient effect (draw in reverse to layer correctly)
+      const segments = 10;
+      for (let i = segments - 1; i >= 0; i--) {
+        const t1 = i / segments;
+        const t2 = (i + 1) / segments;
+        const x1 = Math.cos(angleRad) * lineLen * t1;
+        const y1 = Math.sin(angleRad) * lineLen * t1;
+        const x2 = Math.cos(angleRad) * lineLen * t2;
+        const y2 = Math.sin(angleRad) * lineLen * t2;
+        
+        // Alpha decreases from 1.0 (at player) to 0.0 (at end)
+        const segmentAlpha = 1.0 - (t1 + t2) / 2;
+        
+        // Draw white glow for this segment
+        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 5, color: 0xffffff, alpha: segmentAlpha * 0.6 });
+        
+        // Draw colored line for this segment on top
+        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 3, color: teamColor, alpha: segmentAlpha });
+      }
     }
+    // Triangle fill
+    g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
   }
 
   // Draw player circle body

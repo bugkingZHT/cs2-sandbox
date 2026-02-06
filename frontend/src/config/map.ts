@@ -182,7 +182,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_dust2': {
     name: 'de_dust2',
     imageUrl: '/backGroundMap/de_dust2.png',
-    leftSideGroundMap: '/leftSideGroundMap/dust2_left.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_dust2_left.png',
     width: 1024,
     height: 1024,
     xRange: {
@@ -197,6 +197,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_inferno': {
     name: 'de_inferno',
     imageUrl: '/backGroundMap/de_inferno.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_inferno_left.png',
     width: 1024,
     height: 1024,
     xRange: {
@@ -255,6 +256,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_overpass': {
     name: 'de_overpass',
     imageUrl: '/backGroundMap/de_overpass.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_overpass_left.png',
     width: 1024,
     height: 1024,
     xRange: {
@@ -297,6 +299,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_vertigo': {
     name: 'de_vertigo',
     imageUrl: '/backGroundMap/de_vertigo.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_vertigo_left.png',
     width: 1024,
     height: 1024,
     xRange: {
