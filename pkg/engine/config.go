@@ -1,9 +1,10 @@
 package engine
 
 type EngineConfig struct {
-	ResolveFreezeTime bool
-	RoundLimit        int // Limit for number of rounds to parse (0 = no limit)
-	FrameRatio        int // Parse 1 frame every N game frames: 1=1:1, 2=1:2, 4=1:4
+	ResolveFreezeTime  bool
+	RoundLimit         int // Limit for number of rounds to parse (0 = no limit)
+	FrameRatio         int // Parse 1 frame every N game frames: 1=1:1, 2=1:2, 4=1:4
+	MsgQueueBufferSize int // Parser net-message queue size; -1 = auto (50k–500k), use smaller (e.g. 15000–30000) in WASM to reduce memory
 }
 
 // Engine version

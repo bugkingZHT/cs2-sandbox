@@ -264,6 +264,10 @@ type ReplayMeta struct {
 	ScoreT int `json:"scoreT"`
 	// 总回合数
 	TotalRounds int `json:"totalRounds"`
+	// 总游戏帧数（含 round0/freeze 与未采样的帧）
+	TotalRawFrames int `json:"totalRawFrames,omitempty"`
+	// 总采样并保存的帧数（实际输出的 replay 帧数）
+	TotalParsedFrames int `json:"totalParsedFrames,omitempty"`
 	// 每回合胜负结果列表
 	RoundResults []RoundResultInfo `json:"roundResults"`
 	// 原始上传文件名（不带.dem后缀）

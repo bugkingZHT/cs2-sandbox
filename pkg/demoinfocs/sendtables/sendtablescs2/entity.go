@@ -14,6 +14,10 @@ import (
 	st "github.com/bugkingzht/cs-demobox/pkg/demoinfocs/sendtables"
 )
 
+// maxVariableStateLen caps the length of variable-length array/table state read from the demo.
+// Prevents OOM from corrupt or malicious demos that report huge lengths (e.g. ~136M → ~2GB allocation).
+const maxVariableStateLen = 1 << 20 // 1M elements
+
 // Entity represents a single game entity in the replay
 type Entity struct {
 	index   int32
@@ -414,23 +418,27 @@ func (e *Entity) readFields(r *reader, paths *[]*fieldPath) {
 
 		if base && (f.model == fieldModelVariableArray || f.model == fieldModelVariableTable) {
 			fs := fieldState{}
+			length := val.(uint64)
+			if length > maxVariableStateLen {
+				length = maxVariableStateLen // cap to avoid OOM from corrupt/hostile demo
+			}
 
 			oldFS, _ := e.state.get(fp).(*fieldState)
 
 			if oldFS == nil {
-				fs.state = make([]any, val.(uint64))
+				fs.state = make([]any, length)
 			}
 
 			if oldFS != nil {
-				if uint64(len(oldFS.state)) >= val.(uint64) {
-					fs.state = oldFS.state[:val.(uint64)]
+				if uint64(len(oldFS.state)) >= length {
+					fs.state = oldFS.state[:length]
 				} else {
-					if uint64(cap(oldFS.state)) >= val.(uint64) {
+					if uint64(cap(oldFS.state)) >= length {
 						prevSize := uint64(len(oldFS.state))
-						fs.state = oldFS.state[:val.(uint64)]
+						fs.state = oldFS.state[:length]
 						clear(fs.state[prevSize:])
 					} else {
-						fs.state = make([]any, val.(uint64))
+						fs.state = make([]any, length)
 						copy(fs.state, oldFS.state)
 					}
 				}

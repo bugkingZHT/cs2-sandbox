@@ -4,21 +4,65 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"syscall/js"
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bugkingzht/cs-demobox/cmd/wasm/constants"
 	"github.com/bugkingzht/cs-demobox/pkg/engine"
 	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 )
 
+type jsReader struct {
+	jsArr  js.Value
+	total  int
+	offset int
+	buf    []byte
+	bufPos int
+	bufLen int
+}
+
+func newJSReader(jsArr js.Value) *jsReader {
+	total := jsArr.Get("byteLength").Int()
+	return &jsReader{
+		jsArr: jsArr,
+		total: total,
+		buf:   make([]byte, constants.JsReaderChunkSize),
+	}
+}
+
+func (r *jsReader) Read(p []byte) (n int, err error) {
+	if r.offset >= r.total && r.bufPos >= r.bufLen {
+		return 0, io.EOF
+	}
+	if r.bufPos < r.bufLen {
+		n = copy(p, r.buf[r.bufPos:r.bufLen])
+		r.bufPos += n
+		return n, nil
+	}
+	if r.offset >= r.total {
+		return 0, io.EOF
+	}
+	chunk := constants.JsReaderChunkSize
+	if r.offset+chunk > r.total {
+		chunk = r.total - r.offset
+	}
+	sub := r.jsArr.Call("subarray", r.offset, r.offset+chunk)
+	js.CopyBytesToGo(r.buf[:chunk], sub)
+	r.offset += chunk
+	r.bufPos = 0
+	r.bufLen = chunk
+	n = copy(p, r.buf[:chunk])
+	r.bufPos = n
+	return n, nil
+}
+
 // Global state for streaming parsing
 var (
-	engineInstance  *engine.DemoEngine
-	demoReaderBytes []byte
+	engineInstance *engine.DemoEngine
 )
 
 func main() {
@@ -35,7 +79,8 @@ func main() {
 	<-done
 }
 
-// initDemoParser initializes the parser with demo file bytes
+// initDemoParser initializes the parser with demo file bytes.
+// Uses a JS-backed reader to avoid copying the entire demo into Go/WASM memory.
 func initDemoParser(this js.Value, args []js.Value) interface{} {
 	if len(args) < 1 {
 		log.Println("initDemoParser expects (Uint8Array, optional roundLimit, optional frameRatio)")
@@ -43,11 +88,8 @@ func initDemoParser(this js.Value, args []js.Value) interface{} {
 	}
 
 	dataVal := args[0]
-
-	log.Println("[1/5] Starting to copy demo file bytes...")
-	demoReaderBytes = make([]byte, dataVal.Get("byteLength").Int())
-	js.CopyBytesToGo(demoReaderBytes, dataVal)
-	log.Printf("[2/5] Copied %d bytes\n", len(demoReaderBytes))
+	totalBytes := dataVal.Get("byteLength").Int()
+	log.Printf("[1/4] Using JS-backed reader (no full copy), demo size: %d bytes\n", totalBytes)
 
 	// Get round limit from args if provided
 	roundLimit := -1
@@ -67,15 +109,15 @@ func initDemoParser(this js.Value, args []js.Value) interface{} {
 		}
 	}
 
-	// Create engine instance with round limit and frame ratio
 	engineInstance = engine.NewDemoEngine(engine.EngineConfig{
-		ResolveFreezeTime: false,
-		RoundLimit:        roundLimit,
-		FrameRatio:        frameRatio,
+		ResolveFreezeTime:  false,
+		RoundLimit:         roundLimit,
+		FrameRatio:         frameRatio,
+		MsgQueueBufferSize: constants.WasmMsgQueueSize,
 	})
 
-	// Initialize parser with reader
-	err := engineInstance.InitParser(bytes.NewReader(demoReaderBytes))
+	r := newJSReader(dataVal)
+	err := engineInstance.InitParser(r)
 	if err != nil {
 		log.Printf("InitParser error: %v\n", err)
 		return err.Error()
@@ -243,7 +285,6 @@ func closeDemoParser(this js.Value, args []js.Value) interface{} {
 		engineInstance.Close()
 		engineInstance = nil
 	}
-	demoReaderBytes = nil
 	log.Println("[CloseDemoParser] Parser closed and resources cleaned up")
 	return js.Null()
 }
