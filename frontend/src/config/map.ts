@@ -1,3 +1,6 @@
+/** 地图底图默认像素尺寸，与 xRange/yRange 配合做比例坐标换算 */
+export const MAP_IMAGE_SIZE = 1024;
+
 export interface MapConfig {
   name: string;
   imageUrl: string;
@@ -12,6 +15,11 @@ export interface MapConfig {
     start: number;
     end: number;
   };
+}
+
+/** 根据地图名得到 SVG 底图 URL，若该路径不存在则应降级使用 config.imageUrl (PNG) */
+export function getMapSvgUrl(mapName: string): string {
+  return `/map/${mapName}.svg`;
 }
 
 export const MAP_CONFIGS: Record<string, MapConfig> = {
@@ -145,6 +153,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_anubis': {
     name: 'de_anubis',
     imageUrl: '/backGroundMap/de_anubis.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_anubis_left.png',
     width: 1024,
     height: 1024,
     xRange: {
@@ -231,6 +240,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   'de_nuke': {
     name: 'de_nuke',
     imageUrl: '/backGroundMap/de_nuke.png',
+    leftSideGroundMap: '/leftSideGroundMap/de_nuke_left.png',
     width: 1024,
     height: 1024,
     xRange: {

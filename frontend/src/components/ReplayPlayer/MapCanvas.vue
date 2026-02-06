@@ -66,9 +66,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Application, Assets, Container, Sprite } from 'pixi.js';
+import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
-import { MAP_CONFIGS, DEFAULT_MAP } from '@/config/map';
+import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl } from '@/config/map';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { useMapConfig } from '@/composables/useMapConfig';
 import {
@@ -118,7 +118,16 @@ const currentMapConfig = computed(() => {
   return config;
 });
 
-const mapTextureUrl = computed(() => currentMapConfig.value.imageUrl);
+/** 优先加载 map 下的 SVG，不存在则降级为 config.imageUrl (PNG)。尺寸与坐标换算仍为 1024×1024。 */
+async function loadMapTexture(): Promise<Texture> {
+  const svgUrl = getMapSvgUrl(currentMapName.value);
+  const pngUrl = currentMapConfig.value.imageUrl;
+  try {
+    return await Assets.load(svgUrl);
+  } catch {
+    return await Assets.load(pngUrl);
+  }
+}
 
 const host = ref<HTMLDivElement | null>(null);
 let app: Application | null = null;
@@ -187,7 +196,7 @@ const ensureApp = async () => {
   worldContainer = new Container();
   app.stage.addChild(worldContainer);
 
-  const texture = await Assets.load(mapTextureUrl.value);
+  const texture = await loadMapTexture();
   mapSprite = new Sprite(texture);
   mapSprite.anchor.set(0.5);
   mapSprite.width = currentMapConfig.value.width;
@@ -527,8 +536,7 @@ watch(
         worldContainer.removeChild(mapSprite);
       }
       
-      // 使用缓存加载纹理，Assets.load 会自动缓存
-      const texture = await Assets.load(mapTextureUrl.value);
+      const texture = await loadMapTexture();
       mapSprite = new Sprite(texture);
       mapSprite.anchor.set(0.5);
       mapSprite.width = currentMapConfig.value.width;
