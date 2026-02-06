@@ -134,132 +134,98 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 	if !e.initialized {
 		return nil, fmt.Errorf("parser not initialized, call InitParser first")
 	}
-
-	// If EOF was already reached, return nil immediately
 	if e.eofReached {
 		log.Println("[ParseNextRound] EOF already reached, no more rounds")
 		return nil, nil
 	}
-
-	// Check if we've reached the round limit
-	// If roundLimit <= 0, no limit is applied (-1 means no limit)
 	if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
 		log.Printf("[ParseNextRound] Round limit (%d) reached, stopping parsing", e.roundLimit)
 		return nil, nil
 	}
 
-	// Capture current round number at start
+	// 1. Create all vars
 	startRound := e.builder.currentRound
-	var frames []entity.Frame
-	frameCount := 0
+	var (
+		rawFrames    int
+		parsedFrames int
+		frames       []entity.Frame
+	)
 
 	log.Printf("[ParseNextRound] Starting to parse round %d...", startRound)
 
 	for {
-		// Check if we've reached the round limit during parsing
-		// If roundLimit <= 0, no limit is applied (-1 means no limit)
-		if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
-			log.Printf("[ParseNextRound] Round limit (%d) exceeded, stopping parsing", e.roundLimit)
-			// Return any accumulated frames if we're in the middle of parsing
-			if len(frames) > 0 {
-				return &entity.ReplayRound{
-					UUID:   e.uuid,
-					Round:  startRound,
-					Frames: frames,
-				}, nil
-			}
-			return nil, nil
+		// 2.1 Break conditions: EOF, round change, or over roundLimit
+		if e.eofReached {
+			break
 		}
-
-		// Boundary detection: stop if entered next round
 		if e.builder.currentRound > startRound && len(frames) > 0 {
 			log.Printf("[ParseNextRound] Round boundary detected (moved from %d to %d), returning %d frames", startRound, e.builder.currentRound, len(frames))
 			break
 		}
-
-		// During freeze time when not resolving it: advance one frame (parse to get events so inFreezeTime can flip) but do not build frames.
-		if !e.builder.resolveFreezeTime && e.builder.inFreezeTime {
-			more, err := e.parser.ParseNextFrame()
-			if err != nil {
-				if err == io.EOF {
-					e.eofReached = true
-					if len(frames) > 0 {
-						return &entity.ReplayRound{UUID: e.uuid, Round: startRound, Frames: frames}, nil
-					}
-					return nil, nil
-				}
-				return nil, err
-			}
-			if !more {
-				e.eofReached = true
-				if len(frames) > 0 {
-					return &entity.ReplayRound{UUID: e.uuid, Round: startRound, Frames: frames}, nil
-				}
-				return nil, nil
-			}
-			continue
+		if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
+			log.Printf("[ParseNextRound] Round limit (%d) exceeded, stopping parsing", e.roundLimit)
+			break
 		}
 
-		frameCount++
-		e.totalRawFrames++ // Raw game frames advanced (for progress)
-		gs := e.parser.GameState()
-		currentTick := gs.IngameTick()
-
-		// Only build and output a frame every frameRatio game frames (1:1, 1:2, 1:4)
-		outputThisFrame := (frameCount-1)%e.frameRatio == 0
-		if outputThisFrame {
-			e.totalParsedFrames++ // Count only output (parsed) frames
-
-			// Log status and notify callback every 1000 output frames; report totalRawFrames for progress bar.
-			if e.totalParsedFrames%1000 == 0 {
-				msg := fmt.Sprintf("%d", e.totalRawFrames)
-				log.Printf("  Parsed %d total frames (round %d, tick: %d)\n", e.totalParsedFrames, startRound, currentTick)
-				if onStatus != nil {
-					onStatus(msg)
-				}
-				time.Sleep(time.Millisecond)
-			}
-
-			// Frame construction - process current frame
-			if len(frames) > 0 {
-				e.builder.prevFrame = &frames[len(frames)-1]
-			}
-			frames = append(frames, e.builder.frameOne())
+		rawFrames++
+		e.totalRawFrames++
+		// Sync parsing progress to frontend using totalRawFrames (raw frame count)
+		if onStatus != nil && e.totalRawFrames%1000 == 0 {
+			onStatus(fmt.Sprintf("%d", e.totalRawFrames))
+		}
+		if parsedFrames > 0 && parsedFrames%1000 == 0 {
+			log.Printf("  Parsed %d total frames (round %d)\n", e.totalParsedFrames, startRound)
+			time.Sleep(time.Millisecond)
 		}
 
-		// Parse next frame at the END of loop
+		// 2.2 Always advance with ParseNextFrame so entity/sendtable state stays in sync
+		// (SkipFrame would skip packet entities and can cause "unable to find new class" panics)
 		more, err := e.parser.ParseNextFrame()
 		if err != nil {
 			if err == io.EOF {
-				// EOF reached, mark it to prevent further calls
 				e.eofReached = true
-				log.Printf("[ParseNextRound] EOF reached, returning round %d with %d frames", startRound, len(frames))
-				return &entity.ReplayRound{
-					UUID:   e.uuid,
-					Round:  startRound,
-					Frames: frames,
-				}, nil
+				break
 			}
 			return nil, err
 		}
 		if !more {
-			// No more frames, mark EOF to prevent further calls
 			e.eofReached = true
-			log.Printf("[ParseNextRound] No more frames, returning round %d with %d frames", startRound, len(frames))
-			return &entity.ReplayRound{
-				UUID:   e.uuid,
-				Round:  startRound,
-				Frames: frames,
-			}, nil
+			break
 		}
+
+		// 2.3 Sampling: only build a frame every frameRatio raw frames
+		needSample := (rawFrames-1)%e.frameRatio == 0
+		if !needSample {
+			continue
+		}
+
+		// 2.4 Save condition: do not save during freeze (when not resolving), warmup, or round 0
+		gs := e.parser.GameState()
+		noSave := (e.builder.inFreezeTime && !e.builder.resolveFreezeTime) ||
+			gs.IsWarmupPeriod() ||
+			e.builder.currentRound == 0
+		if noSave {
+			continue
+		}
+		if len(frames) > 0 {
+			e.builder.prevFrame = &frames[len(frames)-1]
+		}
+		frames = append(frames, e.builder.frameOne())
+		parsedFrames++
+		e.totalParsedFrames++
 	}
 
-	log.Printf("[ParseNextRound] Completed round %d with %d frames", startRound, len(frames))
-
-	// Force garbage collection after each round to release memory
+	// 3. Wrap up: persist, GC
+	log.Printf("[ParseNextRound] Completed round %d with %d frames (raw=%d, parsed=%d)", startRound, len(frames), rawFrames, parsedFrames)
 	runtime.GC()
 	log.Printf("[ParseNextRound] 🗑️ GC triggered after completing round %d", startRound)
 
+	if len(frames) == 0 && e.eofReached {
+		return nil, nil
+	}
+	if len(frames) == 0 && e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
+		return nil, nil
+	}
 	return &entity.ReplayRound{
 		UUID:   e.uuid,
 		Round:  startRound,
@@ -321,13 +287,15 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		ScoreCT: gs.TeamTerrorists().Score(),
 		ScoreT:  gs.TeamCounterTerrorists().Score(),
 
-		TotalRounds:  e.builder.currentRound,
-		RoundResults: e.builder.roundResults, // Add round results from builder
-		ServerPlayer: serverPlayers,          // Add sorted player info
+		TotalRounds:       e.builder.currentRound,
+		TotalRawFrames:    e.totalRawFrames,
+		TotalParsedFrames: e.totalParsedFrames,
+		RoundResults:      e.builder.roundResults, // Add round results from builder
+		ServerPlayer:      serverPlayers,          // Add sorted player info
 	}
 
-	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, ScoreCT=%d, ScoreT=%d, RoundResults=%d, ServerPlayers=%d",
-		updatedMeta.TotalRounds, updatedMeta.ScoreCT, updatedMeta.ScoreT, len(updatedMeta.RoundResults), len(updatedMeta.ServerPlayer))
+	log.Printf("[BackfillMeta] Backfilled: TotalRounds=%d, TotalRawFrames=%d, TotalParsedFrames=%d, ScoreCT=%d, ScoreT=%d, RoundResults=%d, ServerPlayers=%d",
+		updatedMeta.TotalRounds, updatedMeta.TotalRawFrames, updatedMeta.TotalParsedFrames, updatedMeta.ScoreCT, updatedMeta.ScoreT, len(updatedMeta.RoundResults), len(updatedMeta.ServerPlayer))
 	return updatedMeta, nil
 }
 

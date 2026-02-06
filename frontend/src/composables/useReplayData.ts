@@ -387,6 +387,8 @@ function createReplayData() {
               latestMeta.teamT = e.data.teamT;
               latestMeta.roundResults = e.data.roundResults;
               latestMeta.serverPlayer = e.data.serverPlayer; // Save server player info
+              if (e.data.totalRawFrames !== undefined) latestMeta.totalRawFrames = e.data.totalRawFrames;
+              if (e.data.totalParsedFrames !== undefined) latestMeta.totalParsedFrames = e.data.totalParsedFrames;
               latestMeta.status = 1; // 完成
               latestMeta.parsingProgress = 100;
               latestMeta.parsingStatus = 'Complete';

@@ -131,6 +131,8 @@ export interface ReplayMeta {
   roundResults?: RoundResultInfo[]; // 每回合胜负结果列表
   totalFrames: number; // Demo 总帧数（来自 header.PlaybackFrames）
   totalDurationMs: number; // Demo 总时长（毫秒，来自 header.PlaybackTime）
+  totalRawFrames?: number; // 总游戏帧数（含 round0/freeze 与未采样的帧），backfill 阶段写入
+  totalParsedFrames?: number; // 总采样并保存的帧数（实际输出的 replay 帧数），backfill 阶段写入
   projectileRenderConfig?: Record<number, ProjectileRenderConfig>;
   
   // 文件信息字段（必须在 backfill 时保持不变）

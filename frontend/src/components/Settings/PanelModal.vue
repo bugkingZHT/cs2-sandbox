@@ -86,16 +86,16 @@
                   <svg class="quota-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor">
                     <path d="M952.288 697.312l-108.352-467.2a83.424 83.424 0 0 0-26.944-49.344c-14.4-12.8-32.768-20.128-51.968-20.768H257.472c-40.256 1.568-72.768 32.704-78.944 71.68L70.208 697.28c-4.64 12.48-6.208 26.528-6.208 38.976C64 806.368 121.28 864 192.48 864h639.072C902.784 864 960 806.368 960 736.288c0-12.48-3.072-26.496-7.712-38.976z m-120.736 104.384H192.48a62.464 62.464 0 0 1-45.12-18.496 63.168 63.168 0 0 1-18.368-45.344c0-35.84 29.44-63.904 63.488-63.904h639.072c35.616 0 63.456 28.064 63.456 63.904 1.568 34.24-27.84 63.84-63.456 63.84z m-32.48-84.128a21.6 21.6 0 0 0-21.664 18.72 21.76 21.76 0 0 0 18.56 21.76h3.104a20.544 20.544 0 0 0 20.128-20.192c0-12.48-7.744-20.288-20.128-20.288z m-41.792 20.288c0-23.36 18.56-42.048 41.792-42.048 23.2 0 41.792 18.688 41.792 42.048 0 23.36-18.56 42.048-41.792 42.048a41.728 41.728 0 0 1-41.792-42.048z" fill="currentColor"></path>
                   </svg>
-                  <h3 class="quota-title">本地存储空间</h3>
+                  <h3 class="quota-title">OPFS Storage Quota</h3>
                 </div>
                 
                 <div class="quota-details">
                   <div class="quota-info-row">
-                    <span class="quota-label">已使用:</span>
+                    <span class="quota-label">Used:</span>
                     <span class="quota-value">{{ storageUsedText }}</span>
                   </div>
                   <div class="quota-info-row">
-                    <span class="quota-label">可用总量:</span>
+                    <span class="quota-label">Total:</span>
                     <span class="quota-value">{{ storageQuotaText }}</span>
                   </div>
                   
@@ -122,16 +122,16 @@
                     <path d="M863.438 280.125h-704c-17.673 0-32 14.327-32 32v447.059c0 17.673 14.327 32 32 32h127.809c17.673 0 32-14.327 32-32V732.36h42.718v56.375h64V732.36h51.947v56.375h64V732.36h51.947v56.375h64V732.36h45.608v26.823c0 17.673 14.327 32 32 32h127.971c17.673 0 32-14.327 32-32V312.125c0-17.673-14.328-32-32-32z m-32 295.333h-33.559c-17.673 0-32 14.327-32 32s14.327 32 32 32h33.559v87.726h-63.971V700.36c0-17.673-14.327-32-32-32H287.246c-17.673 0-32 14.327-32 32v26.823h-63.809v-87.726h32.559c17.673 0 32-14.327 32-32s-14.327-32-32-32h-32.559V344.125h640v231.333z" fill="currentColor"></path>
                     <path d="M256.477 395.557h80.279v140h-80.279zM400.89 395.557h80.279v140H400.89zM545.302 395.557h80.279v140h-80.279zM689.715 395.557h80.279v140h-80.279z" fill="currentColor"></path>
                   </svg>
-                  <h3 class="quota-title">内存解析空间</h3>
+                  <h3 class="quota-title">JS Memory Quota</h3>
                 </div>
                 
                 <div class="quota-details">
                   <div class="quota-info-row">
-                    <span class="quota-label">已使用:</span>
+                    <span class="quota-label">Used:</span>
                     <span class="quota-value">{{ wasmMemoryUsedText }}</span>
                   </div>
                   <div class="quota-info-row">
-                    <span class="quota-label">限制总量:</span>
+                    <span class="quota-label">Total:</span>
                     <span class="quota-value">{{ wasmMemoryLimitText }}</span>
                   </div>
                   
@@ -154,11 +154,11 @@
           >
             <div v-if="DEBUG_CONFIG.enableRoundLimitConfig" class="parse-option-cell">
               <div class="input-group">
-                <label class="input-label">限制解析回合数</label>
+                <label class="input-label">Parse Round Limit</label>
                 <input
                   v-model.number="roundLimit"
                   type="number"
-                  min="-1"
+                  min="1"
                   class="ds-input round-limit-input"
                   @change="saveRoundLimit"
                 />
@@ -166,7 +166,7 @@
             </div>
             <div v-if="DEBUG_CONFIG.enableParseFrameRatioConfig" class="parse-option-cell">
               <div class="input-group">
-                <label class="input-label">解析帧采样比</label>
+                <label class="input-label">Parse Frame Ratio</label>
                 <input
                   v-model.number="parseFrameRatio"
                   type="number"
@@ -187,7 +187,7 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              <span>OPFS 存储查看器</span>
+              <span>OPFS Storage Viewer</span>
             </button>
             <button 
               v-if="DEBUG_CONFIG.enableFrameDataViewer"
@@ -199,7 +199,7 @@
                 <circle cx="11" cy="11" r="8"/>
                 <path d="m21 21-4.35-4.35"/>
               </svg>
-              <span>帧数据查看器</span>
+              <span>Frame Data Viewer</span>
             </button>
           </div>
         </div>
@@ -301,12 +301,13 @@ const updateStorageQuota = async () => {
   }
 };
 
-// Round limit configuration
-const roundLimit = ref<number>(-1); // Default value is -1 (no limit)
+// Round limit configuration: default 999, must be positive integer > 0
+const PARSING_ROUND_LIMIT_KEY = 'demoParsingRoundLimit';
+const roundLimit = ref<number>(999);
 
-// Parse frame ratio: 1=1:1, 2=1:2, N=1:N (positive integer >= 1)
+// Parse frame ratio: 1=1:1, 2=1:2, N=1:N (default 2, positive integer >= 1)
 const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
-const parseFrameRatio = ref<number>(1);
+const parseFrameRatio = ref<number>(2);
 
 // Real-time update for usage info when debug tab is open (1s refresh)
 watch(activeTab, (tab) => {
@@ -331,24 +332,24 @@ watch(activeTab, (tab) => {
 
 // Load round limit and parse frame ratio from localStorage on component mount
 onMounted(() => {
-  // Load round limit from localStorage
+  // Load round limit from localStorage (must be > 0, default 999)
   if (DEBUG_CONFIG.enableRoundLimitConfig) {
-    const savedLimit = localStorage.getItem('demoParsingRoundLimit');
+    const savedLimit = localStorage.getItem(PARSING_ROUND_LIMIT_KEY);
     if (savedLimit !== null) {
       const parsedLimit = parseInt(savedLimit, 10);
-      if (!isNaN(parsedLimit)) {
-        roundLimit.value = parsedLimit <= 0 ? -1 : parsedLimit;
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        roundLimit.value = Math.floor(parsedLimit);
       }
     }
   }
 
-  // Load parse frame ratio from localStorage
+  // Load parse frame ratio from localStorage (must be > 0, default 2)
   if (DEBUG_CONFIG.enableParseFrameRatioConfig) {
     const saved = localStorage.getItem(PARSE_FRAME_RATIO_KEY);
     if (saved !== null) {
       const n = parseInt(saved, 10);
       if (!isNaN(n) && n >= 1) {
-        parseFrameRatio.value = n;
+        parseFrameRatio.value = Math.max(1, Math.floor(n));
       }
     }
   }
@@ -395,29 +396,33 @@ const updateWasmMemory = () => {
   }
 };
 
-// Save round limit to localStorage
+// Save round limit to localStorage (must be > 0 integer, default 999)
 const saveRoundLimit = () => {
-  if (roundLimit.value <= 0) {
-    // Store -1 to indicate no limit
-    roundLimit.value = -1;
-    localStorage.setItem('demoParsingRoundLimit', '-1');
+  const v = Math.floor(Number(roundLimit.value));
+  if (typeof roundLimit.value !== 'number' || isNaN(roundLimit.value) || v < 1) {
+    roundLimit.value = 999;
+    localStorage.setItem('demoParsingRoundLimit', '999');
   } else {
-    localStorage.setItem('demoParsingRoundLimit', roundLimit.value.toString());
+    roundLimit.value = v;
+    localStorage.setItem('demoParsingRoundLimit', String(v));
   }
 };
 
-// Clear round limit
+// Clear round limit (reset to default 999)
 const clearRoundLimit = () => {
-  roundLimit.value = -1;
-  localStorage.setItem('demoParsingRoundLimit', '-1');
+  roundLimit.value = 999;
+  localStorage.setItem('demoParsingRoundLimit', '999');
 };
 
-// Save parse frame ratio to localStorage (ensure >= 1)
+// Save parse frame ratio to localStorage (must be > 0 integer, default 2)
 const saveParseFrameRatio = () => {
   let v = parseFrameRatio.value;
   if (typeof v !== 'number' || isNaN(v) || v < 1) {
-    v = 1;
-    parseFrameRatio.value = 1;
+    v = 2;
+    parseFrameRatio.value = 2;
+  } else {
+    v = Math.max(1, Math.floor(v));
+    parseFrameRatio.value = v;
   }
   localStorage.setItem(PARSE_FRAME_RATIO_KEY, String(v));
 };

@@ -32,6 +32,8 @@ interface ParsingCompleteMessage {
   teamT: string;
   roundResults: Array<{ round: number; result: string }>; // Add round results
   serverPlayer: Array<{ id: number; name: string; team: number; steamID: number; isBot: boolean }>; // Add server player info
+  totalRawFrames?: number; // 总游戏帧数（含 round0/freeze 与未采样的帧）
+  totalParsedFrames?: number; // 总采样并保存的帧数（实际输出的 replay 帧数）
 }
 
 interface ProgressMessage {
@@ -275,7 +277,9 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         teamCT: backfilledMeta.teamCT || '',
         teamT: backfilledMeta.teamT || '',
         roundResults: backfilledMeta.roundResults || [], // Include round results
-        serverPlayer: backfilledMeta.serverPlayer || [] // Include server player info
+        serverPlayer: backfilledMeta.serverPlayer || [], // Include server player info
+        totalRawFrames: backfilledMeta.totalRawFrames,
+        totalParsedFrames: backfilledMeta.totalParsedFrames
       };
       console.log(`[Worker] [${uuid}] Sending PARSING_COMPLETE with ${completeResponse.roundResults.length} round results and ${completeResponse.serverPlayer.length} players`);
       self.postMessage(completeResponse);
