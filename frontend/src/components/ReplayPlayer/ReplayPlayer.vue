@@ -28,6 +28,15 @@
           @toggle-drawing="onToggleDrawing"
           @projectile-click="handleProjectileClick"
           @toggle-grenade-tracking="toggleGrenadeTracking"
+          :tab-recorder-supported="tabRecorder.isSupported"
+          :tab-recorder-recording="tabRecorder.isRecording.value"
+          :tab-recorder-converting="tabRecorder.isConverting.value"
+          :tab-recorder-converting-progress="tabRecorder.convertingProgress.value"
+          :tab-recorder-pending="tabRecorder.pendingDownload.value"
+          @tab-recorder-start="tabRecorder.startRecording"
+          @tab-recorder-stop="tabRecorder.stopRecording"
+          @tab-recorder-clear-pending="tabRecorder.clearPendingDownload"
+          @tab-recorder-download="tabRecorder.downloadRecording"
         />
 
         <!-- 投掷物分析蒙版 -->
@@ -388,6 +397,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
 import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
+import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaRecorder';
 import { useReplayData } from '@/composables/useReplayData';
 import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
@@ -450,6 +460,8 @@ interface KillEventWithFrame {
 const roundKillList = ref<KillEventWithFrame[]>([]);
 const isDrawingMode = ref(false);
 const mapCanvasRef = ref<any>(null);
+
+const tabRecorder = useGetDisplayMediaRecorder();
 
 let lastTimestamp = 0;
 let rafId: number | null = null;
@@ -1171,7 +1183,20 @@ watch(
   }
 );
 
+function onKeydown(e: KeyboardEvent) {
+  if (e.code !== 'Space' && e.key !== ' ') return;
+  const target = e.target as HTMLElement;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+  e.preventDefault();
+  togglePlay();
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+});
+
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
   cancelAnimation();
 });
 </script>

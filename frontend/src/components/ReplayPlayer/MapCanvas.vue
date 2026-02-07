@@ -31,6 +31,42 @@
     >
       <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
     </button>
+    <div v-if="tabRecorderPending || tabRecorderConverting" class="tab-recorder-actions">
+      <button
+        v-if="tabRecorderConverting"
+        class="tab-recorder-btn download-btn converting"
+        disabled
+      >
+        <span class="converting-progress-fill" :style="{ width: `${tabRecorderConvertingProgress ?? 0}%` }"></span>
+        <span class="converting-text">正在生成录制文件</span>
+      </button>
+      <button
+        v-else-if="tabRecorderPending"
+        class="tab-recorder-btn download-btn"
+        @click="emit('tab-recorder-download')"
+      >
+        下载录制文件
+      </button>
+      <button
+        v-if="tabRecorderPending"
+        class="zoom-btn dismiss-btn"
+        @click="emit('tab-recorder-clear-pending')"
+        title="关闭"
+      >
+        ×
+      </button>
+    </div>
+    <div v-if="tabRecorderSupported" class="tab-record-wrapper">
+      <button
+        class="zoom-btn tab-record-btn"
+        :class="{ 'recording': tabRecorderRecording, 'converting': tabRecorderConverting }"
+        :disabled="tabRecorderConverting"
+        @click="tabRecorderRecording ? emit('tab-recorder-stop') : emit('tab-recorder-start')"
+        :title="tabRecorderConverting ? '转换 MP4 中...' : tabRecorderRecording ? '停止录制' : '页面录制'"
+      >
+        <span class="rec-dot"></span>
+      </button>
+    </div>
     <button
       class="zoom-btn tracking-btn"
       :class="{ 'active': isGrenadeTrackingEnabled || false }"
@@ -96,6 +132,12 @@ const props = defineProps<{
   isDrawingMode?: boolean;
   // 投掷物追踪模式相关
   isGrenadeTrackingEnabled?: boolean;
+  // 标签页录制 (getDisplayMedia)
+  tabRecorderSupported?: boolean;
+  tabRecorderRecording?: boolean;
+  tabRecorderConverting?: boolean;
+  tabRecorderConvertingProgress?: number;
+  tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
 }>();
 
 const emit = defineEmits<{
@@ -103,6 +145,10 @@ const emit = defineEmits<{
   (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
   (e: 'toggle-grenade-tracking'): void;
+  (e: 'tab-recorder-start'): void;
+  (e: 'tab-recorder-stop'): void;
+  (e: 'tab-recorder-clear-pending'): void;
+  (e: 'tab-recorder-download'): void;
 }>();
 
 // 根据传入的地图名称动态获取配置
@@ -669,6 +715,119 @@ onBeforeUnmount(() => {
   background: rgba(74, 171, 247, 0.5);
   border-color: rgba(74, 171, 247, 0.8);
   color: #4aabf7;
+}
+
+.tab-record-btn {
+  min-width: 36px;
+}
+
+.tab-record-btn.recording {
+  background: rgba(239, 68, 68, 0.6);
+  border-color: rgba(239, 68, 68, 0.9);
+  color: #ef4444;
+}
+
+.tab-record-btn .rec-dot {
+  width: 10px;
+  height: 10px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.tab-record-btn.recording .rec-dot {
+  animation: rec-blink 1s infinite;
+}
+
+.tab-record-btn.converting {
+  opacity: 0.9;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.tab-record-btn.converting .rec-dot {
+  background: transparent;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: rec-spin 0.8s linear infinite;
+}
+
+.tab-record-wrapper {
+  position: relative;
+}
+
+@keyframes rec-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tab-recorder-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.tab-recorder-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.tab-recorder-btn.download-btn {
+  color: white;
+  background: rgba(34, 197, 94, 0.8);
+  text-decoration: none;
+}
+
+.tab-recorder-btn.download-btn:hover {
+  background: rgba(34, 197, 94, 1);
+}
+
+.tab-recorder-btn.download-btn.converting {
+  position: relative;
+  overflow: hidden;
+  background: rgba(60, 60, 60, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: not-allowed;
+}
+
+.tab-recorder-btn.download-btn.converting .converting-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(100, 100, 100, 0.7);
+  transition: width 0.2s ease;
+}
+
+.tab-recorder-btn.download-btn.converting .converting-text {
+  position: relative;
+  z-index: 1;
+}
+
+.tab-recorder-btn.download-btn.converting:hover {
+  background: rgba(60, 60, 60, 0.5);
+}
+
+.tab-recorder-actions .dismiss-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+}
+
+@keyframes rec-blink {
+  50% { opacity: 0.5; }
 }
 
 .controls-divider {

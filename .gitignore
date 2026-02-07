@@ -16,7 +16,6 @@ go.work
 
 # Build artifacts
 /bin/
-*.wasm
 
 # Test binary, built with `go test -c`
 *.test

@@ -47,7 +47,6 @@
           </button>
         </div>
         <div class="status-meta">
-          <div class="speed-tag" @click="cycleSpeed" title="点击切换倍速">{{ playbackSpeed }}x</div>
           <div class="time-display">
             <!-- Show C4 icon when bomb is planted -->
             <img 
@@ -74,7 +73,7 @@
         </div>
       </div>
 
-      <!-- 右侧时间轴主体 -->
+      <!-- 中间时间轴主体 -->
       <div class="timeline-track-main" @mousedown="onTimelineMouseDown">
         <!-- 进度填充（平面化） -->
         <div class="flat-progress-fill" :style="{ width: `${(roundRelativeTimeMs / roundDurationMs) * 100}%` }"></div>
@@ -143,6 +142,19 @@
             ></div>
           </template>
         </div>
+      </div>
+
+      <!-- 右侧倍速选项卡 -->
+      <div class="speed-tabs">
+        <button
+          v-for="s in speedOptions"
+          :key="s"
+          class="speed-tab-btn"
+          :class="{ active: playbackSpeed === s }"
+          @click="emit('update-speed', s)"
+        >
+          {{ s }}x
+        </button>
       </div>
     </div>
   </div>
@@ -517,13 +529,7 @@ const formatMs = (ms: number) => {
   return `${m}:${s}`;
 };
 
-// 循环切换播放倍速：1x -> 0.5x -> 2x -> 4x -> 1x
-const cycleSpeed = () => {
-  const speeds = [0.5, 1, 2, 4];
-  const currentIndex = speeds.indexOf(props.playbackSpeed);
-  const nextIndex = (currentIndex + 1) % speeds.length;
-  emit('update-speed', speeds[nextIndex]);
-};
+const speedOptions = [0.5, 1, 2] as const;
 </script>
 
 <style scoped>
@@ -707,13 +713,13 @@ const cycleSpeed = () => {
 /* === Playback Control Module === */
 .playback-control-module {
   display: flex;
-  height: 32px;
+  height: 36px;
   gap: var(--ds-space-sm);
   align-items: center;
 }
 
 .playback-info-box {
-  width: 130px;
+  width: 96px;
   height: 100%;
   background: var(--ds-bg-secondary);
   display: flex;
@@ -756,23 +762,44 @@ const cycleSpeed = () => {
   position: relative;
 }
 
-.speed-tag {
-  color: var(--ds-text-primary);
-  font-size: 9px;
-  position: absolute;
-  top: -2px;
-  right: 0;
-  cursor: pointer;
-  padding: 2px 4px;
+.speed-tabs {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 80%;
+  background: var(--ds-bg-secondary);
   border-radius: 2px;
-  transition: all var(--ds-transition-base);
-  user-select: none;
+  overflow: hidden;
 }
 
-.speed-tag:hover {
+.speed-tab-btn {
+  padding: 0 12px;
+  font-family: var(--ds-font-mono);
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--ds-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.speed-tab-btn:last-child {
+  border-right: none;
+}
+
+.speed-tab-btn:hover {
+  color: var(--ds-text-primary);
   background: var(--ds-surface-hover);
+}
+
+.speed-tab-btn.active {
   color: var(--ds-primary);
-  transform: scale(1.1);
+  background: rgba(78, 204, 163, 0.15);
 }
 
 .time-display {
