@@ -24,4 +24,25 @@ export const PARSER_CONFIG = {
    * failure detection.
    */
   workerTickTimeout: 10000,
+
+  /**
+   * Estimated Ticks per MB Ratio
+   * 
+   * Used to estimate total parsing ticks based on demo file size.
+   * Formula: estimatedTotalTicks = fileSizeMB × estimatedRatio
+   * 
+   * Default: 400 ticks per MB
+   * 
+   * This ratio helps calculate parsing progress percentage during
+   * demo file processing. Adjust based on:
+   * - Average tick density in your demo files
+   * - Server tick rate (64-tick vs 128-tick)
+   * - Match duration patterns
+   * 
+   * Higher values = more conservative estimates (slower progress bar)
+   * Lower values = aggressive estimates (faster progress bar)
+   * 
+   * Note: Previously hardcoded as 360 in useReplayData.ts
+   */
+  estimatedRatio: 400,
 };

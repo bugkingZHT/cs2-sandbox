@@ -317,8 +317,9 @@ function createReplayData() {
       demoBytes = new Uint8Array(buffer);
 
       const fileSizeMB = file.size / (1024 * 1024);
-      const estimatedTotalTicks = Math.round(fileSizeMB * 360);
-      console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks}`);
+      // Estimate total ticks using configured ratio
+      const estimatedTotalTicks = Math.round(fileSizeMB * PARSER_CONFIG.estimatedRatio);
+      console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks} (ratio: ${PARSER_CONFIG.estimatedRatio})`);
 
       const metaStorage = await getMetaStorage();
       const worker = new ParserWorker();

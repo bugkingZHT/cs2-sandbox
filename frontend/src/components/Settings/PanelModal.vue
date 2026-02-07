@@ -147,61 +147,87 @@
             </div>
           </div>
           
-          <!-- Parse options: round limit + frame ratio in one row -->
-          <div
-            v-if="DEBUG_CONFIG.enableRoundLimitConfig || DEBUG_CONFIG.enableParseFrameRatioConfig"
-            class="debug-parse-options-row"
-          >
-            <div v-if="DEBUG_CONFIG.enableRoundLimitConfig" class="parse-option-cell">
-              <div class="input-group">
-                <label class="input-label">Parse Round Limit</label>
-                <input
-                  v-model.number="roundLimit"
-                  type="number"
-                  min="1"
-                  class="ds-input round-limit-input"
-                  @change="saveRoundLimit"
-                />
+          <!-- 左侧纵排：两个输入框；右侧纵排：三个按钮 -->
+          <div class="debug-tools-layout">
+            <div class="debug-options-left">
+              <div
+                v-if="DEBUG_CONFIG.enableRoundLimitConfig"
+                class="parse-option-cell"
+              >
+                <div class="input-group">
+                  <label class="input-label">Parse Round Limit</label>
+                  <input
+                    v-model.number="roundLimit"
+                    type="number"
+                    min="1"
+                    class="ds-input round-limit-input"
+                    @change="saveRoundLimit"
+                  />
+                </div>
+              </div>
+              <div
+                v-if="DEBUG_CONFIG.enableParseFrameRatioConfig"
+                class="parse-option-cell"
+              >
+                <div class="input-group">
+                  <label class="input-label">Parse Frame Ratio</label>
+                  <input
+                    v-model.number="parseFrameRatio"
+                    type="number"
+                    min="1"
+                    class="ds-input round-limit-input"
+                    @change="saveParseFrameRatio"
+                  />
+                </div>
               </div>
             </div>
-            <div v-if="DEBUG_CONFIG.enableParseFrameRatioConfig" class="parse-option-cell">
-              <div class="input-group">
-                <label class="input-label">Parse Frame Ratio</label>
-                <input
-                  v-model.number="parseFrameRatio"
-                  type="number"
-                  min="1"
-                  class="ds-input round-limit-input"
-                  @change="saveParseFrameRatio"
-                />
+            <div class="debug-actions-right">
+              <div class="button-group">
+                <button
+                  v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+                  class="ds-btn ds-btn-console"
+                  @click="handleOPFSViewer"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  <span>OPFS Viewer</span>
+                </button>
+                <button
+                  v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+                  class="ds-btn ds-btn-console"
+                  :disabled="cleaningStorage"
+                  @click="handleCleanStorageLeak"
+                >
+                  <svg v-if="cleaningStorage" class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 11-6.22-8.56"/>
+                  </svg>
+                  <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" y1="11" x2="10" y2="17"/>
+                    <line x1="14" y1="11" x2="14" y2="17"/>
+                  </svg>
+                  <span>{{ cleaningStorage ? 'cleaning…' : 'Cleanup StorLeak' }}</span>
+                </button>
               </div>
+              <button
+                v-if="DEBUG_CONFIG.enableFrameDataViewer"
+                class="ds-btn ds-btn-console"
+                @click="handleFrameDataViewer"
+                :disabled="!(currentPage === 'player')"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="m21 21-4.35-4.35"/>
+                </svg>
+                <span>Frame Viewer</span>
+              </button>
             </div>
           </div>
-
-          <div class="modal-actions-horizontal">
-            <button 
-              v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
-              class="ds-btn ds-btn-console"
-              @click="handleOPFSViewer"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span>OPFS Storage Viewer</span>
-            </button>
-            <button 
-              v-if="DEBUG_CONFIG.enableFrameDataViewer"
-              class="ds-btn ds-btn-console"
-              @click="handleFrameDataViewer"
-              :disabled="!(currentPage === 'player')"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.35-4.35"/>
-              </svg>
-              <span>Frame Data Viewer</span>
-            </button>
-          </div>
+          <p v-if="cleanupMessage" class="cleanup-message" :class="cleanupMessageType">
+            {{ cleanupMessage }}
+          </p>
         </div>
       </div>
     </div>
@@ -211,6 +237,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { DEBUG_CONFIG } from '@/config/debug';
+import { cleanupOrphanedReplayStorage } from '@/composables/opfs-storage';
 
 interface Props {
   showModal: boolean;
@@ -447,6 +474,45 @@ const handleFrameDataViewer = () => {
 const handleOPFSViewer = () => {
   emit('close');
   emit('open-opfs-viewer');
+};
+
+// Clean Storage Leak: remove OPFS dirs that have no meta in IndexedDB
+const cleaningStorage = ref(false);
+const cleanupMessage = ref('');
+const cleanupMessageType = ref<'success' | 'error' | 'info'>('info');
+let cleanupMessageTimer: ReturnType<typeof setTimeout> | null = null;
+
+const handleCleanStorageLeak = async () => {
+  cleaningStorage.value = true;
+  cleanupMessage.value = '';
+  if (cleanupMessageTimer) {
+    clearTimeout(cleanupMessageTimer);
+    cleanupMessageTimer = null;
+  }
+  try {
+    const result = await cleanupOrphanedReplayStorage();
+    if (result.count === 0) {
+      cleanupMessage.value = '没有发现泄露（所有 OPFS 目录均有对应 IndexedDB meta）';
+      cleanupMessageType.value = 'info';
+    } else {
+      cleanupMessage.value = `已清理 ${result.count} 个泄露目录`;
+      cleanupMessageType.value = 'success';
+      await updateStorageQuota();
+    }
+    cleanupMessageTimer = setTimeout(() => {
+      cleanupMessage.value = '';
+      cleanupMessageTimer = null;
+    }, 5000);
+  } catch (err: any) {
+    cleanupMessage.value = err?.message || '清理失败';
+    cleanupMessageType.value = 'error';
+    cleanupMessageTimer = setTimeout(() => {
+      cleanupMessage.value = '';
+      cleanupMessageTimer = null;
+    }, 5000);
+  } finally {
+    cleaningStorage.value = false;
+  }
 };
 </script>
 
@@ -729,15 +795,78 @@ const handleOPFSViewer = () => {
   padding: var(--ds-space-md);
 }
 
-.modal-actions-horizontal {
-  display: flex;
-  gap: var(--ds-space-md);
+/* 开发工具区域：统一宽度，每行 3 个元素 */
+.debug-tools-layout {
+  --debug-gap: var(--ds-space-md);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--debug-gap);
   width: 100%;
+  align-items: start;
 }
 
-.modal-actions-horizontal .ds-btn-console {
-  flex: 1;
-  max-width: none;
+.debug-options-left {
+  display: contents; /* Make children participate in parent grid */
+}
+
+.debug-actions-right {
+  display: contents; /* Make children participate in parent grid */
+}
+
+/* Button group: allows vertical stacking of buttons */
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+}
+
+/* 按钮与输入卡片同宽度，允许纵向堆叠两个按钮 */
+.debug-actions-right .ds-btn-console {
+  width: 100%;
+  min-width: 0;
+  /* Total height 26px including border (1px top + 1px bottom) */
+  padding: 0 var(--ds-space-md);
+  height: 37px;
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-sm);
+  box-sizing: border-box;
+}
+
+.debug-actions-right .ds-btn-console svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.cleanup-message {
+  margin-top: var(--ds-space-sm);
+  font-size: var(--ds-text-sm);
+  padding: var(--ds-space-xs) var(--ds-space-sm);
+  border-radius: var(--ds-radius-sm);
+}
+.cleanup-message.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+.cleanup-message.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+.cleanup-message.info {
+  background: rgba(74, 171, 247, 0.15);
+  color: #4dabf7;
+}
+
+.spin {
+  animation: cleanup-spin 0.8s linear infinite;
+}
+@keyframes cleanup-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .quota-header {
@@ -821,21 +950,13 @@ const handleOPFSViewer = () => {
   text-align: right;
 }
 
-/* Parse options row: same layout as storage-quota-container above (50% each, same gap) */
-.debug-parse-options-row {
-  width: 100%;
-  display: flex;
-  gap: var(--ds-space-md);
-  margin-bottom: var(--ds-space-lg);
-}
-
 .parse-option-cell {
-  flex: 0 0 calc(50% - var(--ds-space-md) / 2);
-  min-width: 0;
   padding: var(--ds-space-md);
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .parse-option-cell .ds-input {

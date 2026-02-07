@@ -68,7 +68,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
-import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl } from '@/config/map';
+import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl, MAP_IMAGE_SIZE, MAP_SVG_IMAGE_SIZE, SVG_TEXTURE_RESOLUTION } from '@/config/map';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { useMapConfig } from '@/composables/useMapConfig';
 import {
@@ -118,15 +118,24 @@ const currentMapConfig = computed(() => {
   return config;
 });
 
-/** 优先加载 map 下的 SVG，不存在则降级为 config.imageUrl (PNG)。尺寸与坐标换算仍为 1024×1024。 */
-async function loadMapTexture(): Promise<Texture> {
+/** 优先加载 map 下的 SVG（尺寸 MAP_SVG_IMAGE_SIZE），不存在则降级为 config.imageUrl (PNG，尺寸 MAP_IMAGE_SIZE）。 */
+async function loadMapTexture(): Promise<{ texture: Texture; isSvg: boolean }> {
   const svgUrl = getMapSvgUrl(currentMapName.value);
   const pngUrl = currentMapConfig.value.imageUrl;
   try {
-    return await Assets.load(svgUrl);
+    const texture = await Assets.load({
+      src: svgUrl,
+      data: { resolution: SVG_TEXTURE_RESOLUTION },
+    });
+    return { texture, isSvg: true };
   } catch {
-    return await Assets.load(pngUrl);
+    const texture = await Assets.load(pngUrl);
+    return { texture, isSvg: false };
   }
+}
+
+function getMapDisplaySize(isSvg: boolean): number {
+  return isSvg ? MAP_SVG_IMAGE_SIZE : MAP_IMAGE_SIZE;
 }
 
 const host = ref<HTMLDivElement | null>(null);
@@ -196,11 +205,12 @@ const ensureApp = async () => {
   worldContainer = new Container();
   app.stage.addChild(worldContainer);
 
-  const texture = await loadMapTexture();
+  const { texture, isSvg } = await loadMapTexture();
+  const mapSize = getMapDisplaySize(isSvg);
   mapSprite = new Sprite(texture);
   mapSprite.anchor.set(0.5);
-  mapSprite.width = currentMapConfig.value.width;
-  mapSprite.height = currentMapConfig.value.height;
+  mapSprite.width = mapSize;
+  mapSprite.height = mapSize;
 
   mapSprite.position.set(0, 0);
   worldContainer.addChild(mapSprite);
@@ -536,11 +546,12 @@ watch(
         worldContainer.removeChild(mapSprite);
       }
       
-      const texture = await loadMapTexture();
+      const { texture, isSvg } = await loadMapTexture();
+      const mapSize = getMapDisplaySize(isSvg);
       mapSprite = new Sprite(texture);
       mapSprite.anchor.set(0.5);
-      mapSprite.width = currentMapConfig.value.width;
-      mapSprite.height = currentMapConfig.value.height;
+      mapSprite.width = mapSize;
+      mapSprite.height = mapSize;
       mapSprite.position.set(0, 0);
       worldContainer.addChildAt(mapSprite, 0);
       

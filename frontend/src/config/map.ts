@@ -1,5 +1,15 @@
-/** 地图底图默认像素尺寸，与 xRange/yRange 配合做比例坐标换算 */
+/** PNG 底图默认像素尺寸，与 xRange/yRange 配合做比例坐标换算 */
 export const MAP_IMAGE_SIZE = 1024;
+
+/** SVG 底图默认像素尺寸，与 xRange/yRange 配合做比例坐标换算 */
+export const MAP_SVG_IMAGE_SIZE = 2048;
+
+/**
+ * SVG 作为纹理加载时的栅格化分辨率倍数（Pixi Assets.load data.resolution）。
+ * 越大放大越清晰，纹理尺寸与显存占用也越高（单纹理最大 4096×4096）。
+ * @default 4
+ */
+export const SVG_TEXTURE_RESOLUTION = 4;
 
 export interface MapConfig {
   name: string;

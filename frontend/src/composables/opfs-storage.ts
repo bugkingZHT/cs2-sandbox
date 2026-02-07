@@ -11,6 +11,15 @@
  * Note: Meta data is now stored in IndexedDB, not in OPFS
  */
 
+import { getMetaStorage } from './indexdb-storage';
+
+export interface CleanupOrphanedResult {
+  /** UUIDs of deleted replay directories */
+  deleted: string[];
+  /** Number of deleted directories */
+  count: number;
+}
+
 export class OPFSReplayStorage {
   private root: FileSystemDirectoryHandle | null = null;
 
@@ -74,6 +83,28 @@ export class OPFSReplayStorage {
       console.error(`[OPFS] Failed to delete replay ${uuid}:`, e);
       throw e;
     }
+  }
+
+  /**
+   * Remove OPFS replay directories that have no corresponding meta in IndexedDB
+   * (e.g. parsing started but meta was never saved, or meta was deleted).
+   */
+  async cleanupOrphanedReplays(): Promise<CleanupOrphanedResult> {
+    const opfsUuids = await this.listAllReplays();
+    const metaStorage = await getMetaStorage();
+    const metas = await metaStorage.loadAllMetas();
+    const metaUuidSet = new Set(metas.map(m => m.uuid));
+    const orphaned = opfsUuids.filter(uuid => !metaUuidSet.has(uuid));
+    const deleted: string[] = [];
+    for (const uuid of orphaned) {
+      try {
+        await this.deleteReplay(uuid);
+        deleted.push(uuid);
+      } catch (e) {
+        console.error(`[OPFS] Cleanup failed for ${uuid}:`, e);
+      }
+    }
+    return { deleted, count: deleted.length };
   }
 
   private async getReplaysDir(): Promise<FileSystemDirectoryHandle> {
@@ -140,6 +171,12 @@ export async function getOPFSStorage(): Promise<OPFSReplayStorage> {
     await storageInstance.init();
   }
   return storageInstance;
+}
+
+/** One-click cleanup: delete OPFS replay dirs that have no meta in IndexedDB. */
+export async function cleanupOrphanedReplayStorage(): Promise<CleanupOrphanedResult> {
+  const storage = await getOPFSStorage();
+  return storage.cleanupOrphanedReplays();
 }
 
 // ========== Debug Helpers for Browser Console ==========

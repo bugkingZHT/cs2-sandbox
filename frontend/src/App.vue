@@ -31,7 +31,10 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
-          <span v-show="!sidebarCollapsed" class="nav-text">Demo 库</span>
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">Demo 库</span>
+            <span class="nav-caption">Library</span>
+          </span>
         </button>
         
         <button 
@@ -44,7 +47,10 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3"/>
           </svg>
-          <span v-show="!sidebarCollapsed" class="nav-text">2D 播放器</span>
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">2D 播放器</span>
+            <span class="nav-caption">Replayer</span>
+          </span>
         </button>
       </nav>
 
@@ -59,7 +65,10 @@
             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
             <line x1="12" y1="2" x2="12" y2="12"></line>
           </svg>
-          <span v-show="!sidebarCollapsed" class="console-label">系统管理</span>
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">系统管理</span>
+            <span class="nav-caption">Dashboard</span>
+          </span>
         </button>
       </div>
     </aside>
@@ -360,16 +369,52 @@ const handleOPFSViewer = async () => {
   transition: all var(--ds-transition-base);
 }
 
+.nav-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
 .nav-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity var(--ds-transition-base);
+  line-height: 1.2;
+}
+
+.nav-caption {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-text-tertiary);
+  opacity: 0.85;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: opacity var(--ds-transition-base);
 }
 
-.collapsed .nav-text {
+.nav-btn.active .nav-caption {
+  color: var(--ds-primary);
+  opacity: 0.9;
+}
+
+.console-toggle-btn .nav-caption {
+  color: rgba(77, 171, 247, 0.85);
+}
+
+.collapsed .nav-label,
+.collapsed .nav-text,
+.collapsed .nav-caption {
   opacity: 0;
   width: 0;
+  overflow: hidden;
 }
 
 .nav-btn:hover:not(:disabled) {
@@ -428,19 +473,6 @@ const handleOPFSViewer = async () => {
   background: rgba(74, 171, 247, 0.2);
   border-color: rgba(74, 171, 247, 0.5);
   box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
-}
-
-.console-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: opacity var(--ds-transition-base);
-  font-size: 14px;
-}
-
-.collapsed .console-label {
-  opacity: 0;
-  width: 0;
 }
 
 /* === Main Content === */
