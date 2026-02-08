@@ -8,7 +8,7 @@
           <img src="/logo/logo.png" alt="Snowbo" class="app-logo" @error="onLogoError" />
           <div class="app-title-group">
             <h1 class="app-title">Snowbo | 雪豹</h1>
-            <p class="app-subtitle">CS2 Demo Workshop</p>
+            <p class="app-subtitle">CS2 Tac-Workshop</p>
           </div>
         </div>
         
@@ -33,7 +33,6 @@
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">Demo 库</span>
-            <span class="nav-caption">Library</span>
           </span>
         </button>
         
@@ -49,7 +48,6 @@
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">2D 播放器</span>
-            <span class="nav-caption">Replayer</span>
           </span>
         </button>
       </nav>
@@ -67,7 +65,6 @@
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">系统管理</span>
-            <span class="nav-caption">Dashboard</span>
           </span>
         </button>
       </div>
@@ -370,10 +367,6 @@ const handleOPFSViewer = async () => {
 }
 
 .nav-label {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -386,32 +379,8 @@ const handleOPFSViewer = async () => {
   line-height: 1.2;
 }
 
-.nav-caption {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ds-text-tertiary);
-  opacity: 0.85;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: opacity var(--ds-transition-base);
-}
-
-.nav-btn.active .nav-caption {
-  color: var(--ds-primary);
-  opacity: 0.9;
-}
-
-.console-toggle-btn .nav-caption {
-  color: rgba(77, 171, 247, 0.85);
-}
-
 .collapsed .nav-label,
-.collapsed .nav-text,
-.collapsed .nav-caption {
+.collapsed .nav-text {
   opacity: 0;
   width: 0;
   overflow: hidden;
@@ -454,7 +423,7 @@ const handleOPFSViewer = async () => {
   border: 1px solid rgba(74, 171, 247, 0.3);
   border-radius: var(--ds-radius-md);
   color: #4dabf7;
-  font-size: var(--ds-text-sm);
+  font-size: var(--ds-text-base);
   font-weight: 600;
   cursor: pointer;
   transition: all var(--ds-transition-base);
