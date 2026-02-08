@@ -226,20 +226,24 @@ const drawPlayerGraphics = (
   if (player.alive) {
     // Draw direction triangle
     const isAttacking = player.buttons?.includes(1); // 1 = common.ButtonAttack
-    const triColor = isAttacking ? 0xcc3333 : color; // Darker red (0xcc3333) instead of bright red
+    const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
+    const isUtility = isUtilityItem(activeWeaponId); // knife, C4, grenades
+    const useWhiteTri = isUtility; // Non-gun: small white triangle
+    const triColor = useWhiteTri ? 0xffffff : (isAttacking ? 0xcc3333 : color);
+    // When utility (white triangle), shrink triangle by 2px on each dimension
+    const triLen = PLAYER_STYLE.triLen - (useWhiteTri ? 2 : 0);
+    const triW = PLAYER_STYLE.triWidth - (useWhiteTri ? 2 : 0);
 
-    const tipX = Math.cos(angleRad) * (radius + PLAYER_STYLE.triLen);
-    const tipY = Math.sin(angleRad) * (radius + PLAYER_STYLE.triLen);
+    const tipX = Math.cos(angleRad) * (radius + triLen);
+    const tipY = Math.sin(angleRad) * (radius + triLen);
     const baseAngle1 = angleRad + Math.PI / 2;
     const baseAngle2 = angleRad - Math.PI / 2;
-    const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * PLAYER_STYLE.triWidth;
-    const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * PLAYER_STYLE.triWidth;
-    const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * PLAYER_STYLE.triWidth;
-    const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * PLAYER_STYLE.triWidth;
+    const bx1 = Math.cos(angleRad) * radius + Math.cos(baseAngle1) * triW;
+    const by1 = Math.sin(angleRad) * radius + Math.sin(baseAngle1) * triW;
+    const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triW;
+    const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triW;
 
     // If firing, draw enhanced team-colored line with glow and gradient
-    const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
-    const isUtility = isUtilityItem(activeWeaponId);
     if (isAttacking && !isUtility) {
       // Line starts from player center (0, 0) and extends outward
       const lineLen = PLAYER_STYLE.attackLen * 8; // Increased from 6 to 8 for longer line
@@ -308,12 +312,15 @@ const updateWeaponIcon = async (
   ctx: RenderContext,
 ) => {
   const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
-  
-  // Only show icons for grenades (501-506) and C4 (404)
-  const shouldShowIcon = player.alive && ((activeWeaponId >= 501 && activeWeaponId <= 506) || activeWeaponId === 404);
-  
+  const hasC4 = player.inventory?.some((id) => Number(id) === 404) ?? false;
+
+  // C4: show when player has it (active → center; carried → bottom-right)
+  // Grenades: show when actively holding (501-506) at center
+  const shouldShowC4 = player.alive && hasC4;
+  const shouldShowGrenade = player.alive && activeWeaponId >= 501 && activeWeaponId <= 506;
+  const shouldShowIcon = shouldShowC4 || shouldShowGrenade;
+
   if (!shouldShowIcon) {
-    // Remove existing icon if present
     if (playerSprite.weaponIcon) {
       ctx.playerLayer.removeChild(playerSprite.weaponIcon);
       playerSprite.weaponIcon.destroy();
@@ -321,22 +328,21 @@ const updateWeaponIcon = async (
     }
     return;
   }
-  
-  // Get weapon file name
-  const fileName = EQUIPMENT_ID_MAP[activeWeaponId];
+
+  // C4 takes priority when player has bomb; else show active grenade
+  const displayItemId = shouldShowC4 ? 404 : activeWeaponId;
+  const fileName = EQUIPMENT_ID_MAP[displayItemId];
   if (!fileName) return;
-  
+
   const assetPath = `/utility/${fileName}.svg`;
-  
+
   try {
-    // Load texture from cache or fetch
     let texture = weaponTextureCache[assetPath];
     if (!texture) {
       texture = await Assets.load(assetPath);
       weaponTextureCache[assetPath] = texture;
     }
-    
-    // Create or update sprite
+
     if (!playerSprite.weaponIcon) {
       playerSprite.weaponIcon = new Sprite(texture);
       playerSprite.weaponIcon.anchor.set(0.5);
@@ -347,15 +353,26 @@ const updateWeaponIcon = async (
     } else {
       playerSprite.weaponIcon.texture = texture;
     }
-    
-    // Position icon at player center
-    playerSprite.weaponIcon.x = playerSprite.currentX;
-    playerSprite.weaponIcon.y = playerSprite.currentY;
-    
-    // Display icon in white color (not semi-transparent)
-    playerSprite.weaponIcon.tint = 0xffffff;
+
+    // C4 active (held in hand): center, red - same as grenade active state
+    // C4 carried (in inventory): bottom-right, red
+    // Grenades (501-506) active: center, white
+    const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
+    const offset = radius * 0.55;
+    const isC4Active = displayItemId === 404 && activeWeaponId === 404;
+    const isC4Carried = displayItemId === 404 && activeWeaponId !== 404;
+    if (isC4Active || (!isC4Carried && displayItemId >= 501 && displayItemId <= 506)) {
+      // Active weapon (C4 or grenade): center
+      playerSprite.weaponIcon.x = playerSprite.currentX;
+      playerSprite.weaponIcon.y = playerSprite.currentY;
+      playerSprite.weaponIcon.tint = displayItemId === 404 ? 0xff0000 : 0xffffff;
+    } else {
+      // C4 carried: bottom-right, red
+      playerSprite.weaponIcon.x = playerSprite.currentX + offset;
+      playerSprite.weaponIcon.y = playerSprite.currentY + offset;
+      playerSprite.weaponIcon.tint = 0xff0000;
+    }
     playerSprite.weaponIcon.alpha = 1.0;
-    
   } catch (error) {
     console.warn(`[Player] Failed to load weapon icon: ${assetPath}`, error);
   }

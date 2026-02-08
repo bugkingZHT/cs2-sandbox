@@ -647,6 +647,10 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			if !entity.IsGrenadeOrThrowable(w.Type) {
 				continue
 			}
+			// Bomb (itemID 404) should not be blacklisted - it's tracked separately
+			if int(w.Type) == 404 {
+				continue
+			}
 			if explTick, ok := w.Entity.PropertyValue("m_nExplodeEffectTickBegin"); ok && explTick.Int() != 0 {
 				continue
 			}

@@ -737,6 +737,8 @@ export const drawProjectilesForFrame = async (options: {
   if (droppedEquipment) {
     for (const de of droppedEquipment) {
       const typeId = Number(de.type);
+      // 跳过 C4 (404)，由 drawBombForFrame 单独渲染
+      if (typeId === 404) continue;
       // 只渲染投掷物 (501-506)
       if (typeId >= 501 && typeId <= 506) {
         const typeKey = getProjectileTypeKey(typeId);
@@ -747,8 +749,57 @@ export const drawProjectilesForFrame = async (options: {
 };
 
 /**
- * 渲染已安放的 C4 炸弹
- * 特点：红色图标，外圈环形倒计时
+ * 渲染掉落的 C4：与投掷物类似的绘制方式，但图标和外圈均为红色
+ */
+const drawDroppedC4 = async (
+  bomb: BombFrame,
+  projectileLayer: Container,
+  worldToMap: (x: number, y: number) => { x: number; y: number },
+) => {
+  try {
+    const mapPos = worldToMap(bomb.x, bomb.y);
+    const assetPath = '/utility/c4.svg';
+    const texture = textureCache[assetPath] || await Assets.load(assetPath);
+    if (!textureCache[assetPath]) textureCache[assetPath] = texture;
+
+    const { droppedIconBaseSize, droppedIconScale } = MAP_CANVAS_ELEMENT_SIZES.projectile;
+    const iconSize = droppedIconBaseSize * droppedIconScale;
+    const strokeRadius = iconSize * 0.65;
+    const strokeWidth = 2;
+    const redColor = 0xff0000;
+
+    const container = new Container();
+    container.x = mapPos.x;
+    container.y = mapPos.y;
+
+    // 外圈：红色描边
+    const outline = new Graphics();
+    outline.circle(0, 0, strokeRadius).stroke({
+      width: strokeWidth,
+      color: redColor,
+      alpha: 0.9,
+    });
+    container.addChild(outline);
+
+    const sprite = new Sprite(texture);
+    sprite.width = iconSize;
+    sprite.height = iconSize;
+    sprite.anchor.set(0.5);
+    sprite.tint = redColor;
+    sprite.alpha = 1;
+    container.addChild(sprite);
+
+    projectileLayer.addChild(container);
+  } catch (error) {
+    console.warn('[C4渲染] 掉落 C4 图标加载失败:', error);
+  }
+};
+
+/**
+ * 渲染 C4 炸弹
+ * - carried: 在 playersRender 的玩家圆圈右下角显示红色 C4 图标
+ * - dropped: 类似投掷物绘制方式，红色图标 + 红色外圈
+ * - planted/defusing/exploded: 红色图标 + 环形倒计时 / 爆炸范围
  */
 export const drawBombForFrame = async (options: {
   bomb: BombFrame | undefined;
@@ -759,8 +810,16 @@ export const drawBombForFrame = async (options: {
   const { bomb, roundTime, projectileLayer, worldToMap } = options;
   if (!bomb || !projectileLayer) return;
 
-  // 只有在已安放（planted）、正在拆除（defusing）或已爆炸（exploded）时显示
-  // 'planting' 状态时 C4 还在玩家手里，不在这里渲染
+  // 掉落在地上：与投掷物类似的绘制方式，红色图标 + 红色外圈
+  if (bomb.state === 'dropped') {
+    await drawDroppedC4(bomb, projectileLayer, worldToMap);
+    return;
+  }
+
+  // carried/planting: 在玩家身上，由 playersRender 的 weaponIcon 显示，此处不渲染
+  if (bomb.state === 'carried' || bomb.state === 'planting') return;
+
+  // 已安放、拆除中、已爆炸：红色图标 + 环形倒计时 / 爆炸范围
   if (!['planted', 'defusing', 'exploded'].includes(bomb.state)) return;
 
   const mapPos = worldToMap(bomb.x, bomb.y);

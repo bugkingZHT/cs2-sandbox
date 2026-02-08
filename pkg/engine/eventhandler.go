@@ -199,6 +199,7 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.bombPlantedTick = b.parser.GameState().IngameTick()
 	})
 	b.parser.RegisterEventHandler(func(e events.BombDefuseStart) { b.bombState = "defusing" })
+	b.parser.RegisterEventHandler(func(e events.BombDefuseAborted) { b.bombState = "planted" })
 	b.parser.RegisterEventHandler(func(e events.BombDefused) { b.bombState = "defused" })
 	b.parser.RegisterEventHandler(func(e events.BombExplode) { b.bombState = "exploded" })
 	b.parser.RegisterEventHandler(func(e events.BombDropped) { b.bombState = "dropped" })
