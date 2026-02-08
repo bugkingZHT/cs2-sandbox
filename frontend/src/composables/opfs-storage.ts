@@ -45,7 +45,7 @@ export class OPFSReplayStorage {
   async loadRound(uuid: string, roundNum: number): Promise<Uint8Array | null> {
     try {
       console.log(`[OPFS] 📖 Loading round ${roundNum} for UUID: ${uuid}`);
-      const replayDir = await this.getReplayDir(uuid);
+      const replayDir = await this.getReplayDirForRead(uuid);
       const fileHandle = await replayDir.getFileHandle(`round_${roundNum}.pb`);
       const file = await fileHandle.getFile();
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -117,6 +117,12 @@ export class OPFSReplayStorage {
   private async getReplayDir(uuid: string): Promise<FileSystemDirectoryHandle> {
     const replaysDir = await this.getReplaysDir();
     return await replaysDir.getDirectoryHandle(uuid, { create: true });
+  }
+
+  /** 仅读取时使用：不 create，避免误建空目录导致 round 找不到 */
+  private async getReplayDirForRead(uuid: string): Promise<FileSystemDirectoryHandle> {
+    const replaysDir = await this.getReplaysDir();
+    return await replaysDir.getDirectoryHandle(uuid);
   }
 
   // Debug helper: List all files in OPFS for inspection

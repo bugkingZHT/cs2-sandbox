@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-page="index">
+<html lang="zh-CN" data-page="tactics">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo/logo.png" />
@@ -10,12 +10,8 @@
       if (typeof Go === 'function') {
         const go = new Go();
         WebAssembly.instantiateStreaming(fetch('/main.wasm'), go.importObject)
-          .then(result => {
-            go.run(result.instance);
-          })
-          .catch(err => {
-            console.error('Failed to load WASM:', err);
-          });
+          .then(result => { go.run(result.instance); })
+          .catch(err => { console.error('Failed to load WASM:', err); });
       } else {
         console.error('Go WASM runtime (wasm_exec.js) not loaded.');
       }

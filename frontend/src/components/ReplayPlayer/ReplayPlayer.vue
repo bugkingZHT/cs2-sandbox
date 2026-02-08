@@ -399,6 +399,7 @@ import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
+import { replaceLocation } from '@/location';
 
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
@@ -1115,6 +1116,9 @@ const loadRoundData = async (roundNumber: number) => {
     currentPlaybackTimeMs.value = frames.value?.[0]?.timeMs || 0;
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
+    
+    // 同步 URL，便于刷新或分享后能定向到当前回合（由 Go 托管 /replayer）
+    replaceLocation('/replayer', `uuid=${replay.value.uuid}&round=${roundNumber}`);
     
     // Resume playback if it was playing before
     if (wasPlaying) {

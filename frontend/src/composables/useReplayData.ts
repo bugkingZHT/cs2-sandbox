@@ -24,6 +24,8 @@ interface UseReplayResult {
   loadReplayById: (id: string) => Promise<void>;
   loadRoundData: (uuid: string, roundNumber: number) => Promise<void>;
   deleteReplayById: (id: string) => Promise<void>;
+  /** 等待首次 loadAllReplays 完成，与 demolib 一致，避免 replayer 刷新时竞态 */
+  waitForInitialLoad: () => Promise<void>;
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
@@ -46,7 +48,8 @@ function createReplayData() {
   const showUploadBlockedWarning = ref<{ fileName: string; progress: number } | null>(null);
 
   const abortController = new AbortController();
-  
+  let initialLoadPromise: Promise<void> | null = null;
+
   // ParsingMonitor instance
   let parsingMonitor: ParsingMonitor | null = null;
 
@@ -508,7 +511,13 @@ function createReplayData() {
     }
   };
 
-  onMounted(load);
+  const waitForInitialLoad = (): Promise<void> => {
+    return initialLoadPromise ?? Promise.resolve();
+  };
+
+  onMounted(() => {
+    initialLoadPromise = load();
+  });
 
   onUnmounted(() => {
     abortController.abort();
@@ -532,6 +541,7 @@ function createReplayData() {
     loadReplayById,
     loadRoundData,
     deleteReplayById,
+    waitForInitialLoad,
   };
 }
 

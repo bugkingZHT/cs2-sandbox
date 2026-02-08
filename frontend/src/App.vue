@@ -25,7 +25,7 @@
         <button 
           class="nav-btn" 
           :class="{ active: currentPage === 'library' }"
-          @click="currentPage = 'library'"
+          @click="navigate('/demolib')"
           :title="sidebarCollapsed ? 'Demo 库' : ''"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -39,7 +39,7 @@
         <button 
           class="nav-btn" 
           :class="{ active: currentPage === 'player' }"
-          @click="currentPage = 'player'"
+          @click="goToPlayer"
           :disabled="!hasSelectedDemo"
           :title="sidebarCollapsed ? '2D 播放器' : ''"
         >
@@ -48,6 +48,18 @@
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">2D 播放器</span>
+          </span>
+        </button>
+
+        <button 
+          class="nav-btn" 
+          :class="{ active: currentPage === 'tactics' }"
+          @click="navigate('/tactics')"
+          :title="sidebarCollapsed ? '战术本' : ''"
+        >
+          <img src="/icons/tactics.svg" alt="" class="nav-icon-img" />
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">战术本</span>
           </span>
         </button>
       </nav>
@@ -83,10 +95,23 @@
       />
 
       <!-- Player Page -->
-      <ReplayPlayer
-        v-if="currentPage === 'player'"
-        @exit-replay="onExitReplay"
-      />
+      <template v-if="currentPage === 'player'">
+        <div v-if="replayerRouteLoading" class="replayer-loading-overlay">
+          <div class="replayer-loading-modal">
+            <div class="spinner-container">
+              <div class="spinner"></div>
+            </div>
+            <p class="replayer-loading-status">正在加载回放…</p>
+          </div>
+        </div>
+        <ReplayPlayer
+          v-else
+          @exit-replay="onExitReplay"
+        />
+      </template>
+
+      <!-- 战术本 Page -->
+      <TacticsBook v-if="currentPage === 'tactics'" />
     </main>
 
     <!-- 解析进度弹窗 -->
@@ -119,10 +144,12 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
+import TacticsBook from '@/components/TacticsBook/TacticsBook.vue';
 import ConsoleModal from '@/components/Settings/PanelModal.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
+import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery } from '@/location';
 
 const { 
   parsing, 
@@ -132,24 +159,91 @@ const {
   loading,
   parseDemo,
   loadReplayById,
+  loadRoundData,
   deleteReplayById,
+  replay,
+  currentRoundNumber,
+  waitForInitialLoad,
 } = useReplayData();
 
 const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
 
-const currentPage = ref<'library' | 'player'>('library');
+useLocation();
+
+const currentPage = computed<'library' | 'player' | 'tactics'>(() => {
+  const p = pathRef.value;
+  if (p === '/tactics') return 'tactics';
+  if (p === '/replayer') return 'player';
+  return 'library'; // /demolib or /
+});
+
 const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
 const showConsoleModal = ref(false);
+const replayerRouteLoading = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
+
+// 根据当前 URL 的 uuid/round 加载 replayer 数据，并显示加载态（刷新时从 window.location 读以保证拿到 args）
+async function ensureReplayerRouteData() {
+  // 刷新场景下 path/search 可能尚未同步，优先用 window.location
+  const path = pathRef.value || window.location.pathname;
+  const search = searchRef.value ?? window.location.search;
+  pathRef.value = path;
+  searchRef.value = search;
+
+  const query = getQuery(search);
+  const uuid = query.uuid ?? null;
+  const roundNum = parseInt(query.round || '', 10) || 1;
+
+  if (path !== '/replayer' || !uuid) {
+    replayerRouteLoading.value = false;
+    if (path === '/replayer' && !uuid && currentDemoId.value) {
+      replaceLocation('/replayer', `uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`);
+    }
+    return;
+  }
+
+  const needLoadReplay = !replay.value || replay.value.uuid !== uuid;
+  const needLoadRound = !needLoadReplay && currentRoundNumber.value !== roundNum;
+
+  if (!needLoadReplay && !needLoadRound) {
+    replayerRouteLoading.value = false;
+    currentDemoId.value = uuid;
+    return;
+  }
+
+  replayerRouteLoading.value = true;
+  currentDemoId.value = uuid;
+  try {
+    await waitForInitialLoad();
+    if (needLoadReplay) {
+      await loadReplayById(uuid);
+    }
+    if (roundNum !== 1 && (needLoadReplay || needLoadRound)) {
+      await loadRoundData(uuid, roundNum);
+    } else if (needLoadReplay && roundNum === 1) {
+      // loadReplayById 已加载 round 1
+    }
+  } finally {
+    replayerRouteLoading.value = false;
+  }
+}
 
 onMounted(() => {
   const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
   if (stored !== null) {
     sidebarCollapsed.value = stored === 'true';
   }
+  // 刷新进入 replayer 时立即根据 URL args 加载对局并定位回合
+  ensureReplayerRouteData();
 });
+
+watch(
+  () => ({ path: pathRef.value, search: searchRef.value }),
+  () => ensureReplayerRouteData(),
+  { deep: true }
+);
 
 watch(sidebarCollapsed, (val) => {
   localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(val));
@@ -166,17 +260,20 @@ watch(currentPage, (newPage) => {
   }
 });
 
+const goToPlayer = () => {
+  if (hasSelectedDemo.value) {
+    navigate('/replayer', `uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`);
+  }
+};
+
 const onLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement;
   img.style.display = 'none';
 };
 
-const onSelectDemo = async (demoId: string) => {
+const onSelectDemo = (demoId: string) => {
   currentDemoId.value = demoId;
-  await loadReplayById(demoId);
-  
-  // Switch to player page
-  currentPage.value = 'player';
+  navigate('/replayer', `uuid=${demoId}&round=1`);
 };
 
 const onDeleteDemo = async (demoId: string) => {
@@ -194,7 +291,7 @@ const onUploadDemo = async (file: File) => {
 };
 
 const onExitReplay = () => {
-  currentPage.value = 'library';
+  navigate('/demolib');
 };
 
 // Console modal handlers
@@ -366,6 +463,18 @@ const handleOPFSViewer = async () => {
   transition: all var(--ds-transition-base);
 }
 
+.nav-btn .nav-icon-img {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
+  /* 使用 mask 让图标继承 currentColor，与侧栏其他图标一致 */
+  -webkit-mask: url(/icons/tactics.svg) center / contain no-repeat;
+  mask: url(/icons/tactics.svg) center / contain no-repeat;
+  background: currentColor;
+  transition: all var(--ds-transition-base);
+}
+
 .nav-label {
   min-width: 0;
   flex: 1;
@@ -451,6 +560,29 @@ const handleOPFSViewer = async () => {
   flex-direction: column;
   overflow: hidden;
   transition: margin-left var(--ds-transition-slow);
+}
+
+/* === Replayer 路由加载态 === */
+.replayer-loading-overlay {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--ds-bg-primary);
+  animation: fadeIn 0.2s ease;
+}
+
+.replayer-loading-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-lg);
+}
+
+.replayer-loading-status {
+  margin: 0;
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-base);
 }
 
 /* === Parsing Modal === */

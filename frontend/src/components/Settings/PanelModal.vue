@@ -241,7 +241,7 @@ import { cleanupOrphanedReplayStorage } from '@/composables/opfs-storage';
 
 interface Props {
   showModal: boolean;
-  currentPage: 'library' | 'player';
+  currentPage: 'library' | 'player' | 'tactics';
 }
 
 interface Emits {
