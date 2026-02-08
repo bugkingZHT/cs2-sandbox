@@ -56,9 +56,8 @@ func FrameToProtoPB(frame *Frame) *FramePB {
 		protoFrame.KillEvents = make(map[int32]*KillEventPB)
 		for k, v := range frame.KillEvents {
 			protoFrame.KillEvents[int32(k)] = &KillEventPB{
-				KillerId:    int32(v.KillerID),
-				AssistantId: int32(v.AssistantID),
-				WeaponId:    int32(v.WeaponID),
+				KillerId: int32(v.KillerID),
+				WeaponId: int32(v.WeaponID),
 			}
 		}
 	}

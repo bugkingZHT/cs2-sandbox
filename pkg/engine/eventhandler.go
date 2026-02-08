@@ -22,6 +22,9 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.freezeEndTick = 0
 		b.bombPlantedTick = 0
 		b.roundEndTick = 0
+		// Reset dropped equipment blacklist - will be built at round frame 0
+		b.droppedEquipmentBlacklist = make(map[int]struct{})
+		b.droppedBlacklistBuiltRound = -1
 	})
 
 	// Register freeze time end handler
@@ -207,10 +210,6 @@ func (b *replayBuilder) registerEventHandlers() {
 		if e.Killer != nil {
 			killerID = e.Killer.UserID
 		}
-		assistantID := 0
-		if e.Assister != nil {
-			assistantID = e.Assister.UserID
-		}
 		weaponID := common.EqUnknown
 		if e.Weapon != nil && e.Weapon.Type != common.EqUnknown {
 			weaponID = e.Weapon.Type
@@ -218,9 +217,8 @@ func (b *replayBuilder) registerEventHandlers() {
 
 		if e.Victim != nil {
 			b.currentKillEvents[e.Victim.UserID] = entity.KillEvent{
-				KillerID:    killerID,
-				AssistantID: assistantID,
-				WeaponID:    weaponID,
+				KillerID: killerID,
+				WeaponID: weaponID,
 			}
 		}
 	})

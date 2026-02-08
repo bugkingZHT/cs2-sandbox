@@ -396,8 +396,7 @@ func (x *ProjectileFramePB) GetTtl() int64 {
 type KillEventPB struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	KillerId      int32                  `protobuf:"varint,1,opt,name=killer_id,json=killerId,proto3" json:"killer_id,omitempty"`
-	AssistantId   int32                  `protobuf:"varint,2,opt,name=assistant_id,json=assistantId,proto3" json:"assistant_id,omitempty"`
-	WeaponId      int32                  `protobuf:"varint,3,opt,name=weapon_id,json=weaponId,proto3" json:"weapon_id,omitempty"`
+	WeaponId      int32                  `protobuf:"varint,2,opt,name=weapon_id,json=weaponId,proto3" json:"weapon_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -435,13 +434,6 @@ func (*KillEventPB) Descriptor() ([]byte, []int) {
 func (x *KillEventPB) GetKillerId() int32 {
 	if x != nil {
 		return x.KillerId
-	}
-	return 0
-}
-
-func (x *KillEventPB) GetAssistantId() int32 {
-	if x != nil {
-		return x.AssistantId
 	}
 	return 0
 }
@@ -949,11 +941,10 @@ const file_pkg_engine_entity_replay_proto_rawDesc = "" +
 	"\vis_exploded\x18\t \x01(\bR\n" +
 	"isExploded\x12\x10\n" +
 	"\x03ttl\x18\n" +
-	" \x01(\x03R\x03ttl\"j\n" +
+	" \x01(\x03R\x03ttl\"G\n" +
 	"\vKillEventPB\x12\x1b\n" +
-	"\tkiller_id\x18\x01 \x01(\x05R\bkillerId\x12!\n" +
-	"\fassistant_id\x18\x02 \x01(\x05R\vassistantId\x12\x1b\n" +
-	"\tweapon_id\x18\x03 \x01(\x05R\bweaponId\"N\n" +
+	"\tkiller_id\x18\x01 \x01(\x05R\bkillerId\x12\x1b\n" +
+	"\tweapon_id\x18\x02 \x01(\x05R\bweaponId\"N\n" +
 	"\x0fRoundTimeInfoPB\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12%\n" +
 	"\x0etime_remaining\x18\x02 \x01(\x01R\rtimeRemaining\"\x80\x01\n" +

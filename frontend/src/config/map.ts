@@ -5,6 +5,69 @@ export const MAP_IMAGE_SIZE = 1024;
 export const MAP_SVG_IMAGE_SIZE = 2048;
 
 /**
+ * Canvas 地图上所有展示元素的尺寸配置（已按 1.5 倍放大，便于识别）
+ * 可根据需要单独调整各元素大小
+ */
+export const MAP_CANVAS_ELEMENT_SIZES = {
+  /** 玩家相关 */
+  player: {
+    /** 存活玩家圆圈半径 */
+    aliveRadius: 15,
+    /** 死亡玩家圆圈半径（死亡标识） */
+    deadRadius: 7.5,
+    /** 玩家名字字体大小 */
+    nameSize: 24,
+    /** 方向指示三角 */
+    directionTriangle: {
+      length: 12,
+      width: 9,
+    },
+    /** 开火线长度系数（实际绘制会乘 8） */
+    attackLineLength: 60,
+    /** 手持道具/C4 图标尺寸（玩家身上的 grenade、C4 等） */
+    weaponIconSize: 21,
+    /** 死亡叉相对圆圈半径的比例 */
+    deathCrossScale: 0.7,
+    /** 致盲状态外圈偏移量 */
+    blindEffectOffset: 4.5,
+    /** 名字与圆圈的垂直偏移 */
+    labelOffset: 4,
+  },
+  /** 投掷物/道具相关 */
+  projectile: {
+    /** 飞行中投掷物图标基准尺寸 */
+    iconBaseSize: 30,
+    /** 掉落道具图标基准尺寸 */
+    droppedIconBaseSize: 30,
+    /** 掉落道具图标缩放系数 */
+    droppedIconScale: 0.85,
+    /** 轨迹碰撞点圆圈半径 */
+    trajectoryPointRadius: 3,
+    /** 轨迹线条宽度 */
+    trajectoryLineWidth: 3,
+    /** 闪光弹爆炸中心点半径 */
+    flashExplosionCenter: 3.75,
+    /** 诱饵弹爆炸显示半径 */
+    decoyExplosionRadius: 6,
+    /** 诱饵弹爆炸外圈半径 */
+    decoyExplosionStrokeRadius: 12,
+    /** 高爆手雷爆炸中心点半径 */
+    heExplosionCenter: 4.5,
+  },
+  /** C4 炸弹相关 */
+  bomb: {
+    /** C4 图标尺寸 */
+    iconSize: 36,
+    /** 倒计时环半径 */
+    ringRadius: 27,
+    /** 爆炸后中心爆点基准半径 */
+    explosionCoreBase: 60,
+    /** 爆炸后中心爆点脉冲增量 */
+    explosionCorePulse: 30,
+  },
+} as const;
+
+/**
  * SVG 作为纹理加载时的栅格化分辨率倍数（Pixi Assets.load data.resolution）。
  * 越大放大越清晰，纹理尺寸与显存占用也越高（单纹理最大 4096×4096）。
  * @default 4

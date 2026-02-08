@@ -584,8 +584,8 @@ const handleCleanStorageLeak = async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--ds-space-xs);
-  padding: var(--ds-space-md) var(--ds-space-lg);
+  gap: var(--ds-space-sm);
+  padding: var(--ds-space-sm);
   background: transparent;
   border: none;
   border-radius: var(--ds-radius-md);
@@ -625,7 +625,7 @@ const handleCleanStorageLeak = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: var(--ds-space-md);
+  margin-left: var(--ds-space-sm);
 }
 
 .modal-close-btn:hover {
@@ -659,7 +659,7 @@ const handleCleanStorageLeak = async () => {
 
 .warning-notice {
   width: 100%;
-  padding: var(--ds-space-md);
+  padding: var(--ds-space-sm);
   background: rgba(245, 158, 11, 0.15); /* amber with low opacity */
   border: 1px solid var(--ds-warning);
   border-radius: var(--ds-radius-md);
@@ -668,8 +668,8 @@ const handleCleanStorageLeak = async () => {
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: var(--ds-space-xs);
-  margin-bottom: var(--ds-space-lg);
+  gap: var(--ds-space-sm);
+  margin-bottom: var(--ds-space-sm);
 }
 
 .modal-title {
@@ -728,7 +728,7 @@ const handleCleanStorageLeak = async () => {
 }
 
 .social-item {
-  padding: var(--ds-space-sm) var(--ds-space-md);
+  padding: var(--ds-space-sm);
   background: var(--ds-surface-base);
   border-radius: var(--ds-radius-md);
   color: var(--ds-text-secondary);
@@ -740,14 +740,14 @@ const handleCleanStorageLeak = async () => {
 .modal-actions-vertical {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-md);
+  gap: var(--ds-space-sm);
   width: 100%;
   max-width: 300px;
 }
 
 .ds-btn-console {
   width: 100%;
-  padding: var(--ds-space-md) var(--ds-space-lg);
+  padding: var(--ds-space-sm);
   background: rgba(74, 171, 247, 0.1);
   border: 1px solid rgba(74, 171, 247, 0.3);
   border-radius: var(--ds-radius-md);
@@ -759,7 +759,7 @@ const handleCleanStorageLeak = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--ds-space-md);
+  gap: var(--ds-space-sm);
 }
 
 .ds-btn-console:hover {
@@ -776,14 +776,14 @@ const handleCleanStorageLeak = async () => {
 .storage-quota-section {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-md);
+  gap: var(--ds-space-sm);
   width: 100%;
-  margin-bottom: var(--ds-space-lg);
+  margin-bottom: var(--ds-space-sm);
 }
 
 .storage-quota-container {
   display: flex;
-  gap: var(--ds-space-md);
+  gap: var(--ds-space-sm);
 }
 
 .storage-quota-card,
@@ -792,40 +792,49 @@ const handleCleanStorageLeak = async () => {
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
-  padding: var(--ds-space-md);
+  padding: var(--ds-space-sm);
 }
 
-/* 开发工具区域：统一宽度，每行 3 个元素 */
+/* 开发工具区域：输入框左侧 50%，按钮右侧 50%，各占一半 */
 .debug-tools-layout {
-  --debug-gap: var(--ds-space-md);
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--debug-gap);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-sm);
   width: 100%;
-  align-items: start;
 }
 
 .debug-options-left {
-  display: contents; /* Make children participate in parent grid */
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+  align-items: stretch;
 }
 
 .debug-actions-right {
-  display: contents; /* Make children participate in parent grid */
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+  align-items: stretch;
 }
 
-/* Button group: allows vertical stacking of buttons */
+/* Button group: vertical stacking, buttons fill column width */
 .button-group {
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-sm);
+  align-items: stretch;
+  width: 100%;
 }
 
 /* 按钮与输入卡片同宽度，允许纵向堆叠两个按钮 */
 .debug-actions-right .ds-btn-console {
   width: 100%;
   min-width: 0;
-  /* Total height 26px including border (1px top + 1px bottom) */
-  padding: 0 var(--ds-space-md);
+  padding: var(--ds-space-sm);
   height: 37px;
   font-size: var(--ds-text-sm);
   font-weight: 500;
@@ -845,7 +854,7 @@ const handleCleanStorageLeak = async () => {
 .cleanup-message {
   margin-top: var(--ds-space-sm);
   font-size: var(--ds-text-sm);
-  padding: var(--ds-space-xs) var(--ds-space-sm);
+  padding: var(--ds-space-sm);
   border-radius: var(--ds-radius-sm);
 }
 .cleanup-message.success {
@@ -872,8 +881,8 @@ const handleCleanStorageLeak = async () => {
 .quota-header {
   display: flex;
   align-items: center;
-  gap: var(--ds-space-xs);
-  margin-bottom: var(--ds-space-md);
+  gap: var(--ds-space-sm);
+  margin-bottom: var(--ds-space-sm);
 }
 
 .quota-icon {
@@ -890,8 +899,8 @@ const handleCleanStorageLeak = async () => {
 .quota-details {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-xs);
-  padding-left: calc(16px + var(--ds-space-xs)); /* Account for icon width */
+  gap: var(--ds-space-sm);
+  padding-left: calc(16px + var(--ds-space-sm)); /* Account for icon width */
 }
 
 .quota-info-row {
@@ -915,8 +924,8 @@ const handleCleanStorageLeak = async () => {
 .quota-progress-container {
   display: flex;
   align-items: center;
-  gap: var(--ds-space-xs);
-  margin-top: var(--ds-space-xs);
+  gap: var(--ds-space-sm);
+  margin-top: var(--ds-space-sm);
 }
 
 .quota-progress-bar {
@@ -951,7 +960,7 @@ const handleCleanStorageLeak = async () => {
 }
 
 .parse-option-cell {
-  padding: var(--ds-space-md);
+  padding: var(--ds-space-sm);
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
@@ -967,18 +976,18 @@ const handleCleanStorageLeak = async () => {
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-xs);
+  gap: var(--ds-space-sm);
 }
 
 .input-label {
   font-size: var(--ds-text-sm);
   font-weight: 600;
   color: var(--ds-text-primary);
-  margin-bottom: var(--ds-space-xs);
+  margin-bottom: var(--ds-space-sm);
 }
 
 .ds-input {
-  padding: var(--ds-space-sm) var(--ds-space-md);
+  padding: var(--ds-space-sm);
   background: var(--ds-bg-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);

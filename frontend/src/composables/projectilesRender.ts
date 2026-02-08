@@ -2,6 +2,7 @@ import { Assets, Container, Graphics, Sprite, ColorMatrixFilter, Texture } from 
 import type { Frame, PlayerState, ProjectileState, ProjectileRenderConfig, BombFrame, RoundTimeInfo, DroppedEquipment } from '@/types/replay';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
+import { MAP_CANVAS_ELEMENT_SIZES } from '@/config/map';
 
 /**
  * 缓存已加载的纹理，避免在渲染循环中重复发起网络请求或进行异步解析
@@ -256,14 +257,13 @@ const drawTrajectory = (
     trajectoryG.lineTo(currentMapPos.x, currentMapPos.y);
   }
 
-  // 修改：线条变粗增强可见性 (width: 2)
-  trajectoryG.stroke({ width: 2, color: trajColor, alpha: 0.8 });
+  const { trajectoryLineWidth, trajectoryPointRadius } = MAP_CANVAS_ELEMENT_SIZES.projectile;
+  trajectoryG.stroke({ width: trajectoryLineWidth, color: trajColor, alpha: 0.8 });
 
   // 绘制碰撞点（未来的碰撞点）
   for (const cp of proj.trajectory) {
     const cpMapPos = worldToMap(cp.x, cp.y);
-    // 碰撞点也稍微变小一点
-    trajectoryG.circle(cpMapPos.x, cpMapPos.y, 2).fill({ color: trajColor, alpha: 1.0 });
+    trajectoryG.circle(cpMapPos.x, cpMapPos.y, trajectoryPointRadius).fill({ color: trajColor, alpha: 1.0 });
   }
 
   // 如果开启了追踪模式，添加点击交互
@@ -312,7 +312,7 @@ const drawIcon = async (
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
     
     const sprite = new Sprite(texture);
-    const baseSize = 20;
+    const baseSize = MAP_CANVAS_ELEMENT_SIZES.projectile.iconBaseSize;
     
     // 修改：根据Z轴调整大小 (Z轴越大，图标越大)
     // 假设地面Z约为0，Z越高越接近观察者（或者仅仅是为了视觉区分）
@@ -356,7 +356,7 @@ const drawDroppedIcon = async (
   eq: DroppedEquipment,
   typeKey: string,
   ctx: RenderContext,
-  scale: number = 0.85,
+  scale?: number,
 ) => {
   const { worldToMap, projectileLayer } = ctx;
   const assetPath = PROJECTILE_ASSETS[typeKey];
@@ -368,8 +368,8 @@ const drawDroppedIcon = async (
     const texture = textureCache[assetPath] || await Assets.load(assetPath);
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
 
-    const baseSize = 20;
-    const iconSize = baseSize * scale;
+    const { droppedIconBaseSize, droppedIconScale } = MAP_CANVAS_ELEMENT_SIZES.projectile;
+    const iconSize = droppedIconBaseSize * (scale ?? droppedIconScale);
     const strokeRadius = iconSize * 0.65;
     const strokeWidth = 2;
 
@@ -514,7 +514,8 @@ const renderFlash = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
     }
     
     // 2. 残留爆点（一直存在直到道具消失）
-    explosionG.circle(mapPos.x, mapPos.y, 2.5).fill({ color: 0xffffff, alpha: 0.9 });
+    const flashCenter = MAP_CANVAS_ELEMENT_SIZES.projectile.flashExplosionCenter;
+    explosionG.circle(mapPos.x, mapPos.y, flashCenter).fill({ color: 0xffffff, alpha: 0.9 });
 
     projectileLayer.addChild(explosionG);
   } else {
@@ -536,8 +537,9 @@ const renderDecoy = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
     const isPulsing = Math.floor(Date.now() / 200) % 2 === 0;
     const color = isPulsing ? 0xff0000 : 0xaa0000;
     
-    explosionG.circle(mapPos.x, mapPos.y, 4).fill({ color: color, alpha: 1.0 });
-    explosionG.circle(mapPos.x, mapPos.y, 8).stroke({ width: 1, color: 0xffffff, alpha: 0.3 });
+    const { decoyExplosionRadius, decoyExplosionStrokeRadius } = MAP_CANVAS_ELEMENT_SIZES.projectile;
+    explosionG.circle(mapPos.x, mapPos.y, decoyExplosionRadius).fill({ color: color, alpha: 1.0 });
+    explosionG.circle(mapPos.x, mapPos.y, decoyExplosionStrokeRadius).stroke({ width: 1, color: 0xffffff, alpha: 0.3 });
 
     projectileLayer.addChild(explosionG);
   } else {
@@ -581,7 +583,8 @@ const renderHE = async (proj: ProjectileState, typeKey: string, ctx: RenderConte
     }
     
     // 2. 保留中心的小点（一直存在直到消失）
-    explosionG.circle(mapPos.x, mapPos.y, 3).fill({ color: heColor, alpha: 0.9 });
+    const heCenter = MAP_CANVAS_ELEMENT_SIZES.projectile.heExplosionCenter;
+    explosionG.circle(mapPos.x, mapPos.y, heCenter).fill({ color: heColor, alpha: 0.9 });
 
     projectileLayer.addChild(explosionG);
   } else {
@@ -772,9 +775,9 @@ export const drawBombForFrame = async (options: {
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
     
     const sprite = new Sprite(texture);
-    
-    sprite.width = 24;
-    sprite.height = 24;
+    const iconSize = MAP_CANVAS_ELEMENT_SIZES.bomb.iconSize;
+    sprite.width = iconSize;
+    sprite.height = iconSize;
     sprite.anchor.set(0.5);
     
     // 设置为红色：使用 ColorMatrixFilter 或者简单的 tint
@@ -797,7 +800,7 @@ export const drawBombForFrame = async (options: {
     const progress = Math.max(0, Math.min(1, roundTime.timeRemaining / BOMB_TIME));
     
     // 环形进度条半径
-    const ringRadius = 18;
+    const ringRadius = MAP_CANVAS_ELEMENT_SIZES.bomb.ringRadius;
     const startAngle = -Math.PI / 2;
     // 顺时针减少或增加？通常倒计时是减少
     const endAngle = startAngle + progress * Math.PI * 2;
@@ -844,8 +847,9 @@ export const drawBombForFrame = async (options: {
                 .stroke({ width: 2, color: 0xff0000, alpha: 0.4 * fadeAlpha });
       
       // 绘制中心爆点核心
+      const { explosionCoreBase, explosionCorePulse } = MAP_CANVAS_ELEMENT_SIZES.bomb;
       const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
-      explosionG.circle(0, 0, 40 + pulse * 20)
+      explosionG.circle(0, 0, explosionCoreBase + pulse * explosionCorePulse)
                 .fill({ color: 0xff0000, alpha: 0.4 * pulse * fadeAlpha });
                 
       bombContainer.addChild(explosionG);

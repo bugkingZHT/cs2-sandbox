@@ -2,6 +2,7 @@ import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Frame, PlayerState, ReplayMeta } from '@/types/replay';
 import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
+import { MAP_CANVAS_ELEMENT_SIZES } from '@/config/map';
 
 /**
  * Player Render Module
@@ -11,14 +12,14 @@ import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/confi
  * eliminating the need for frontend sorting on every frame.
  */
 
-// Player style configuration
+// 玩家样式配置（从 map.ts 读取，保持向后兼容的导出）
 export const PLAYER_STYLE = {
-  aliveRadius: 10,
-  deadRadius: 5,
-  nameSize: 15,
-  triLen: 8,
-  triWidth: 6,
-  attackLen: 40,
+  get aliveRadius() { return MAP_CANVAS_ELEMENT_SIZES.player.aliveRadius; },
+  get deadRadius() { return MAP_CANVAS_ELEMENT_SIZES.player.deadRadius; },
+  get nameSize() { return MAP_CANVAS_ELEMENT_SIZES.player.nameSize; },
+  get triLen() { return MAP_CANVAS_ELEMENT_SIZES.player.directionTriangle.length; },
+  get triWidth() { return MAP_CANVAS_ELEMENT_SIZES.player.directionTriangle.width; },
+  get attackLen() { return MAP_CANVAS_ELEMENT_SIZES.player.attackLineLength; },
 };
 
 // Player sprite management for smooth transitions
@@ -117,7 +118,7 @@ export const startPlayerAnimation = (playerLayer: Container, isPlaying: boolean)
         sprite.graphics.x = sprite.currentX;
         sprite.graphics.y = sprite.currentY;
         sprite.label.x = sprite.currentX;
-        sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius + 2;
+        sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset;
 
         needsUpdate = true;
       }
@@ -281,11 +282,11 @@ const drawPlayerGraphics = (
 
   // 致盲状态视觉效果 (外圈白线)
   if (player.alive && (player.isBlinded || (player.flashDuration && player.flashDuration > 0))) {
-    g.circle(0, 0, radius + 3).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+    g.circle(0, 0, radius + MAP_CANVAS_ELEMENT_SIZES.player.blindEffectOffset).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
   }
 
   if (!player.alive) {
-    const crossSize = radius * 0.7;
+    const crossSize = radius * MAP_CANVAS_ELEMENT_SIZES.player.deathCrossScale;
     g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);
     g.moveTo(crossSize, -crossSize).lineTo(-crossSize, crossSize);
     g.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
@@ -294,8 +295,10 @@ const drawPlayerGraphics = (
   // Set position (either current interpolated or target)
   g.x = playerSprite.currentX;
   g.y = playerSprite.currentY;
+  // 阵亡玩家不显示 name
+  playerSprite.label.visible = !!player.alive;
   playerSprite.label.x = playerSprite.currentX;
-  playerSprite.label.y = playerSprite.currentY + radius + 2;
+  playerSprite.label.y = playerSprite.currentY + radius + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset;
 };
 
 // Update weapon icon for player (grenades and C4 only)
@@ -337,8 +340,9 @@ const updateWeaponIcon = async (
     if (!playerSprite.weaponIcon) {
       playerSprite.weaponIcon = new Sprite(texture);
       playerSprite.weaponIcon.anchor.set(0.5);
-      playerSprite.weaponIcon.width = 14;
-      playerSprite.weaponIcon.height = 14;
+      const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize;
+      playerSprite.weaponIcon.width = iconSize;
+      playerSprite.weaponIcon.height = iconSize;
       ctx.playerLayer.addChild(playerSprite.weaponIcon);
     } else {
       playerSprite.weaponIcon.texture = texture;

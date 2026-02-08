@@ -48,8 +48,7 @@ message ProjectileFramePB {
 
 message KillEventPB {
   int32 killer_id = 1;
-  int32 assistant_id = 2;
-  int32 weapon_id = 3;
+  int32 weapon_id = 2;
 }
 
 message RoundTimeInfoPB {

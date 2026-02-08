@@ -67,7 +67,6 @@ export interface ProjectileRenderConfig {
 
 export interface KillEvent {
   killerId: number;
-  assistantId: number;
   weaponId: string;
 }
 

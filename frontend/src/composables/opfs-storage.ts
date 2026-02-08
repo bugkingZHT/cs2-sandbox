@@ -37,7 +37,7 @@ export class OPFSReplayStorage {
     const replayDir = await this.getReplayDir(uuid);
     const fileHandle = await replayDir.getFileHandle(`round_${roundNum}.pb`, { create: true });
     const writable = await fileHandle.createWritable();
-    await writable.write(roundBytes);
+    await writable.write(roundBytes as any);
     await writable.close();
     console.log(`[OPFS] ✅ Round ${roundNum} saved successfully`);
   }

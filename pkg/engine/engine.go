@@ -347,6 +347,10 @@ type replayBuilder struct {
 	roundResults []entity.RoundResultInfo // Store all round results
 	// Player registry: track all players seen during match
 	playerRegistry map[int]entity.PlayerInfo // Player ID -> PlayerInfo
+	// Dropped equipment blacklist: entity IDs present at round frame 0 (old throwables from previous round)
+	// Only track new drops that appear during the round, exclude these blacklisted entities
+	droppedEquipmentBlacklist  map[int]struct{}
+	droppedBlacklistBuiltRound int // Round number for which blacklist was built (-1 = not built)
 }
 
 // trackPlayer adds or updates a player in the player registry
@@ -628,8 +632,35 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	}
 	b.activeProjectiles = newActiveProjectiles
 
-	// Extract dropped equipment - only track grenades/throwables (C4 + grenades)
-	// Ignore dropped weapons to reduce frame data size significantly
+	// Extract dropped equipment - only track grenades/throwables that newly appeared this round
+	// At round frame 0, build blacklist of all current drops (old throwables from previous round)
+	// Throughout the round, exclude blacklisted entities - only show new drops
+	if b.droppedBlacklistBuiltRound != b.currentRound {
+		// Round frame 0: build blacklist with all current dropped grenades
+		if b.droppedEquipmentBlacklist == nil {
+			b.droppedEquipmentBlacklist = make(map[int]struct{})
+		}
+		for _, w := range gs.Weapons() {
+			if w.Entity == nil || w.Owner != nil {
+				continue
+			}
+			if !entity.IsGrenadeOrThrowable(w.Type) {
+				continue
+			}
+			if explTick, ok := w.Entity.PropertyValue("m_nExplodeEffectTickBegin"); ok && explTick.Int() != 0 {
+				continue
+			}
+			if isLive, ok := w.Entity.PropertyValue("m_bIsLive"); ok && !isLive.BoolVal() {
+				continue
+			}
+			pos := w.Entity.Position()
+			if pos.X != 0 || pos.Y != 0 || pos.Z != 0 {
+				b.droppedEquipmentBlacklist[w.Entity.ID()] = struct{}{}
+			}
+		}
+		b.droppedBlacklistBuiltRound = b.currentRound
+	}
+
 	var droppedEquipment []entity.DroppedEquipment
 	for _, w := range gs.Weapons() {
 		if w.Entity == nil {
@@ -638,12 +669,20 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		if w.Owner != nil {
 			continue
 		}
-		// Only track dropped grenades/throwables (no owner and is grenade type)
 		if !entity.IsGrenadeOrThrowable(w.Type) {
 			continue
 		}
+		// Exclude entities in blacklist (old throwables from round start)
+		if _, blacklisted := b.droppedEquipmentBlacklist[w.Entity.ID()]; blacklisted {
+			continue
+		}
+		if explTick, ok := w.Entity.PropertyValue("m_nExplodeEffectTickBegin"); ok && explTick.Int() != 0 {
+			continue
+		}
+		if isLive, ok := w.Entity.PropertyValue("m_bIsLive"); ok && !isLive.BoolVal() {
+			continue
+		}
 		pos := w.Entity.Position()
-		// Filter out invalid position coordinates
 		if pos.X != 0 || pos.Y != 0 || pos.Z != 0 {
 			droppedEquipment = append(droppedEquipment, entity.DroppedEquipment{
 				Type: w.Type,

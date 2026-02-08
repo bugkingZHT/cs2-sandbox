@@ -107,8 +107,6 @@ type ProjectileFrame struct {
 type KillEvent struct {
 	// 击杀者 ID
 	KillerID int `json:"killerId"`
-	// 助攻者 ID
-	AssistantID int `json:"assistantId"`
 	// 使用的武器 ID
 	WeaponID common.EquipmentType `json:"weaponId"`
 }

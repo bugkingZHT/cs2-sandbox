@@ -100,6 +100,37 @@
   --ds-z-toast: 2000;
 }
 
+/* === 全局滚动条样式：与设计系统风格一致 === */
+.ds-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ds-scrollbar::-webkit-scrollbar-track {
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-md);
+  margin: var(--ds-space-sm) 0;
+}
+
+.ds-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(78, 204, 163, 0.3);
+  border-radius: var(--ds-radius-md);
+  transition: background var(--ds-transition-base);
+}
+
+.ds-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(78, 204, 163, 0.5);
+}
+
+.ds-scrollbar::-webkit-scrollbar-thumb:active {
+  background: var(--ds-primary);
+}
+
+.ds-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(78, 204, 163, 0.3) var(--ds-surface-base);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

@@ -60,7 +60,7 @@
                   </svg>
                 </span>
               </div>
-              <div v-if="showPlayerDropdown && filteredPlayerOptions.length > 0" class="filter-dropdown">
+              <div v-if="showPlayerDropdown && filteredPlayerOptions.length > 0" class="filter-dropdown ds-scrollbar">
                 <div 
                   v-for="playerName in filteredPlayerOptions" 
                   :key="playerName"
@@ -109,7 +109,7 @@
                   </svg>
                 </span>
               </div>
-              <div v-if="showTeamDropdown && filteredTeamOptions.length > 0" class="filter-dropdown">
+              <div v-if="showTeamDropdown && filteredTeamOptions.length > 0" class="filter-dropdown ds-scrollbar">
                 <div 
                   v-for="teamName in filteredTeamOptions" 
                   :key="teamName"
@@ -186,7 +186,7 @@
     </div>
 
     <!-- Demo Grid -->
-    <div v-else class="demo-grid-container">
+    <div v-else class="demo-grid-container ds-scrollbar">
       <div class="demo-grid">
         <div
           v-for="demo in sortedDemoList"
@@ -351,7 +351,7 @@
                 </svg>
               </div>
               <div class="failed-label">解析失败</div>
-              <div class="failed-message" :title="demo.parsingStatus || 'Parsing failed'">{{ demo.parsingStatus || 'Parsing failed' }}</div>
+              <div class="failed-message ds-scrollbar" :title="demo.parsingStatus || 'Parsing failed'">{{ demo.parsingStatus || 'Parsing failed' }}</div>
             </div>
             
             <!-- Delete button for failed state -->
@@ -1447,37 +1447,6 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   overflow-y: auto;
   z-index: 100;
   animation: slideDown 0.15s ease;
-}
-
-/* Custom scrollbar styling */
-.filter-dropdown::-webkit-scrollbar {
-  width: 8px;
-}
-
-.filter-dropdown::-webkit-scrollbar-track {
-  background: var(--ds-surface-base);
-  border-radius: var(--ds-radius-md);
-  margin: 4px 0;
-}
-
-.filter-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(78, 204, 163, 0.3);
-  border-radius: var(--ds-radius-md);
-  transition: background var(--ds-transition-base);
-}
-
-.filter-dropdown::-webkit-scrollbar-thumb:hover {
-  background: rgba(78, 204, 163, 0.5);
-}
-
-.filter-dropdown::-webkit-scrollbar-thumb:active {
-  background: var(--ds-primary);
-}
-
-/* Firefox scrollbar styling */
-.filter-dropdown {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(78, 204, 163, 0.3) var(--ds-surface-base);
 }
 
 @keyframes slideDown {

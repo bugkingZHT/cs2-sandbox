@@ -58,10 +58,6 @@
             <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
               <div class="kill-card">
                 <span class="k-killer" :class="getTeamClass(k.killerId)">{{ playerNameMap[k.killerId] || 'Unknown' }}</span>
-                <span v-if="k.assistantId" class="k-assist" :class="getTeamClass(k.assistantId)">
-                  <span class="plus">+</span>
-                  {{ playerNameMap[k.assistantId] }}
-                </span>
                 <div class="k-weapon-box">
                   <img :src="getWeaponIconPath(k.weaponId)" class="k-weapon-icon" @error="onWeaponIconError" />
                 </div>
@@ -454,8 +450,7 @@ interface KillEventWithFrame {
   frameIndex: number;
   victimId: number;
   killerId: number;
-  assistantId: number;
-  weaponId: string;
+  weaponId: number;
 }
 const roundKillList = ref<KillEventWithFrame[]>([]);
 const isDrawingMode = ref(false);
@@ -548,8 +543,7 @@ const buildKillList = (framesArray: Frame[]) => {
             frameIndex,
             victimId,
             killerId: killEvent.killerId,
-            assistantId: killEvent.assistantId,
-            weaponId: killEvent.weaponId
+            weaponId: typeof killEvent.weaponId === 'string' ? parseInt(killEvent.weaponId, 10) : killEvent.weaponId
           });
         }
       }

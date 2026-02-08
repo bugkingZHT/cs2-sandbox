@@ -172,7 +172,6 @@ function protoToFrame(proto: any): Frame {
     for (const [key, value] of Object.entries(proto.killEvents)) {
       killEvents[Number(key)] = {
         killerId: (value as any).killerId || 0,
-        assistantId: (value as any).assistantId || 0,
         weaponId: String((value as any).weaponId || 0),
       };
     }
@@ -353,7 +352,6 @@ function frameToProto(frame: Frame): any {
     for (const [key, value] of Object.entries(frame.killEvents)) {
       killEvents[key] = {
         killerId: value.killerId,
-        assistantId: value.assistantId,
         weaponId: Number(value.weaponId),
       };
     }
