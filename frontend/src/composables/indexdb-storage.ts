@@ -1,15 +1,21 @@
 import type { ReplayMeta } from '../types/replay';
+import type { TacticFavorite } from '../types/tactics';
 
 // Database schema
 const DB_NAME = 'cs-demobox';
-const DB_VERSION = 6; // Simplified structure without separate indexes
+const DB_VERSION = 7; // + tactic-favorites store
 const META_STORE = 'replay-meta';
+const TACTIC_FAVORITES_STORE = 'tactic-favorites';
 
 export class IndexedDBMetaStorage {
   private db: IDBDatabase | null = null;
 
   isInitialized(): boolean {
     return this.db !== null;
+  }
+
+  getDb(): IDBDatabase | null {
+    return this.db;
   }
 
   async init(): Promise<IDBDatabase> {
@@ -28,10 +34,16 @@ export class IndexedDBMetaStorage {
         // Create meta store with uuid as key
         if (!db.objectStoreNames.contains(META_STORE)) {
           const store = db.createObjectStore(META_STORE, { keyPath: 'uuid' });
-          // Subindexes
           store.createIndex('uploadTime', 'uploadTime', { unique: false });
           store.createIndex('status', 'status', { unique: false });
           console.log('[IndexedDB] Created meta store with indexes');
+        }
+        // Create tactic-favorites store (v7)
+        if (!db.objectStoreNames.contains(TACTIC_FAVORITES_STORE)) {
+          const store = db.createObjectStore(TACTIC_FAVORITES_STORE, { keyPath: 'id' });
+          store.createIndex('pageUrl', 'pageUrl', { unique: false });
+          store.createIndex('mapName', 'mapName', { unique: false });
+          console.log('[IndexedDB] Created tactic-favorites store with indexes');
         }
       };
     });
@@ -201,6 +213,52 @@ export class IndexedDBMetaStorage {
   }
 }
 
+/** Tactic favorites CRUD using same DB (tactic-favorites store). */
+export class TacticFavoritesStorage {
+  constructor(private db: IDBDatabase) {}
+
+  async save(favorite: TacticFavorite): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readwrite');
+      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
+      const request = store.put(favorite);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getByPageUrl(pageUrl: string): Promise<TacticFavorite[]> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readonly');
+      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
+      const index = store.index('pageUrl');
+      const request = index.getAll(pageUrl);
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getAll(): Promise<TacticFavorite[]> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readonly');
+      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async delete(id: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readwrite');
+      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+
 // Singleton
 let metaStorageInstance: IndexedDBMetaStorage | null = null;
 let initPromise: Promise<IndexedDBMetaStorage> | null = null;
@@ -233,4 +291,16 @@ export async function getMetaStorage(): Promise<IndexedDBMetaStorage> {
   })();
   
   return initPromise;
+}
+
+let tacticStorageInstance: TacticFavoritesStorage | null = null;
+
+export async function getTacticFavoritesStorage(): Promise<TacticFavoritesStorage> {
+  const meta = await getMetaStorage();
+  const db = meta.getDb();
+  if (!db) throw new Error('DB not initialized');
+  if (!tacticStorageInstance) {
+    tacticStorageInstance = new TacticFavoritesStorage(db);
+  }
+  return tacticStorageInstance;
 }

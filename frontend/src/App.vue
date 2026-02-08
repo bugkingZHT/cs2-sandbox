@@ -57,7 +57,12 @@
           @click="navigate('/tactics')"
           :title="sidebarCollapsed ? '战术本' : ''"
         >
-          <img src="/icons/tactics.svg" alt="" class="nav-icon-img" />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="1"/>
+            <line x1="7" y1="9" x2="17" y2="9"/>
+            <line x1="7" y1="12" x2="17" y2="12"/>
+            <line x1="7" y1="15" x2="17" y2="15"/>
+          </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">战术本</span>
           </span>
@@ -460,18 +465,6 @@ const handleOPFSViewer = async () => {
 
 .nav-btn svg {
   flex-shrink: 0;
-  transition: all var(--ds-transition-base);
-}
-
-.nav-btn .nav-icon-img {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  object-fit: contain;
-  /* 使用 mask 让图标继承 currentColor，与侧栏其他图标一致 */
-  -webkit-mask: url(/icons/tactics.svg) center / contain no-repeat;
-  mask: url(/icons/tactics.svg) center / contain no-repeat;
-  background: currentColor;
   transition: all var(--ds-transition-base);
 }
 

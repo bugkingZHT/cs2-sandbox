@@ -24,6 +24,10 @@
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :is-grenade-tracking-enabled="isGrenadeTrackingEnabled"
+          :page-url="pageUrl"
+          :page-favorites="pageFavorites"
+          :on-tactic-save="saveTactic"
+          :on-tactic-delete="removeTactic"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           @projectile-click="handleProjectileClick"
@@ -399,13 +403,18 @@ import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
-import { replaceLocation } from '@/location';
+import { replaceLocation, pathRef, searchRef } from '@/location';
+import { useTacticFavorites } from '@/composables/useTacticFavorites';
+import type { TacticFavorite } from '@/types/tactics';
 
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
 }>();
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB } = useReplayData();
+
+const pageUrl = computed(() => pathRef.value + searchRef.value);
+const { pageFavorites, save: saveTactic, remove: removeTactic } = useTacticFavorites(pageUrl);
 
 // 投掷物分析功能
 const grenadeAnalyzer = useGrenadeAnalyzer(frames, replay);
