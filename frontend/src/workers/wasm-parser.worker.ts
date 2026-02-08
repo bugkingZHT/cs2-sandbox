@@ -3,6 +3,7 @@
 import type { ReplayRound } from '@/types/replay';
 import { decodeReplayRound } from '@/composables/proto-converters';
 import { getMetaStorage } from '@/composables/indexdb-storage';
+import { MAP_PARSING_SUPPORT, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 
 // Declare global types for Go WASM runtime
 declare const Go: any;
@@ -166,9 +167,37 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
     // Extract metadata (header only) and send to main so it can saveMeta
     const metaJsonString = await extractDemoMetadataPromise();
-    const meta = JSON.parse(metaJsonString) as { uuid: string };
+    const meta = JSON.parse(metaJsonString) as { uuid: string; mapName?: string };
     uuid = meta.uuid;
     currentParseUuid = uuid;
+
+    // 若地图不在支持列表中，仍生成 meta 并下发，状态为 -1 且将错误原因写入 meta，再立刻结束 worker 并报解析异常
+    const mapName = (meta.mapName || '').trim();
+    const supported = mapName ? MAP_PARSING_SUPPORT[mapName] === true : false;
+    if (!supported) {
+      const supportedList = [...SUPPORTED_PARSING_MAP_NAMES].join('，');
+      const errorMsg = mapName
+        ? `不支持的地图「${mapName}」`
+        : `无法识别地图`;
+      const patchedMeta = { ...meta, status: -1, parsingStatus: errorMsg };
+      const patchedMetaJsonString = JSON.stringify(patchedMeta);
+      self.postMessage({
+        type: 'META_READY',
+        metaJsonString: patchedMetaJsonString,
+        fileName
+      } satisfies MetaReadyMessage);
+      demoBytes = null;
+      if (typeof (self as any).closeDemoParser === 'function') {
+        (self as any).closeDemoParser();
+      }
+      currentParseUuid = '';
+      self.postMessage({
+        type: 'ERROR',
+        uuid,
+        error: errorMsg
+      } satisfies ErrorMessage);
+      return;
+    }
 
     self.postMessage({
       type: 'META_READY',

@@ -332,6 +332,16 @@ function createReplayData() {
           const { metaJsonString, fileName } = e.data;
           const parsed: ReplayMeta = JSON.parse(metaJsonString);
           parsed.fileName = fileName.replace(/\.dem$/i, '');
+          if (parsed.status === -1) {
+            // 地图不支持等已由 worker 写入 status=-1 和 parsingStatus，直接保存不覆盖
+            meta = parsed;
+            await metaStorage.saveMeta(parsed);
+            await loadAllReplays();
+            parsing.value = false;
+            parsingProgress.value = 0;
+            console.log('[ParseDemo] ✅ Meta saved (status=-1, unsupported map or error)');
+            return;
+          }
           parsed.status = 0;
           parsed.parsingProgress = 0;
           parsed.parsingStatus = 'Starting round parsing...';

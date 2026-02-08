@@ -141,7 +141,7 @@
 
 
 
-        <button class="ds-btn ds-btn-primary" @click="triggerFileInput" :disabled="parsing">
+        <button class="ds-btn ds-btn-primary" @click="openUploadModal" :disabled="parsing">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
@@ -149,6 +149,63 @@
           </svg>
           <span>{{ parsing ? '解析中...' : '上传 DEMO' }}</span>
         </button>
+      </div>
+    </div>
+
+    <!-- Upload Demo Modal -->
+    <div v-if="showUploadModal" class="upload-modal-overlay" @click="closeUploadModal">
+      <div class="upload-modal ds-card ds-card-elevated" @click.stop>
+        <!-- Close Button -->
+        <button class="upload-modal-close" @click="closeUploadModal" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+
+        <!-- Modal Header -->
+        <div class="upload-modal-header">
+          <h3 class="upload-modal-title">上传 DEMO</h3>
+          <p class="upload-modal-subtitle">导入您的 CS2 回放文件进行解析</p>
+        </div>
+
+        <!-- Drop Zone -->
+        <div
+          class="upload-drop-zone"
+          :class="{ 'is-dragover': isUploadDragOver }"
+          @click="triggerFileInput"
+          @dragover.prevent="isUploadDragOver = true"
+          @dragleave="isUploadDragOver = false"
+          @drop.prevent="onUploadDrop"
+        >
+          <div class="upload-drop-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1"/>
+              <polyline points="9 15 12 12 15 15"/>
+              <line x1="12" y1="12" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <p class="upload-drop-text-primary">拖拽或点击选择 .dem 文件上传</p>
+          <p class="upload-drop-text-secondary">支持拖拽上传</p>
+        </div>
+
+        <!-- Supported Maps Info -->
+        <div class="upload-info-section">
+          <div class="upload-info-label">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <span>支持的地图（上传其他地图将导致解析失败）</span>
+          </div>
+          <p class="upload-info-text">{{ supportedMapNamesText }}</p>
+        </div>
+
+        <!-- Actions -->
+        <div class="modal-actions">
+          <!-- Cancel button removed as requested -->
+        </div>
       </div>
     </div>
 
@@ -464,7 +521,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue';
 import type { ReplayData } from '@/types/replay';
-import { MAP_CONFIGS } from '@/config/map';
+import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
 
@@ -504,6 +561,10 @@ const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(nul
 // Force delete modal state
 const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
+
+// Upload modal state (dashed drop zone)
+const showUploadModal = ref(false);
+const isUploadDragOver = ref(false);
 
 // Filter state (real-time filtering)
 const filterTeamNames = ref<string[]>([]);
@@ -827,6 +888,20 @@ const sortedDemoList = computed(() => {
   });
 });
 
+const openUploadModal = () => {
+  if (parsing.value) return;
+  showUploadModal.value = true;
+};
+
+const closeUploadModal = () => {
+  showUploadModal.value = false;
+  isUploadDragOver.value = false;
+};
+
+const supportedMapNamesText = computed(() =>
+  [...SUPPORTED_PARSING_MAP_NAMES].join('，')
+);
+
 const triggerFileInput = () => {
   fileInputRef.value?.click();
 };
@@ -835,9 +910,18 @@ const onFileSelected = (event: Event) => {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (file) {
+    if (showUploadModal.value) closeUploadModal();
     emit('upload-demo', file);
     input.value = ''; // Reset input
   }
+};
+
+const onUploadDrop = (e: DragEvent) => {
+  isUploadDragOver.value = false;
+  const file = e.dataTransfer?.files?.[0];
+  if (!file || !file.name.toLowerCase().endsWith('.dem')) return;
+  closeUploadModal();
+  emit('upload-demo', file);
 };
 
 const selectDemo = async (demo: ReplayData) => {
@@ -2561,5 +2645,233 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   display: flex;
   gap: var(--ds-space-md);
   justify-content: center;
+}
+
+/* === Upload Demo Modal === */
+.upload-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--ds-z-modal);
+  animation: fadeIn 0.2s ease;
+}
+
+.upload-modal {
+  max-width: 520px;
+  width: 90vw;
+  padding: 0;
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  /* background: linear-gradient(135deg, rgba(26, 26, 46, 0.98) 0%, rgba(22, 33, 62, 0.98) 100%); */
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--ds-border-strong);
+  position: relative;
+}
+
+.upload-modal-header {
+  text-align: center;
+  padding: var(--ds-space-3xl) var(--ds-space-3xl) var(--ds-space-xl);
+  background: linear-gradient(180deg, rgba(78, 204, 163, 0.08) 0%, transparent 100%);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.upload-icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--ds-radius-xl);
+  background: linear-gradient(135deg, rgba(78, 204, 163, 0.15) 0%, rgba(78, 204, 163, 0.05) 100%);
+  border: 1px solid rgba(78, 204, 163, 0.2);
+  margin-bottom: var(--ds-space-lg);
+}
+
+.upload-icon {
+  color: var(--ds-primary);
+  filter: drop-shadow(0 2px 8px rgba(78, 204, 163, 0.3));
+}
+
+.upload-modal-title {
+  font-size: var(--ds-text-2xl);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-xs);
+  letter-spacing: -0.02em;
+}
+
+.upload-modal-subtitle {
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-tertiary);
+  margin: 0;
+  font-weight: 400;
+}
+
+.upload-drop-zone {
+  margin: var(--ds-space-3xl);
+  border: 2px dashed var(--ds-border-default);
+  border-radius: var(--ds-radius-xl);
+  padding: var(--ds-space-3xl);
+  cursor: pointer;
+  background: rgba(78, 204, 163, 0.06);
+  position: relative;
+  overflow: hidden;
+  transition: all var(--ds-transition-base);
+}
+
+.upload-drop-zone::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(78, 204, 163, 0.05) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ds-transition-base);
+}
+
+.upload-drop-zone:hover {
+  border-color: var(--ds-primary);
+  background: rgba(78, 204, 163, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(78, 204, 163, 0.15);
+}
+
+.upload-drop-zone:hover::before {
+  opacity: 1;
+}
+
+.upload-drop-zone.is-dragover {
+  border-color: var(--ds-primary);
+  background: linear-gradient(135deg, rgba(78, 204, 163, 0.15) 0%, rgba(78, 204, 163, 0.08) 100%);
+  border-style: solid;
+  box-shadow: 0 0 0 4px rgba(78, 204, 163, 0.1), 0 8px 24px rgba(78, 204, 163, 0.2);
+}
+
+.upload-drop-zone.is-dragover::before {
+  opacity: 1;
+}
+
+.upload-drop-zone:focus {
+  outline: none;
+}
+
+.upload-drop-icon {
+  margin-bottom: var(--ds-space-lg);
+  color: var(--ds-primary);
+  opacity: 0.85;
+  transition: all var(--ds-transition-base);
+}
+
+.upload-drop-zone:hover .upload-drop-icon {
+  opacity: 1;
+  transform: translateY(-4px);
+}
+
+.upload-drop-text-primary {
+  margin: 0 0 var(--ds-space-xs);
+  font-size: var(--ds-text-lg);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  line-height: 1.4;
+}
+
+.upload-drop-text-secondary {
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
+  line-height: 1.4;
+}
+
+.upload-info-section {
+  padding: 0 var(--ds-space-3xl) var(--ds-space-xl);
+  text-align: left;
+}
+
+.upload-info-label {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  margin-bottom: var(--ds-space-md);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.upload-info-label svg {
+  flex-shrink: 0;
+}
+
+.upload-info-text {
+  margin: 0;
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  line-height: 1.6;
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-md);
+  border-left: 3px solid var(--ds-primary);
+  word-break: break-word;
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+}
+
+.upload-warning-notice {
+  margin: 0 var(--ds-space-3xl) var(--ds-space-xl);
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.03) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: var(--ds-radius-md);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-md);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-warning);
+  line-height: 1.5;
+}
+
+.upload-warning-notice svg {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+/* Close Button */
+.upload-modal-close {
+  position: absolute;
+  top: var(--ds-space-lg);
+  right: var(--ds-space-lg);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-default);
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--ds-transition-base);
+  z-index: 10;
+}
+
+.upload-modal-close:hover {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text-primary);
+  transform: rotate(90deg);
+  box-shadow: 0 4px 12px rgba(78, 204, 163, 0.2);
+}
+
+.upload-modal-close:focus {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 2px;
+  background: var(--ds-surface-hover);
 }
 </style>

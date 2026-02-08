@@ -95,6 +95,39 @@ export function getMapSvgUrl(mapName: string): string {
   return `/map/${mapName}.svg`;
 }
 
+/**
+ * 各地图是否支持解析；仅支持解析为 true 的地图 demo，上传其他地图将导致解析失败。
+ */
+export const MAP_PARSING_SUPPORT: Record<string, boolean> = {
+  'ar_baggage': false,
+  'ar_shoots': false,
+  'ar_shoots_night': false,
+  'cs_italy': false,
+  'cs_office': false,
+  'de_ancient': true,
+  'de_ancient_night': false,
+  'de_ancient_v1': false,
+  'de_ancient_v2': false,
+  'de_anubis': true,
+  'de_dust': false,
+  'de_dust2': true,
+  'de_inferno': true,
+  'de_mirage': true,
+  'de_nuke': false,
+  'de_overpass': false,
+  'de_train': false,
+  'de_vertigo': false,
+  'workshop_preview': false,
+};
+
+/** 支持解析的地图名称列表（用于提示文案） */
+export const SUPPORTED_PARSING_MAP_NAMES = (
+  Object.entries(MAP_PARSING_SUPPORT)
+    .filter(([, supported]) => supported)
+    .map(([name]) => name)
+    .sort()
+) as readonly string[];
+
 export const MAP_CONFIGS: Record<string, MapConfig> = {
   'ar_baggage': {
     name: 'ar_baggage',
