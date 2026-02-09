@@ -21,7 +21,7 @@ spec:
       containers:
         - name: demobox
           image: registry.cn-hangzhou.aliyuncs.com/snowbo/demobox:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               hostPort: 8080

@@ -24,8 +24,19 @@ export class OPFSReplayStorage {
   private root: FileSystemDirectoryHandle | null = null;
 
   async init() {
+    // OPFS (navigator.storage.getDirectory) is only available in secure contexts:
+    // https:// or localhost. Deployed HTTP sites will fail here.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      throw new Error(
+        'OPFS requires a secure context. Please use HTTPS or localhost. ' +
+          'Current origin is not secure (e.g. http:// over the network).'
+      );
+    }
     if (!('storage' in navigator) || !('getDirectory' in (navigator.storage as any))) {
-      throw new Error('OPFS not supported. Requires Chrome 86+, Safari 15.2+, or Firefox 111+');
+      throw new Error(
+        'OPFS not available. Needs: (1) Secure context (HTTPS or localhost), and ' +
+          '(2) Chrome 86+, Safari 15.2+, or Firefox 111+. Check that the site is loaded over HTTPS.'
+      );
     }
     this.root = await navigator.storage.getDirectory();
   }
@@ -168,15 +179,17 @@ export class OPFSReplayStorage {
   }
 }
 
-// Singleton instance
+// Singleton instance; initPromise ensures concurrent callers all wait for init() before using
 let storageInstance: OPFSReplayStorage | null = null;
+let initPromise: Promise<OPFSReplayStorage> | null = null;
 
 export async function getOPFSStorage(): Promise<OPFSReplayStorage> {
-  if (!storageInstance) {
-    storageInstance = new OPFSReplayStorage();
-    await storageInstance.init();
+  if (!initPromise) {
+    const instance = new OPFSReplayStorage();
+    initPromise = instance.init().then(() => instance);
+    storageInstance = instance;
   }
-  return storageInstance;
+  return initPromise;
 }
 
 /** One-click cleanup: delete OPFS replay dirs that have no meta in IndexedDB. */
