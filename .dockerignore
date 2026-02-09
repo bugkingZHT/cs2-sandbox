@@ -1,0 +1,33 @@
+# Git and IDE
+.git
+.gitignore
+.cursor
+.vscode
+*.swp
+*~
+
+# Build artifacts (we build inside Docker)
+bin/
+web/static/*
+!web/static/.gitkeep
+
+# Frontend dev
+frontend/node_modules
+frontend/dist
+frontend/.env
+frontend/.env.*
+frontend/npm-debug.log*
+
+# Test and docs
+test/
+*.md
+!README.md
+
+# Docker (avoid recursive copy)
+build/*.md
+Dockerfile*
+.dockerignore
+
+# Misc
+*.log
+.DS_Store

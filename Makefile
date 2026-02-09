@@ -1,4 +1,4 @@
-.PHONY: all clean build-wasm build-server build-frontend run-server test help proto start dev-full check
+.PHONY: all clean build-wasm build-server build-frontend run-server test help proto start dev-full check docker-build docker-tag docker-run docker-push
 
 # Variables
 BINARY_NAME=cs-demobox-server
@@ -8,6 +8,10 @@ STATIC_DIR=web/static
 FRONTEND_DIR=frontend
 GO_VERSION=$(shell go version)
 SERVER_PORT=8080
+# Docker (amd64)，默认推送到阿里云 ACR
+DOCKER_IMAGE?=registry.cn-hangzhou.aliyuncs.com/snowbo/demobox
+DOCKER_TAG?=latest
+DOCKER_PLATFORM=linux/amd64
 
 # Colors for output
 GREEN=\033[0;32m
@@ -33,6 +37,12 @@ help: ## Show this help message
 	@echo "  $(GREEN)make dev-full$(NC)   - Run both backend and frontend in dev mode (recommended)"
 	@echo "  $(GREEN)make dev$(NC)        - Run backend only in dev mode"
 	@echo "  $(GREEN)make frontend-dev$(NC) - Run frontend only in dev mode"
+	@echo ""
+	@echo "$(YELLOW)Docker (linux/amd64, 仅输出命令，默认镜像 $(DOCKER_IMAGE)):$(NC)"
+	@echo "  $(GREEN)make docker-build$(NC)     - 输出 build 命令"
+	@echo "  $(GREEN)make docker-tag$(NC)       - 输出 tag 命令 (打标到 ACR，镜像版本号用 DOCKER_TAG)"
+	@echo "  $(GREEN)make docker-run$(NC)      - 输出 run 命令 (端口 $(SERVER_PORT))"
+	@echo "  $(GREEN)make docker-push$(NC)      - 输出 push 命令 (例: DOCKER_TAG=v1.0)"
 
 proto: ## Generate protobuf code
 	@echo "$(YELLOW)Generating protobuf code...$(NC)"
@@ -145,3 +155,16 @@ info: ## Show build information
 	@echo "  Binary Name: $(BINARY_NAME)"
 	@echo "  WASM Output: $(STATIC_DIR)/$(WASM_NAME)"
 	@echo "  Static Dir: $(STATIC_DIR)"
+
+# --- Docker (amd64, echo commands only)，默认推送到 registry.cn-hangzhou.aliyuncs.com/snowbo/demobox ---
+docker-build: ## Echo docker buildx build（可加 DOCKER_TAG=v1.0 指定镜像版本号）
+	@echo "docker buildx build --platform $(DOCKER_PLATFORM) -f build/Dockerfile -t $(DOCKER_IMAGE):$(DOCKER_TAG) --load ."
+
+docker-tag: ## Echo docker tag（复制输出行执行；将 <ImageId> 换为实际 ID，或先 build 再执行）
+	@echo "docker tag <ImageId> $(DOCKER_IMAGE):$(DOCKER_TAG)"
+
+docker-run: ## Echo docker run command (run after docker-build)
+	@echo "docker run --rm -p $(SERVER_PORT):8080 $(DOCKER_IMAGE):$(DOCKER_TAG)"
+
+docker-push: ## Echo docker push（推送到阿里云 ACR，例: make docker-push DOCKER_TAG=v1.0）
+	@echo "docker push $(DOCKER_IMAGE):$(DOCKER_TAG)"
