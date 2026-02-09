@@ -72,4 +72,14 @@ export const DEBUG_CONFIG = {
    * Set to `false` in production to hide this feature.
    */
   enableParseFrameRatioConfig: true,
+
+  /**
+   * Enable Beta Button
+   * 
+   * When enabled, shows the beta warning button in the sidebar above
+   * the system management button.
+   * 
+   * Set to `false` in production to hide the beta button.
+   */
+  enableBetaButton: true,
 };

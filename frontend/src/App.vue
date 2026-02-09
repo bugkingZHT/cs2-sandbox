@@ -69,6 +69,20 @@
         </button>
       </nav>
 
+      <!-- Beta Button -->
+      <div v-if="DEBUG_CONFIG.enableBetaButton" class="sidebar-beta-section">
+        <button 
+          class="beta-btn"
+          @click="showBetaWarning"
+          :title="sidebarCollapsed ? '测试版' : ''"
+        >
+          <span class="beta-btn-text">BETA</span>
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">测试版</span>
+          </span>
+        </button>
+      </div>
+
       <!-- Debug Button (Bottom Section) -->
       <div v-if="DEBUG_CONFIG.enableFrameDataViewer || DEBUG_CONFIG.enableOPFSStorageViewer" class="sidebar-footer">
         <button 
@@ -142,6 +156,22 @@
       @open-frame-data-viewer="handleFrameDataViewer"
       @open-opfs-viewer="handleOPFSViewer"
     />
+
+    <!-- Beta Warning Modal -->
+    <div v-if="showBetaModal" class="beta-modal-overlay" @click="showBetaModal = false">
+      <div class="beta-modal" @click.stop>
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">测试版提醒</h3>
+        <p class="modal-message">不保证功能稳定，数据可能随时被清理</p>
+        <button class="ds-btn-primary" @click="showBetaModal = false">我知道了</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -186,6 +216,7 @@ const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
 const showConsoleModal = ref(false);
 const replayerRouteLoading = ref(false);
+const showBetaModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
 
@@ -309,6 +340,10 @@ const handleFrameDataViewer = () => {
 const handleOPFSViewer = async () => {
   showConsoleModal.value = false;
   await showOPFSStorageDetails();
+};
+
+const showBetaWarning = () => {
+  showBetaModal.value = true;
 };
 </script>
 
@@ -510,6 +545,50 @@ const handleOPFSViewer = async () => {
   cursor: not-allowed;
 }
 
+/* === Beta Button Section === */
+.sidebar-beta-section {
+  padding: var(--ds-space-lg) var(--ds-space-md);
+  flex-shrink: 0;
+}
+
+.beta-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: var(--ds-radius-md);
+  color: #ffc107;
+  font-size: var(--ds-text-base);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-md);
+  text-align: left;
+}
+
+.collapsed .beta-btn {
+  justify-content: center;
+  padding: var(--ds-space-md);
+}
+
+.beta-btn:hover {
+  background: rgba(255, 193, 7, 0.2);
+  border-color: rgba(255, 193, 7, 0.5);
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.beta-btn-text {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #ffc107;
+  text-align: center;
+}
+
 /* === Sidebar Footer (Debug Section) === */
 .sidebar-footer {
   padding: var(--ds-space-lg) var(--ds-space-md);
@@ -668,6 +747,80 @@ const handleOPFSViewer = async () => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* === Beta Warning Modal === */
+.beta-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--ds-bg-overlay);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--ds-z-modal);
+  animation: fadeIn 0.2s ease;
+}
+
+.beta-modal {
+  max-width: 400px;
+  width: 90vw;
+  padding: var(--ds-space-3xl);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-xl);
+  text-align: center;
+  animation: slideUp 0.3s ease;
+  position: relative;
+}
+
+.beta-modal .modal-icon {
+  margin-bottom: var(--ds-space-xl);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #ffc107;
+}
+
+.beta-modal .modal-title {
+  margin: 0 0 var(--ds-space-md) 0;
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-xl);
+  font-weight: 600;
+}
+
+.beta-modal .modal-message {
+  margin: 0 0 var(--ds-space-2xl) 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-base);
+  line-height: 1.6;
+}
+
+.ds-btn-primary {
+  width: 100%;
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  background: var(--ds-primary);
+  border: 1px solid var(--ds-primary);
+  border-radius: var(--ds-radius-md);
+  color: white;
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-md);
+}
+
+.ds-btn-primary:hover {
+  background: var(--ds-primary-hover);
+  border-color: var(--ds-primary-hover);
+  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.3);
 }
 
 /* === Debug Modal === */
