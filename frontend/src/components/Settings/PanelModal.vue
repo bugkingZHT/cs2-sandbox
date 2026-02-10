@@ -56,6 +56,16 @@
             <p class="about-featured">雪豹巨献</p>
             <p class="about-developed-by">Developed by Snowbo</p>
             <div class="title-divider"></div>
+            <div class="version-section">
+              <div class="version-row">
+                <span class="version-label">Frontend</span>
+                <span class="version-value">{{ FRONTEND_VERSION }}</span>
+              </div>
+              <div class="version-row">
+                <span class="version-label">Engine Compat</span>
+                <span class="version-value">{{ COMPATIBLE_ENGINE_VERSIONS.join(', ') }}</span>
+              </div>
+            </div>
             <div class="social-section">
               <h4 class="social-title">关注我们 & 意见反馈</h4>
               <ul class="social-list">
@@ -237,6 +247,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { DEBUG_CONFIG } from '@/config/debug';
+import { FRONTEND_VERSION, COMPATIBLE_ENGINE_VERSIONS } from '@/config/version';
 import { cleanupOrphanedReplayStorage } from '@/composables/opfs-storage';
 
 interface Props {
@@ -705,6 +716,33 @@ const handleCleanStorageLeak = async () => {
   font-weight: 600;
   color: var(--ds-text-primary);
   margin: var(--ds-space-xs) 0 var(--ds-space-2xl) 0;
+}
+
+.version-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-xs);
+  margin-top: var(--ds-space-md);
+}
+
+.version-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  font-size: var(--ds-text-sm);
+}
+
+.version-label {
+  color: var(--ds-text-tertiary);
+  font-weight: 500;
+}
+
+.version-value {
+  color: var(--ds-text-secondary);
+  font-weight: 600;
+  font-family: monospace;
 }
 
 .social-section {

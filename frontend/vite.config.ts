@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
+import { FRONTEND_VERSION } from './src/config/version';
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __FRONTEND_VERSION__: JSON.stringify(FRONTEND_VERSION),
+  },
   resolve: {
     alias: {
       '@': '/src',
