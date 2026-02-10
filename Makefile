@@ -1,4 +1,4 @@
-.PHONY: all clean build-wasm build-server build-frontend run-server test help proto start start-slow dev-full check docker-build docker-tag docker-run docker-push
+.PHONY: all clean build-wasm build-server build-frontend run-server test help proto start start-slow dev-full check docker-build docker-tag docker-run docker-push docker-build-nginx docker-tag-nginx docker-push-nginx
 
 # Variables
 BINARY_NAME=cs-demobox-server
@@ -14,6 +14,8 @@ SLOW_KBPS?=300
 # Docker (amd64)，默认推送到阿里云 ACR
 DOCKER_IMAGE?=registry.cn-hangzhou.aliyuncs.com/snowbo/demobox
 DOCKER_TAG?=latest
+DOCKER_IMAGE_NGINX?=registry.cn-hangzhou.aliyuncs.com/snowbo/nginx
+DOCKER_TAG_NGINX?=latest
 DOCKER_PLATFORM=linux/amd64
 
 # Colors for output
@@ -42,10 +44,13 @@ help: ## Show this help message
 	@echo "  $(GREEN)make frontend-dev$(NC) - Run frontend only in dev mode"
 	@echo ""
 	@echo "$(YELLOW)Docker (linux/amd64, 仅输出命令，默认镜像 $(DOCKER_IMAGE)):$(NC)"
-	@echo "  $(GREEN)make docker-build$(NC)     - 输出 build 命令"
-	@echo "  $(GREEN)make docker-tag$(NC)       - 输出 tag 命令 (打标到 ACR，镜像版本号用 DOCKER_TAG)"
-	@echo "  $(GREEN)make docker-run$(NC)      - 输出 run 命令 (端口 $(SERVER_PORT))"
-	@echo "  $(GREEN)make docker-push$(NC)      - 输出 push 命令 (例: DOCKER_TAG=v1.0)"
+	@echo "  $(GREEN)make docker-build$(NC)        - 构建 app 镜像 (可加 DOCKER_TAG=v1.0)"
+	@echo "  $(GREEN)make docker-build-nginx$(NC)  - 构建 nginx 镜像 (可加 DOCKER_TAG_NGINX=xxx)"
+	@echo "  $(GREEN)make docker-tag$(NC)          - 为 app 镜像打额外 tag (可加 DOCKER_TAG_AS=v1.0)"
+	@echo "  $(GREEN)make docker-tag-nginx$(NC)    - 为 nginx 镜像打额外 tag (可加 DOCKER_TAG_NGINX_AS=xxx)"
+	@echo "  $(GREEN)make docker-run$(NC)          - 运行 app 容器 (端口 $(SERVER_PORT))"
+	@echo "  $(GREEN)make docker-push$(NC)        - 推送 app 镜像 (例: DOCKER_TAG=v1.0)"
+	@echo "  $(GREEN)make docker-push-nginx$(NC)  - 推送 nginx 镜像 (例: DOCKER_TAG_NGINX=v1.0)"
 
 proto: ## Generate protobuf code
 	@echo "$(YELLOW)Generating protobuf code...$(NC)"
@@ -163,15 +168,26 @@ info: ## Show build information
 	@echo "  WASM Output: $(STATIC_DIR)/$(WASM_NAME)"
 	@echo "  Static Dir: $(STATIC_DIR)"
 
-# --- Docker (amd64, echo commands only)，默认推送到 registry.cn-hangzhou.aliyuncs.com/snowbo/demobox ---
-docker-build: ## Echo docker buildx build（可加 DOCKER_TAG=v1.0 指定镜像版本号）
-	@echo "docker buildx build --platform $(DOCKER_PLATFORM) -f build/Dockerfile -t $(DOCKER_IMAGE):$(DOCKER_TAG) --load ."
+# --- Docker (amd64)，默认推送到 registry.cn-hangzhou.aliyuncs.com/snowbo/* ---
+docker-build: ## 构建 app 镜像（可加 DOCKER_TAG=v1.0）
+	docker buildx build --platform $(DOCKER_PLATFORM) -f build/app/Dockerfile -t $(DOCKER_IMAGE):$(DOCKER_TAG) --load .
 
-docker-tag: ## Echo docker tag（复制输出行执行；将 <ImageId> 换为实际 ID，或先 build 再执行）
-	@echo "docker tag <ImageId> $(DOCKER_IMAGE):$(DOCKER_TAG)"
+docker-build-nginx: ## 构建 nginx 镜像（可加 DOCKER_TAG_NGINX=xxx）
+	docker buildx build --platform $(DOCKER_PLATFORM) -f build/nginx/Dockerfile -t $(DOCKER_IMAGE_NGINX):$(DOCKER_TAG_NGINX) --load .
 
-docker-run: ## Echo docker run command (run after docker-build)
-	@echo "docker run --rm -p $(SERVER_PORT):8080 $(DOCKER_IMAGE):$(DOCKER_TAG)"
+DOCKER_TAG_AS ?= $(DOCKER_TAG)
+docker-tag: ## 为 app 镜像打额外 tag（例: make docker-tag DOCKER_TAG_AS=v1.0）
+	docker tag $(DOCKER_IMAGE):$(DOCKER_TAG) $(DOCKER_IMAGE):$(DOCKER_TAG_AS)
 
-docker-push: ## Echo docker push（推送到阿里云 ACR，例: make docker-push DOCKER_TAG=v1.0）
-	@echo "docker push $(DOCKER_IMAGE):$(DOCKER_TAG)"
+DOCKER_TAG_NGINX_AS ?= $(DOCKER_TAG_NGINX)
+docker-tag-nginx: ## 为 nginx 镜像打额外 tag（例: make docker-tag-nginx DOCKER_TAG_NGINX_AS=v1.0）
+	docker tag $(DOCKER_IMAGE_NGINX):$(DOCKER_TAG_NGINX) $(DOCKER_IMAGE_NGINX):$(DOCKER_TAG_NGINX_AS)
+
+docker-push: ## 推送 app 镜像（例: make docker-push DOCKER_TAG=v1.0）
+	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+docker-push-nginx: ## 推送 nginx 镜像（例: make docker-push-nginx DOCKER_TAG_NGINX=v1.0）
+	docker push $(DOCKER_IMAGE_NGINX):$(DOCKER_TAG_NGINX)
+
+docker-run: ## 运行 app 容器（端口 $(SERVER_PORT)）
+	docker run --rm -p $(SERVER_PORT):8080 $(DOCKER_IMAGE):$(DOCKER_TAG)
