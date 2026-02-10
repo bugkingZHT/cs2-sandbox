@@ -3,69 +3,22 @@ import type { Frame, ProjectileState, PlayerState } from '@/types/replay';
 import { isButtonPressed, BUTTON_MASKS } from '@/config/buttons';
 
 /**
- * 投掷物分析模式的时间范围（毫秒）
- * 投掷时刻前后各 3 秒
+ * 分析时间范围（毫秒）
+ * 投掷前 1 秒、投掷后 1 秒
  */
-const ANALYZE_TIME_RANGE_MS = 3000;
+const PRE_THROW_MS = 1000;
+const POST_THROW_MS = 1000;
 
-/**
- * 投掷帧搜索缓存，避免重复遍历
- */
+/** 投掷帧搜索缓存 */
 const throwFrameCache = new Map<number, number>();
 
-export interface GrenadeAnalyzerState {
-  // 功能总开关
-  isTrackingEnabled: Ref<boolean>;
-  // 分析模式是否激活
-  isAnalyzeMode: Ref<boolean>;
-  // 当前选中的投掷物
-  selectedProjectile: Ref<ProjectileState | null>;
-  // 投掷物出手帧索引
-  throwFrameIndex: Ref<number>;
-  // 分析时间范围
-  analyzeTimeRange: Ref<{ startMs: number; endMs: number; startFrame: number; endFrame: number }>;
-  // 当前分析播放时间（相对于 startMs）
-  localPlaybackTimeMs: Ref<number>;
-  // 当前分析帧索引
-  currentAnalyzeFrameIndex: ComputedRef<number>;
-  // 投掷者信息
-  throwerInfo: ComputedRef<PlayerState | null>;
-  // 当前帧的投掷者按键状态
-  currentButtons: ComputedRef<number[]>;
-  // 按键状态解析
-  buttonStates: ComputedRef<{
-    forward: boolean;
-    back: boolean;
-    left: boolean;
-    right: boolean;
-    attack: boolean;
-    attack2: boolean;
-    jump: boolean;
-    duck: boolean;
-  }>;
-}
+/** 投掷方式分类 */
+export type ThrowType = '跳投' | '蹲投' | '跳蹲投' | '走投' | '站投';
 
-export interface GrenadeAnalyzerActions {
-  // 切换追踪功能开关
-  toggleTracking: () => void;
-  // 激活分析模式
-  activateAnalyze: (proj: ProjectileState) => void;
-  // 退出分析模式
-  exitAnalyze: () => void;
-  // 设置分析播放时间
-  setLocalPlaybackTime: (timeMs: number) => void;
-  // 清除缓存
-  clearCache: () => void;
-}
-
-/**
- * 投掷物操作分析 Composable
- * 提供投掷物追踪、分析模式和按键状态可视化功能
- */
 export function useGrenadeAnalyzer(
   frames: Ref<Frame[] | undefined>,
   replayMeta: Ref<any>
-): GrenadeAnalyzerState & GrenadeAnalyzerActions {
+) {
   // === 状态 ===
   const isTrackingEnabled = ref(false);
   const isAnalyzeMode = ref(false);
@@ -81,20 +34,16 @@ export function useGrenadeAnalyzer(
 
   // === 计算属性 ===
 
-  /**
-   * 当前分析帧索引（基于 localPlaybackTimeMs）
-   */
+  /** 当前分析帧索引（基于 localPlaybackTimeMs） */
   const currentAnalyzeFrameIndex = computed(() => {
     if (!isAnalyzeMode.value || !frames.value) return -1;
-    
+
     const targetTimeMs = analyzeTimeRange.value.startMs + localPlaybackTimeMs.value;
-    
-    // 二分搜索找到对应帧
     const framesArr = frames.value;
     let low = analyzeTimeRange.value.startFrame;
     let high = analyzeTimeRange.value.endFrame;
     let result = low;
-    
+
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
       if (framesArr[mid].timeMs <= targetTimeMs) {
@@ -104,29 +53,21 @@ export function useGrenadeAnalyzer(
         high = mid - 1;
       }
     }
-    
+
     return result;
   });
 
-  /**
-   * 投掷者信息
-   */
+  /** 投掷者信息 */
   const throwerInfo = computed((): PlayerState | null => {
     if (!selectedProjectile.value || !replayMeta.value?.serverPlayer) return null;
-    
     const throwerId = selectedProjectile.value.throwerID;
     const playerInfo = replayMeta.value.serverPlayer.find(
       (p: any) => p.id === throwerId
     );
-    
     if (!playerInfo) return null;
-    
-    // 从当前分析帧获取玩家状态
     const frame = frames.value?.[currentAnalyzeFrameIndex.value];
     const framePlayer = frame?.players?.[throwerId];
-    
     if (!framePlayer) return null;
-    
     return {
       ...framePlayer,
       id: playerInfo.id,
@@ -137,22 +78,32 @@ export function useGrenadeAnalyzer(
     };
   });
 
-  /**
-   * 当前帧的投掷者按键状态
-   */
+  /** 投掷时刻的人物位置/角度（用于复制到 CS2 控制台） */
+  const throwMomentPosition = computed(() => {
+    if (!isAnalyzeMode.value || !frames.value || throwFrameIndex.value < 0 || !selectedProjectile.value) return null;
+    const throwerId = selectedProjectile.value.throwerID;
+    const frame = frames.value[throwFrameIndex.value];
+    const player = frame?.players?.[throwerId];
+    if (!player) return null;
+    return {
+      x: player.x,
+      y: player.y,
+      z: player.z ?? 0,
+      yaw: player.yaw,
+      pitch: player.pitch ?? 0,
+    };
+  });
+
+  /** 当前帧的投掷者按键 */
   const currentButtons = computed((): number[] => {
     const frame = frames.value?.[currentAnalyzeFrameIndex.value];
     if (!frame || !selectedProjectile.value) return [];
-    
     const throwerId = selectedProjectile.value.throwerID;
     const player = frame.players?.[throwerId];
-    
     return player?.buttons ?? [];
   });
 
-  /**
-   * 按键状态解析（用于 UI 显示）
-   */
+  /** 按键状态解析 */
   const buttonStates = computed(() => {
     const buttons = currentButtons.value;
     return {
@@ -167,42 +118,71 @@ export function useGrenadeAnalyzer(
     };
   });
 
-  // === 方法 ===
-
   /**
-   * 查找投掷物首次出现的帧索引
-   * 使用缓存优化重复查询
+   * 自动识别投掷方式
+   * 扫描投掷前 0.5 秒帧数据判断 jump/duck，全范围判断移动
    */
+  const throwType = computed((): ThrowType => {
+    if (!isAnalyzeMode.value || !frames.value || throwFrameIndex.value < 0) return '站投';
+
+    const framesArr = frames.value;
+    const throwerId = selectedProjectile.value?.throwerID;
+    if (throwerId === undefined || throwerId === null) return '站投';
+
+    const throwTimeMs = framesArr[throwFrameIndex.value].timeMs;
+    let hasJump = false;
+    let hasDuck = false;
+    let hasMovement = false;
+
+    // 从 startFrame 到 throwFrame 扫描
+    const startFrame = analyzeTimeRange.value.startFrame;
+    for (let i = startFrame; i <= throwFrameIndex.value; i++) {
+      const player = framesArr[i].players?.[throwerId];
+      const buttons = player?.buttons ?? [];
+      const relTime = framesArr[i].timeMs - throwTimeMs;
+
+      if (relTime >= -500) {
+        if (isButtonPressed(buttons, BUTTON_MASKS.JUMP)) hasJump = true;
+        if (isButtonPressed(buttons, BUTTON_MASKS.DUCK)) hasDuck = true;
+      }
+      if (isButtonPressed(buttons, BUTTON_MASKS.FORWARD) ||
+          isButtonPressed(buttons, BUTTON_MASKS.BACK) ||
+          isButtonPressed(buttons, BUTTON_MASKS.MOVE_LEFT) ||
+          isButtonPressed(buttons, BUTTON_MASKS.MOVE_RIGHT)) {
+        hasMovement = true;
+      }
+    }
+
+    if (hasJump && hasDuck) return '跳蹲投';
+    if (hasJump) return '跳投';
+    if (hasDuck) return '蹲投';
+    if (hasMovement) return '走投';
+    return '站投';
+  });
+
+  // === 工具方法 ===
+
   function findThrowFrame(entityId: number): number {
-    // 检查缓存
     if (throwFrameCache.has(entityId)) {
       return throwFrameCache.get(entityId)!;
     }
-    
     const framesArr = frames.value;
     if (!framesArr) return -1;
-    
     for (let i = 0; i < framesArr.length; i++) {
       if (framesArr[i].projectiles?.[entityId]) {
         throwFrameCache.set(entityId, i);
         return i;
       }
     }
-    
     return -1;
   }
 
-  /**
-   * 根据时间查找帧索引（二分搜索）
-   */
   function findFrameByTime(targetTimeMs: number): number {
     const framesArr = frames.value;
     if (!framesArr || framesArr.length === 0) return 0;
-    
     let low = 0;
     let high = framesArr.length - 1;
     let result = 0;
-    
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
       if (framesArr[mid].timeMs <= targetTimeMs) {
@@ -212,73 +192,52 @@ export function useGrenadeAnalyzer(
         high = mid - 1;
       }
     }
-    
     return result;
   }
 
-  /**
-   * 切换追踪功能开关
-   */
+  // === 操作方法 ===
+
   function toggleTracking() {
     isTrackingEnabled.value = !isTrackingEnabled.value;
-    
-    // 关闭追踪时，同时退出分析模式
     if (!isTrackingEnabled.value && isAnalyzeMode.value) {
       exitAnalyze();
     }
   }
 
-  /**
-   * 激活分析模式
-   */
   function activateAnalyze(proj: ProjectileState) {
     if (!isTrackingEnabled.value) return;
-    
     selectedProjectile.value = proj;
-    
-    // 查找投掷帧
+
     const frameIdx = findThrowFrame(proj.entityID);
     if (frameIdx === -1) {
       console.warn('[GrenadeAnalyzer] 未找到投掷物出手帧:', proj.entityID);
       return;
     }
-    
+
     throwFrameIndex.value = frameIdx;
-    
-    // 计算时间范围
+
     const framesArr = frames.value;
     if (!framesArr) return;
-    
+
     const throwTimeMs = framesArr[frameIdx].timeMs;
-    const startMs = Math.max(0, throwTimeMs - ANALYZE_TIME_RANGE_MS);
+    const startMs = Math.max(0, throwTimeMs - PRE_THROW_MS);
     const endMs = Math.min(
       framesArr[framesArr.length - 1].timeMs,
-      throwTimeMs + ANALYZE_TIME_RANGE_MS
+      throwTimeMs + POST_THROW_MS
     );
-    
+
     analyzeTimeRange.value = {
       startMs,
       endMs,
       startFrame: findFrameByTime(startMs),
       endFrame: findFrameByTime(endMs),
     };
-    
-    // 初始时间设置为投掷时刻
-    localPlaybackTimeMs.value = throwTimeMs - startMs;
-    
+
+    // 初始定位到投掷前 0.5 秒
+    localPlaybackTimeMs.value = Math.max(0, throwTimeMs - 500 - startMs);
     isAnalyzeMode.value = true;
-    
-    console.log('[GrenadeAnalyzer] 激活分析模式:', {
-      entityId: proj.entityID,
-      throwFrameIndex: frameIdx,
-      throwTimeMs,
-      timeRange: analyzeTimeRange.value,
-    });
   }
 
-  /**
-   * 退出分析模式
-   */
   function exitAnalyze() {
     isAnalyzeMode.value = false;
     selectedProjectile.value = null;
@@ -286,24 +245,17 @@ export function useGrenadeAnalyzer(
     localPlaybackTimeMs.value = 0;
   }
 
-  /**
-   * 设置分析播放时间
-   */
   function setLocalPlaybackTime(timeMs: number) {
     const range = analyzeTimeRange.value;
     const maxTime = range.endMs - range.startMs;
     localPlaybackTimeMs.value = Math.max(0, Math.min(maxTime, timeMs));
   }
 
-  /**
-   * 清除缓存
-   */
   function clearCache() {
     throwFrameCache.clear();
   }
 
   return {
-    // 状态
     isTrackingEnabled,
     isAnalyzeMode,
     selectedProjectile,
@@ -314,7 +266,8 @@ export function useGrenadeAnalyzer(
     throwerInfo,
     currentButtons,
     buttonStates,
-    // 方法
+    throwType,
+    throwMomentPosition,
     toggleTracking,
     activateAnalyze,
     exitAnalyze,

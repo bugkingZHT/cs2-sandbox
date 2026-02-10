@@ -48,6 +48,8 @@
           v-if="isGrenadeAnalyzeMode"
           :thrower-info="grenadeThrowerInfo"
           :selected-projectile="selectedProjectile"
+          :throw-type="grenadeThrowType"
+          :throw-moment-position="grenadeThrowMomentPosition"
           :button-states="grenadeButtonStates"
           :local-playback-time-ms="grenadeLocalPlaybackTimeMs"
           :analyze-time-range="analyzeTimeRange"
@@ -428,6 +430,8 @@ const {
   currentAnalyzeFrameIndex,
   throwerInfo: grenadeThrowerInfo,
   buttonStates: grenadeButtonStates,
+  throwType: grenadeThrowType,
+  throwMomentPosition: grenadeThrowMomentPosition,
   toggleTracking: toggleGrenadeTracking,
   activateAnalyze: activateGrenadeAnalyze,
   exitAnalyze: exitGrenadeAnalyze,
