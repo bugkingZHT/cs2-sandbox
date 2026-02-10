@@ -26,7 +26,9 @@
           :is-grenade-tracking-enabled="isGrenadeTrackingEnabled"
           :page-url="pageUrl"
           :page-favorites="pageFavorites"
-          :on-tactic-save="saveTactic"
+          :all-favorites-for-parent="allFavoritesForParent"
+          :parent-map="parentMap"
+          :on-tactic-save="saveTacticWithParent"
           :on-tactic-delete="removeTactic"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
@@ -407,7 +409,8 @@ import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { replaceLocation, pathRef, searchRef } from '@/location';
 import { useTacticFavorites } from '@/composables/useTacticFavorites';
-import type { TacticFavorite } from '@/types/tactics';
+import { getTacticFavoritesStorage, getTacticTreeStorage } from '@/composables/indexdb-storage';
+import type { TacticFavorite, TacticTreeNode } from '@/types/tactics';
 
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
@@ -417,6 +420,52 @@ const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFrom
 
 const pageUrl = computed(() => pathRef.value + searchRef.value);
 const { pageFavorites, save: saveTactic, remove: removeTactic } = useTacticFavorites(pageUrl);
+
+const allFavoritesForParent = ref<TacticFavorite[]>([]);
+const tacticTreeNodes = ref<TacticTreeNode[]>([]);
+const parentMap = computed<Record<string, string | null>>(() => {
+  const map: Record<string, string | null> = {};
+  tacticTreeNodes.value.forEach((n) => {
+    map[n.favoriteId] = n.parentId;
+  });
+  return map;
+});
+
+async function loadAllFavoritesAndTree() {
+  try {
+    const [favStorage, treeStorage] = await Promise.all([
+      getTacticFavoritesStorage(),
+      getTacticTreeStorage(),
+    ]);
+    const [favs, nodes] = await Promise.all([favStorage.getAll(), treeStorage.getAll()]);
+    allFavoritesForParent.value = favs;
+    tacticTreeNodes.value = nodes;
+  } catch (e) {
+    console.error('[ReplayPlayer] loadAllFavoritesAndTree failed:', e);
+  }
+}
+
+async function saveTacticWithParent(
+  favorite: TacticFavorite,
+  options?: { parentId?: string | null }
+) {
+  await saveTactic(favorite);
+  const parentId = options?.parentId ?? null;
+  const nodes = tacticTreeNodes.value;
+  const siblings = nodes.filter((n) => n.parentId === parentId && n.favoriteId !== favorite.id);
+  const maxOrder = siblings.length ? Math.max(...siblings.map((n) => n.order)) : -1;
+  try {
+    const treeStorage = await getTacticTreeStorage();
+    await treeStorage.save({
+      favoriteId: favorite.id,
+      parentId,
+      order: maxOrder + 1,
+    });
+    await loadAllFavoritesAndTree();
+  } catch (e) {
+    console.error('[ReplayPlayer] save tactic tree failed:', e);
+  }
+}
 
 // 投掷物分析功能
 const grenadeAnalyzer = useGrenadeAnalyzer(frames, replay);
@@ -1204,6 +1253,7 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
+  loadAllFavoritesAndTree();
 });
 
 onBeforeUnmount(() => {

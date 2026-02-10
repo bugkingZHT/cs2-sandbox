@@ -1,11 +1,12 @@
 import type { ReplayMeta } from '../types/replay';
-import type { TacticFavorite } from '../types/tactics';
+import type { TacticFavorite, TacticTreeNode } from '../types/tactics';
 
 // Database schema
 const DB_NAME = 'cs-demobox';
-const DB_VERSION = 7; // + tactic-favorites store
+const DB_VERSION = 8; // + tactic-tree store
 const META_STORE = 'replay-meta';
 const TACTIC_FAVORITES_STORE = 'tactic-favorites';
+const TACTIC_TREE_STORE = 'tactic-tree';
 
 export class IndexedDBMetaStorage {
   private db: IDBDatabase | null = null;
@@ -44,6 +45,12 @@ export class IndexedDBMetaStorage {
           store.createIndex('pageUrl', 'pageUrl', { unique: false });
           store.createIndex('mapName', 'mapName', { unique: false });
           console.log('[IndexedDB] Created tactic-favorites store with indexes');
+        }
+        // Create tactic-tree store (v8) - 单独维护树形结构
+        if (!db.objectStoreNames.contains(TACTIC_TREE_STORE)) {
+          const store = db.createObjectStore(TACTIC_TREE_STORE, { keyPath: 'favoriteId' });
+          store.createIndex('parentId', 'parentId', { unique: false });
+          console.log('[IndexedDB] Created tactic-tree store with indexes');
         }
       };
     });
@@ -259,6 +266,51 @@ export class TacticFavoritesStorage {
   }
 }
 
+/** 战术树结构 CRUD - 在 IndexedDB 单独维护父子关系 */
+export class TacticTreeStorage {
+  constructor(private db: IDBDatabase) {}
+
+  async getAll(): Promise<TacticTreeNode[]> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readonly');
+      const store = tx.objectStore(TACTIC_TREE_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async get(favoriteId: string): Promise<TacticTreeNode | null> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readonly');
+      const store = tx.objectStore(TACTIC_TREE_STORE);
+      const request = store.get(favoriteId);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async save(node: TacticTreeNode): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readwrite');
+      const store = tx.objectStore(TACTIC_TREE_STORE);
+      const request = store.put(node);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async delete(favoriteId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readwrite');
+      const store = tx.objectStore(TACTIC_TREE_STORE);
+      const request = store.delete(favoriteId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+
 // Singleton
 let metaStorageInstance: IndexedDBMetaStorage | null = null;
 let initPromise: Promise<IndexedDBMetaStorage> | null = null;
@@ -294,6 +346,7 @@ export async function getMetaStorage(): Promise<IndexedDBMetaStorage> {
 }
 
 let tacticStorageInstance: TacticFavoritesStorage | null = null;
+let tacticTreeStorageInstance: TacticTreeStorage | null = null;
 
 export async function getTacticFavoritesStorage(): Promise<TacticFavoritesStorage> {
   const meta = await getMetaStorage();
@@ -303,4 +356,14 @@ export async function getTacticFavoritesStorage(): Promise<TacticFavoritesStorag
     tacticStorageInstance = new TacticFavoritesStorage(db);
   }
   return tacticStorageInstance;
+}
+
+export async function getTacticTreeStorage(): Promise<TacticTreeStorage> {
+  const meta = await getMetaStorage();
+  const db = meta.getDb();
+  if (!db) throw new Error('DB not initialized');
+  if (!tacticTreeStorageInstance) {
+    tacticTreeStorageInstance = new TacticTreeStorage(db);
+  }
+  return tacticTreeStorageInstance;
 }

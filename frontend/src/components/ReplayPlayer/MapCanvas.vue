@@ -43,6 +43,19 @@
             </div>
           </div>
           <div class="tactic-form-row">
+            <label>归档到</label>
+            <select v-model="tacticFormParentId" class="tactic-input">
+              <option value="">无（根级）</option>
+              <option
+                v-for="f in parentOptions"
+                :key="f.id"
+                :value="f.id"
+              >
+                {{ f.name }}{{ f.mapName ? ` (${f.mapName})` : '' }}
+              </option>
+            </select>
+          </div>
+          <div class="tactic-form-row">
             <label>标签</label>
             <div class="tactic-tags-row">
               <button
@@ -250,10 +263,12 @@ const props = withDefaults(
     tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
     pageUrl?: string;
     pageFavorites?: TacticFavorite[];
-    onTacticSave?: (f: TacticFavorite) => void;
+    allFavoritesForParent?: TacticFavorite[];
+    parentMap?: Record<string, string | null>;
+    onTacticSave?: (f: TacticFavorite, options?: { parentId?: string | null }) => void;
     onTacticDelete?: (id: string) => void;
   }>(),
-  { pageFavorites: () => [] }
+  { pageFavorites: () => [], allFavoritesForParent: () => [], parentMap: () => ({}) }
 );
 
 const emit = defineEmits<{
@@ -275,6 +290,13 @@ const tacticFormName = ref('');
 const tacticFormTeam = ref<'CT' | 'T'>('CT');
 const tacticFormTags = ref<string[]>([]);
 const tacticFormContent = ref('');
+const tacticFormParentId = ref<string>('');
+
+const parentOptions = computed(() => {
+  const all = props.allFavoritesForParent ?? [];
+  const editingId = editingTacticFavorite.value?.id;
+  return all.filter((f) => f.id !== editingId);
+});
 const showAddTagInput = ref(false);
 const addTagValue = ref('');
 const addTagInputRef = ref<HTMLInputElement | null>(null);
@@ -289,6 +311,7 @@ function openTacticForm(edit?: TacticFavorite) {
   tacticFormTeam.value = edit?.team === 'T' ? 'T' : 'CT';
   tacticFormTags.value = edit?.tags ? [...edit.tags] : [];
   tacticFormContent.value = edit?.content ?? '';
+  tacticFormParentId.value = edit?.id ? (props.parentMap?.[edit.id] ?? '') : '';
   tacticFormVisible.value = true;
   showAddTagInput.value = false;
   addTagValue.value = '';
@@ -344,7 +367,9 @@ function submitTacticForm() {
         content: tacticFormContent.value.trim(),
         createdAt: now,
       };
-  props.onTacticSave?.(favorite);
+  props.onTacticSave?.(favorite, {
+    parentId: tacticFormParentId.value || null,
+  });
   closeTacticForm();
 }
 
