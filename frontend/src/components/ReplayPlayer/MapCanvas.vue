@@ -1,6 +1,12 @@
 <template>
   <div ref="host" class="map-canvas-element"></div>
-  <div v-if="hoverPlayer" class="player-tooltip" :style="tooltipStyle">
+  <div
+    v-if="hoverPlayer"
+    class="player-tooltip"
+    :style="tooltipStyle"
+    @mouseenter="onTooltipMouseEnter"
+    @mouseleave="onTooltipMouseLeave"
+  >
     <div class="name">{{ hoverPlayer.name }}</div>
     <div class="meta">
       <span :class="['team', hoverPlayer.team === 3 ? 'ct' : 't']">
@@ -9,9 +15,16 @@
       <span>{{ hoverPlayer.alive ? '存活' : '已阵亡' }}</span>
     </div>
     <div class="meta">
-      <span>X: {{ hoverPlayer.x.toFixed(1) }}</span>
-      <span>Y: {{ hoverPlayer.y.toFixed(1) }}</span>
-      <span>Yaw: {{ hoverPlayer.yaw.toFixed(1) }}°</span>
+      <span>HP: {{ hoverPlayer.health ?? '-' }}</span>
+      <span>Armor: {{ hoverPlayer.armor ?? '-' }}</span>
+    </div>
+    <div class="cmd-row" @click="copyText(setposCmd)">
+      <code class="cmd-text">{{ setposCmd }}</code>
+      <span class="cmd-copy" :class="{ copied: copiedField === 'setpos' }">{{ copiedField === 'setpos' ? '✓' : '复制' }}</span>
+    </div>
+    <div class="cmd-row" @click="copyText(setangCmd)">
+      <code class="cmd-text">{{ setangCmd }}</code>
+      <span class="cmd-copy" :class="{ copied: copiedField === 'setang' }">{{ copiedField === 'setang' ? '✓' : '复制' }}</span>
     </div>
   </div>
   <!-- Drawing Board -->
@@ -422,11 +435,46 @@ const state = reactive({
 
 const hoverPlayer = ref<PlayerState | null>(null);
 const hoverScreenPos = reactive({ x: 0, y: 0 });
+const copiedField = ref<string | null>(null);
+let tooltipHovered = false;
+let tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
 
 const tooltipStyle = computed(() => ({
   left: `${hoverScreenPos.x}px`,
   top: `${hoverScreenPos.y}px`,
 }));
+
+const setposCmd = computed(() => {
+  if (!hoverPlayer.value) return '';
+  const p = hoverPlayer.value;
+  return `setpos ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${(p.z ?? 0).toFixed(2)}`;
+});
+
+const setangCmd = computed(() => {
+  if (!hoverPlayer.value) return '';
+  const p = hoverPlayer.value;
+  return `setang ${(p.pitch ?? 0).toFixed(2)} ${p.yaw.toFixed(2)} 0`;
+});
+
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    copiedField.value = text.startsWith('setpos') ? 'setpos' : 'setang';
+    setTimeout(() => { copiedField.value = null; }, 1200);
+  } catch {
+    // fallback
+  }
+};
+
+const onTooltipMouseEnter = () => {
+  tooltipHovered = true;
+  if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+};
+
+const onTooltipMouseLeave = () => {
+  tooltipHovered = false;
+  tooltipHideTimer = setTimeout(() => { hoverPlayer.value = null; }, 100);
+};
 
 const worldToMap = (x: number, y: number) => {
   if (!mapSprite) return { x: 0, y: 0 };
@@ -480,11 +528,11 @@ const ensureApp = async () => {
   mapSprite.position.set(0, 0);
   worldContainer.addChild(mapSprite);
 
-  playerLayer = new Container();
-  worldContainer.addChild(playerLayer);
-
   projectileLayer = new Container();
   worldContainer.addChild(projectileLayer);
+
+  playerLayer = new Container();
+  worldContainer.addChild(playerLayer);
 
   worldContainer.eventMode = 'static';
   worldContainer.cursor = 'grab';
@@ -631,7 +679,9 @@ const clearProjectiles = () => {
 
 const onPlayerPointerOver = (e: any, p: PlayerState) => {
   if (props.isPlaying) return;
+  if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
   hoverPlayer.value = p;
+  copiedField.value = null;
   const global = e.global;
   hoverScreenPos.x = global.x;
   hoverScreenPos.y = global.y;
@@ -645,7 +695,12 @@ const onPlayerPointerMove = (e: any, p: PlayerState) => {
 
 const onPlayerPointerOut = (p: PlayerState) => {
   if (hoverPlayer.value && hoverPlayer.value.id === p.id) {
-    hoverPlayer.value = null;
+    // 延迟隐藏，给用户时间移到 tooltip 上
+    tooltipHideTimer = setTimeout(() => {
+      if (!tooltipHovered) {
+        hoverPlayer.value = null;
+      }
+    }, 200);
   }
 };
 
@@ -1193,16 +1248,17 @@ onBeforeUnmount(() => {
 
 .player-tooltip {
   position: absolute;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px 12px;
   color: white;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 1000;
   transform: translate(10px, 10px);
-  min-width: 120px;
+  min-width: 180px;
+  max-width: 340px;
 }
 
 .player-tooltip .name {
@@ -1229,6 +1285,52 @@ onBeforeUnmount(() => {
 .player-tooltip .team.t {
   color: #fb923c;
   font-weight: bold;
+}
+
+.player-tooltip .cmd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.player-tooltip .cmd-row:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.player-tooltip .cmd-text {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-tooltip .cmd-copy {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.15s;
+}
+
+.player-tooltip .cmd-copy:hover {
+  background: rgba(59, 130, 246, 0.4);
+  color: white;
+}
+
+.player-tooltip .cmd-copy.copied {
+  background: rgba(34, 197, 94, 0.5);
+  color: white;
 }
 
 /* 收藏战术表单（与展示同处于 .tactic-panel 内） */
