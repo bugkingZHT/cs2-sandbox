@@ -9,6 +9,133 @@ import { MAP_CANVAS_ELEMENT_SIZES } from '@/config/map';
  */
 const textureCache: Record<string, Texture> = {};
 
+/**
+ * 烟雾清除状态追踪
+ * 记录每个烟雾被雷清除的信息
+ * key: 烟雾 entityID
+ * value: 清除事件数组 [{heEntityId, clearTime, heExplosionRadius, heX, heY}]
+ */
+interface SmokeClearEvent {
+  heEntityId: number;     // 清除烟雾的雷的 entityID
+  clearTime: number;      // 清除发生的时间（毫秒）
+  heExplosionRadius: number; // 雷的爆炸半径
+  heX: number;            // 雷爆炸位置 X
+  heY: number;            // 雷爆炸位置 Y
+  recoveryDuration: number; // 烟雾恢复时长（毫秒）
+}
+
+const smokeClearEvents: Map<number, SmokeClearEvent[]> = new Map();
+
+/**
+ * 清除烟雾清除状态（在清空图层或切换场景时调用）
+ */
+export const clearSmokeClearState = () => {
+  smokeClearEvents.clear();
+};
+
+/**
+ * 计算两点之间的距离
+ */
+const calculateDistance = (x1: number, y1: number, x2: number, y2: number): number => {
+  return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+};
+
+/**
+ * 检查并记录雷爆炸时清除的烟雾
+ * @param heProj 高爆手雷投掷物
+ * @param smokeProjs 当前所有烟雾弹
+ * @param currentTimeMs 当前时间（毫秒）
+ * @param logicConfig 雷的配置
+ */
+const checkAndClearSmoke = (
+  heProj: ProjectileState,
+  smokeProjs: ProjectileState[],
+  currentTimeMs: number,
+  logicConfig: ProjectileRenderConfig
+) => {
+  // 只有标记了 canClearSmoke 的手雷才能清除烟雾
+  if (!logicConfig.canClearSmoke) return;
+  
+  // 雷必须已爆炸
+  if (!heProj.isExploded) return;
+  
+  const heExplosionRadius = logicConfig.explosionRadius;
+  const recoveryDuration = 5000; // 烟雾恢复时长：5秒
+  
+  // 遍历所有烟雾，检查是否在雷的爆炸范围内
+  smokeProjs.forEach(smoke => {
+    if (!smoke.isExploded) return; // 只处理已爆炸的烟雾
+    
+    const distance = calculateDistance(heProj.x, heProj.y, smoke.x, smoke.y);
+    
+    // 如果烟雾在雷的爆炸范围内，记录清除事件
+    if (distance <= heExplosionRadius) {
+      const events = smokeClearEvents.get(smoke.entityID) || [];
+      
+      // 检查是否已经记录过这个雷的清除事件（避免重复记录）
+      const alreadyCleared = events.some(e => e.heEntityId === heProj.entityID);
+      if (!alreadyCleared) {
+        events.push({
+          heEntityId: heProj.entityID,
+          clearTime: currentTimeMs,
+          heExplosionRadius: heExplosionRadius,
+          heX: heProj.x,
+          heY: heProj.y,
+          recoveryDuration: recoveryDuration,
+        });
+        smokeClearEvents.set(smoke.entityID, events);
+      }
+    }
+  });
+};
+
+/**
+ * 计算烟雾的渲染透明度系数
+ * @param smokeEntityId 烟雾的 entityID
+ * @param smokeX 烟雾的 X 坐标
+ * @param smokeY 烟雾的 Y 坐标
+ * @param currentTimeMs 当前时间（毫秒）
+ * @returns 透明度系数 (0-1)，0 表示完全被清除，1 表示完全可见
+ */
+const calculateSmokeAlphaMultiplier = (
+  smokeEntityId: number,
+  smokeX: number,
+  smokeY: number,
+  currentTimeMs: number
+): number => {
+  const events = smokeClearEvents.get(smokeEntityId);
+  if (!events || events.length === 0) return 1.0; // 没有被清除，完全可见
+  
+  let maxClearEffect = 0; // 最大清除效果 (0-1)，越大表示被清除得越厉害
+  
+  events.forEach(event => {
+    const timeSinceClear = currentTimeMs - event.clearTime;
+    
+    // 如果超过恢复时长，这个清除事件已经失效
+    if (timeSinceClear > event.recoveryDuration) {
+      return;
+    }
+    
+    // 计算恢复进度 (0-1)，0 表示刚清除，1 表示完全恢复
+    const recoveryProgress = timeSinceClear / event.recoveryDuration;
+    
+    // 计算烟雾中心到雷爆炸中心的距离
+    const distance = calculateDistance(smokeX, smokeY, event.heX, event.heY);
+    
+    // 计算距离衰减系数 (0-1)，越靠近爆炸中心清除效果越强
+    const distanceFactor = Math.max(0, 1 - distance / event.heExplosionRadius);
+    
+    // 清除效果 = 距离系数 * (1 - 恢复进度)
+    // 刚爆炸时效果最强，随时间逐渐减弱
+    const clearEffect = distanceFactor * (1 - recoveryProgress);
+    
+    maxClearEffect = Math.max(maxClearEffect, clearEffect);
+  });
+  
+  // 返回可见度系数 = 1 - 清除效果
+  return 1 - maxClearEffect;
+};
+
 
 
 /**
@@ -110,6 +237,8 @@ const DEFAULT_LOGIC_CONFIG: ProjectileRenderConfig = {
 export const clearProjectilesLayer = (projectileLayer: Container | null) => {
   if (!projectileLayer) return;
   projectileLayer.removeChildren();
+  // 清除烟雾清除状态
+  clearSmokeClearState();
 };
 
 interface RenderContext {
@@ -453,7 +582,7 @@ const renderAreaEffect = async (
 
 // 烟雾弹渲染逻辑
 const renderSmoke = async (proj: ProjectileState, typeKey: string, ctx: RenderContext) => {
-  const { projectileLayer, worldToMap, players } = ctx;
+  const { projectileLayer, worldToMap, players, timeMs } = ctx;
   const typeId = Number(proj.type);
   const logicConfig = getLogicConfig(typeId, ctx);
   
@@ -462,18 +591,25 @@ const renderSmoke = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
     const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y }, worldToMap);
     const explosionG = new Graphics();
     
-    // 奶白色实心小圆圈铺开 (#F5F5F5)
-    renderParticles(explosionG, mapPos.x, mapPos.y, pixelRadius, 0xF5F5F5, 0.8, proj.entityID);
+    // 计算烟雾的透明度系数（考虑被雷清除的情况）
+    const currentTimeMs = timeMs || 0;
+    const alphaMultiplier = calculateSmokeAlphaMultiplier(proj.entityID, proj.x, proj.y, currentTimeMs);
     
-    // 倒计时进度环
-    if (proj.ttl !== undefined && logicConfig.durationInMs > 0) {
-      const progress = Math.max(0, Math.min(1, proj.ttl / logicConfig.durationInMs));
-      const thrower = players.find(p => p.id === proj.throwerID);
-      let teamColor = 0xffffff;
-      if (thrower && thrower.team !== undefined) {
-        teamColor = getTeamColor(thrower.team, ctx.currentRound, 'PRIMARY');
+    // 只有当透明度系数 > 0 时才渲染粒子
+    if (alphaMultiplier > 0) {
+      // 奶白色实心小圆圈铺开 (#F5F5F5)，应用透明度系数
+      renderParticles(explosionG, mapPos.x, mapPos.y, pixelRadius, 0xF5F5F5, 0.8 * alphaMultiplier, proj.entityID);
+      
+      // 倒计时进度环也应用透明度系数
+      if (proj.ttl !== undefined && logicConfig.durationInMs > 0) {
+        const progress = Math.max(0, Math.min(1, proj.ttl / logicConfig.durationInMs));
+        const thrower = players.find(p => p.id === proj.throwerID);
+        let teamColor = 0xffffff;
+        if (thrower && thrower.team !== undefined) {
+          teamColor = getTeamColor(thrower.team, ctx.currentRound, 'PRIMARY');
+        }
+        drawCountdownRing(explosionG, mapPos.x, mapPos.y, pixelRadius, progress, teamColor);
       }
-      drawCountdownRing(explosionG, mapPos.x, mapPos.y, pixelRadius, progress, teamColor);
     }
 
     projectileLayer.addChild(explosionG);
@@ -693,9 +829,36 @@ export const drawProjectilesForFrame = async (options: {
 
   // 1. 渲染正在运行的投掷物 (Projectiles)
   if (projectiles) {
-    // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
+    // 首先收集所有的烟雾弹和高爆手雷
+    const smokeProjs: ProjectileState[] = [];
+    const heProjs: ProjectileState[] = [];
+    
     const projIds = sortedProjs || Object.keys(projectiles).map(Number);
-
+    
+    for (const entityId of projIds) {
+      const proj = projectiles[entityId];
+      if (!proj) continue;
+      if (proj.ttl !== undefined && proj.ttl < 0) continue;
+      
+      const typeId = Number(proj.type);
+      const typeKey = getProjectileTypeKey(typeId);
+      
+      if (typeKey === 'Smoke') {
+        smokeProjs.push(proj);
+      } else if (typeKey === 'HE') {
+        heProjs.push(proj);
+      }
+    }
+    
+    // 检查每个雷是否清除了烟雾
+    const currentTimeMs = timeMs || 0;
+    heProjs.forEach(heProj => {
+      const typeId = Number(heProj.type);
+      const logicConfig = getLogicConfig(typeId, ctx);
+      checkAndClearSmoke(heProj, smokeProjs, currentTimeMs, logicConfig);
+    });
+    
+    // Use pre-sorted projectile IDs from engine if available, otherwise iterate through map keys
     for (const entityId of projIds) {
       const proj = projectiles[entityId];
       if (!proj) continue; // Skip if projectile not found
