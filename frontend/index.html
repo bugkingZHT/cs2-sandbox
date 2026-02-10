@@ -5,21 +5,7 @@
     <link rel="icon" type="image/png" href="/logo/logo.png" />
     <title>CS2 战术工坊 - Snowbo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script src="/wasm_exec.js"></script>
-    <script>
-      if (typeof Go === 'function') {
-        const go = new Go();
-        WebAssembly.instantiateStreaming(fetch('/main.wasm'), go.importObject)
-          .then(result => {
-            go.run(result.instance);
-          })
-          .catch(err => {
-            console.error('Failed to load WASM:', err);
-          });
-      } else {
-        console.error('Go WASM runtime (wasm_exec.js) not loaded.');
-      }
-    </script>
+    <!-- main.wasm 由 Worker 在解析器预加载时再拉取，优先保证页面与其它资源先加载 -->
   </head>
   <body>
     <div id="app"></div>

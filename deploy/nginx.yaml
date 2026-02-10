@@ -1,0 +1,80 @@
+# nginx-config.yaml
+# kubectl create secret tls nginx-ssl-secret --cert=snowbo.cn.pem --key=snowbo.cn.key
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-hostnet-config
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    http {
+        server {
+            listen 80;
+            server_name snowbo.cn;  # 替换为你的域名，或留空 _
+            return 301 https://$host$request_uri;
+        }
+
+        server {
+            listen 443 ssl;
+            server_name snowbo.cn;  # 必须匹配证书域名
+
+            ssl_certificate /etc/nginx/ssl/tls.crt;      # Secret 挂载路径
+            ssl_certificate_key /etc/nginx/ssl/tls.key;  # Secret 挂载路径
+
+            location / {
+                proxy_pass http://127.0.0.1:8080;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+        }
+    }
+---
+# nginx-hostnet-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-hostnet-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-hostnet
+  template:
+    metadata:
+      labels:
+        app: nginx-hostnet
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        volumeMounts:
+        - name: config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: ssl-certs
+          mountPath: /etc/nginx/ssl
+          readOnly: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      volumes:
+      - name: config
+        configMap:
+          name: nginx-hostnet-config
+      - name: ssl-certs
+        secret:
+          secretName: nginx-ssl-secret

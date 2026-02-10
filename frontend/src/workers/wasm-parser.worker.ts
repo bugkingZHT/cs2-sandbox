@@ -145,7 +145,8 @@ self.onunhandledrejection = (ev: PromiseRejectionEvent) => {
   reportWorkerError(msg);
 };
 
-// Main message handler: init + extract meta + parse — file lives only in worker (one transfer)
+// Main message handler: init + extract meta + parse — file lives only in worker (one transfer).
+// main.wasm 仅在此处（用户上传 demo 并开始解析时）加载。
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   if (e.data.type !== 'INIT_AND_PARSE') return;
 

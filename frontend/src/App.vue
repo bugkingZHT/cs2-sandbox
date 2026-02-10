@@ -133,17 +133,13 @@
       <TacticsBook v-if="currentPage === 'tactics'" />
     </main>
 
-    <!-- 解析进度弹窗 -->
+    <!-- 解析进度弹窗（仅在上传 demo 后展示：先展示「等待解析器加载中」，再展示解析进度） -->
     <div v-if="parsing" class="parsing-overlay">
       <div class="parsing-modal">
-        <h3>正在提取 Demo 元数据</h3>
-        
-        <!-- 转圈动画 -->
+        <h3>{{ parsingProgress === 0 ? '等待解析器加载中' : '正在提取 Demo 元数据' }}</h3>
         <div class="spinner-container">
           <div class="spinner"></div>
         </div>
-        
-        <!-- 状态文字 -->
         <p class="parsing-status">{{ parsingStatus }}</p>
       </div>
     </div>

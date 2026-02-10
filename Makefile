@@ -1,4 +1,4 @@
-.PHONY: all clean build-wasm build-server build-frontend run-server test help proto start dev-full check docker-build docker-tag docker-run docker-push
+.PHONY: all clean build-wasm build-server build-frontend run-server test help proto start start-slow dev-full check docker-build docker-tag docker-run docker-push
 
 # Variables
 BINARY_NAME=cs-demobox-server
@@ -8,6 +8,9 @@ STATIC_DIR=web/static
 FRONTEND_DIR=frontend
 GO_VERSION=$(shell go version)
 SERVER_PORT=8080
+# 慢速网络模拟：300 KB/s（仅限响应体流速）
+SLOW_KBPS?=300
+
 # Docker (amd64)，默认推送到阿里云 ACR
 DOCKER_IMAGE?=registry.cn-hangzhou.aliyuncs.com/snowbo/demobox
 DOCKER_TAG?=latest
@@ -89,6 +92,10 @@ run-server: build-server ## Build and run the server
 	./bin/$(BINARY_NAME)
 
 start: run-server ## Alias for run-server (Quick start after build)
+
+start-slow: build-server ## Start server with 0.5M bandwidth limit (SERVER_SLOW_KBPS=62, override with SLOW_KBPS=N)
+	@echo "$(BLUE)Starting server with slow network (0.5M ≈ $(SLOW_KBPS) KB/s)...$(NC)"
+	SERVER_SLOW_KBPS=$(SLOW_KBPS) ./bin/$(BINARY_NAME)
 
 run-dev: ## Run server for development (without rebuilding)
 	@echo "$(BLUE)Starting server in development mode...$(NC)"

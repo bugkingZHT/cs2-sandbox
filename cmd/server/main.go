@@ -77,7 +77,7 @@ func main() {
 	static := staticHandler(root)
 
 	// 显式监听前端页面路径，每个路径返回独立 HTML（便于追踪）
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cleanPath := path.Clean(r.URL.Path)
 		if filename, ok := routeHTML[cleanPath]; ok {
 			servePageHTML(root, filename)(w, r)
@@ -85,6 +85,15 @@ func main() {
 		}
 		static.ServeHTTP(w, r)
 	})
+
+	// 限流与慢速网络模拟（通过环境变量配置）
+	limitCfg := utils.GetServerLimitConfig()
+	utils.LogLimitConfig(limitCfg)
+	var finalHandler http.Handler = handler
+	if limitCfg.RateLimitRPS > 0 || limitCfg.SlowDelayMs > 0 || limitCfg.SlowKBPS > 0 {
+		finalHandler = utils.LimitMiddleware(limitCfg, finalHandler)
+	}
+	http.Handle("/", finalHandler)
 
 	log.Println("Starting HTTP server on http://localhost:8080")
 	log.Printf("Serving files from %s directory", staticDir)

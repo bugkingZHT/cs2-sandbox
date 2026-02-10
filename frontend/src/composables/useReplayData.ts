@@ -310,6 +310,7 @@ function createReplayData() {
 
     parsing.value = true;
     parsingProgress.value = 0;
+    parsingStatus.value = '首次载入可能耗时较长，将在一分钟内完成';
     error.value = null;
 
     let meta: ReplayMeta | null = null; // Set on META_READY; used for progress/error
