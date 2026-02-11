@@ -362,7 +362,6 @@ const showBetaWarning = () => {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width var(--ds-transition-slow);
   overflow: hidden;
 }
 
@@ -457,9 +456,6 @@ const showBetaWarning = () => {
   color: var(--ds-text-primary);
 }
 
-.collapse-btn svg {
-  transition: transform var(--ds-transition-base);
-}
 
 /* === Sidebar Navigation === */
 .sidebar-nav {
@@ -496,7 +492,6 @@ const showBetaWarning = () => {
 
 .nav-btn svg {
   flex-shrink: 0;
-  transition: all var(--ds-transition-base);
 }
 
 .nav-label {
@@ -508,7 +503,6 @@ const showBetaWarning = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: opacity var(--ds-transition-base);
   line-height: 1.2;
 }
 
@@ -627,7 +621,6 @@ const showBetaWarning = () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: margin-left var(--ds-transition-slow);
 }
 
 /* === Replayer 路由加载态 === */
