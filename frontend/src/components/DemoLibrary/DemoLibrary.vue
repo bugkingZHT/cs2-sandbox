@@ -30,28 +30,29 @@
               </button>
             </div>
           </div>
+          <!-- 地图筛选 -->
           <div class="filter-group">
             <div class="filter-dropdown-wrapper">
               <div 
                 class="filter-tags-input" 
-                :class="{ 'has-selection': filterPlayerNames.length > 0 }"
-                @click="handlePlayerDropdownClick"
+                :class="{ 'has-selection': filterMapNames.length > 0 }"
+                @click="handleMapDropdownClick"
               >
-                <span v-if="filterPlayerNames.length > 0" class="filter-selection-text">
-                  {{ filterPlayerNames.join(', ') }}
+                <span v-if="filterMapNames.length > 0" class="filter-selection-text">
+                  {{ filterMapNames.join(', ') }}
                 </span>
                 <input 
                   v-else
                   type="text" 
-                  v-model="filterPlayerNameInput" 
-                  @focus="showPlayerDropdown = true"
-                  @input="onPlayerInputChange"
-                  placeholder="按玩家名称筛选"
+                  v-model="filterMapNameInput" 
+                  @focus="showMapDropdown = true"
+                  @input="onMapInputChange"
+                  placeholder="按地图筛选"
                   class="filter-tags-input-field"
                   autocomplete="off"
                 />
-                <span class="filter-icon" @click.stop="handlePlayerIconClick">
-                  <svg v-if="filterPlayerNames.length === 0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <span class="filter-icon" @click.stop="handleMapIconClick">
+                  <svg v-if="filterMapNames.length === 0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                   <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -60,25 +61,26 @@
                   </svg>
                 </span>
               </div>
-              <div v-if="showPlayerDropdown && filteredPlayerOptions.length > 0" class="filter-dropdown ds-scrollbar">
+              <div v-if="showMapDropdown && filteredMapOptions.length > 0" class="filter-dropdown ds-scrollbar">
                 <div 
-                  v-for="playerName in filteredPlayerOptions" 
-                  :key="playerName"
+                  v-for="mapName in filteredMapOptions" 
+                  :key="mapName"
                   class="filter-dropdown-item"
-                  :class="{ selected: filterPlayerNames.includes(playerName) }"
-                  @click="togglePlayerName(playerName)"
+                  :class="{ selected: filterMapNames.includes(mapName) }"
+                  @click="toggleMapName(mapName)"
                 >
                   <span class="dropdown-checkbox">
-                    <svg v-if="filterPlayerNames.includes(playerName)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <svg v-if="filterMapNames.includes(mapName)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   </span>
-                  <span class="dropdown-item-name">{{ playerName }}</span>
-                  <span class="dropdown-item-count">({{ getPlayerDemoCount(playerName) }})</span>
+                  <span class="dropdown-item-name">{{ mapName }}</span>
+                  <span class="dropdown-item-count">({{ getMapDemoCount(mapName) }})</span>
                 </div>
               </div>
             </div>
           </div>
+          <!-- 队伍筛选 -->
           <div class="filter-group">
             <div class="filter-dropdown-wrapper">
               <div 
@@ -124,6 +126,56 @@
                   </span>
                   <span class="dropdown-item-name">{{ teamName }}</span>
                   <span class="dropdown-item-count">({{ getTeamDemoCount(teamName) }})</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 玩家筛选 -->
+          <div class="filter-group">
+            <div class="filter-dropdown-wrapper">
+              <div 
+                class="filter-tags-input" 
+                :class="{ 'has-selection': filterPlayerNames.length > 0 }"
+                @click="handlePlayerDropdownClick"
+              >
+                <span v-if="filterPlayerNames.length > 0" class="filter-selection-text">
+                  {{ filterPlayerNames.join(', ') }}
+                </span>
+                <input 
+                  v-else
+                  type="text" 
+                  v-model="filterPlayerNameInput" 
+                  @focus="showPlayerDropdown = true"
+                  @input="onPlayerInputChange"
+                  placeholder="按玩家名称筛选"
+                  class="filter-tags-input-field"
+                  autocomplete="off"
+                />
+                <span class="filter-icon" @click.stop="handlePlayerIconClick">
+                  <svg v-if="filterPlayerNames.length === 0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </span>
+              </div>
+              <div v-if="showPlayerDropdown && filteredPlayerOptions.length > 0" class="filter-dropdown ds-scrollbar">
+                <div 
+                  v-for="playerName in filteredPlayerOptions" 
+                  :key="playerName"
+                  class="filter-dropdown-item"
+                  :class="{ selected: filterPlayerNames.includes(playerName) }"
+                  @click="togglePlayerName(playerName)"
+                >
+                  <span class="dropdown-checkbox">
+                    <svg v-if="filterPlayerNames.includes(playerName)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </span>
+                  <span class="dropdown-item-name">{{ playerName }}</span>
+                  <span class="dropdown-item-count">({{ getPlayerDemoCount(playerName) }})</span>
                 </div>
               </div>
             </div>
@@ -567,17 +619,41 @@ const showUploadModal = ref(false);
 const isUploadDragOver = ref(false);
 
 // Filter state (real-time filtering)
+const filterMapNames = ref<string[]>([]);
 const filterTeamNames = ref<string[]>([]);
 const filterPlayerNames = ref<string[]>([]);
 const filterStatus = ref<'all' | 'parsed' | 'unparsed'>('all');
 
 // Input states
+const filterMapNameInput = ref('');
 const filterTeamNameInput = ref('');
 const filterPlayerNameInput = ref('');
+const showMapDropdown = ref(false);
 const showTeamDropdown = ref(false);
 const showPlayerDropdown = ref(false);
 const allTeamNames = ref<string[]>([]);
 const allPlayerNames = ref<string[]>([]);
+
+// Filtered map options based on input (derived from demoList)
+const filteredMapOptions = computed(() => {
+  const mapCounts = new Map<string, number>();
+  props.demoList.forEach(demo => {
+    const mapName = (demo.mapName || '').trim();
+    if (mapName) {
+      mapCounts.set(mapName, (mapCounts.get(mapName) || 0) + 1);
+    }
+  });
+  let maps = [...mapCounts.keys()];
+  if (filterMapNameInput.value.trim()) {
+    const search = filterMapNameInput.value.toLowerCase();
+    maps = maps.filter(name => name.toLowerCase().includes(search));
+  }
+  return maps.sort((a, b) => {
+    const countA = mapCounts.get(a) || 0;
+    const countB = mapCounts.get(b) || 0;
+    return countB - countA;
+  });
+});
 
 // Filtered team options based on input
 const filteredTeamOptions = computed(() => {
@@ -638,6 +714,15 @@ const filteredPlayerOptions = computed(() => {
     return countB - countA;
   });
 });
+
+// Get demo count for a map
+const getMapDemoCount = (mapName: string): number => {
+  let count = 0;
+  props.demoList.forEach(demo => {
+    if ((demo.mapName || '').trim() === mapName) count++;
+  });
+  return count;
+};
 
 // Get demo count for a team
 const getTeamDemoCount = (teamName: string): number => {
@@ -719,6 +804,24 @@ const clearAllPlayerTags = () => {
   filterPlayerNameInput.value = '';
 };
 
+// Toggle map name (single-select)
+const toggleMapName = (mapName: string) => {
+  const index = filterMapNames.value.indexOf(mapName);
+  if (index > -1) {
+    filterMapNames.value.splice(index, 1);
+  } else {
+    filterMapNames.value = [mapName];
+  }
+  filterMapNameInput.value = '';
+  showMapDropdown.value = false;
+};
+
+// Clear all map tags
+const clearAllMapTags = () => {
+  filterMapNames.value = [];
+  filterMapNameInput.value = '';
+};
+
 // Toggle team name (single-select)
 const toggleTeamName = (teamName: string) => {
   const index = filterTeamNames.value.indexOf(teamName);
@@ -769,6 +872,23 @@ const handlePlayerIconClick = () => {
   }
 };
 
+// Handle map dropdown click
+const handleMapDropdownClick = () => {
+  showMapDropdown.value = true;
+};
+
+// Handle map icon click
+const handleMapIconClick = () => {
+  if (filterMapNames.value.length > 0) {
+    clearAllMapTags();
+  }
+};
+
+// Handle map input change
+const onMapInputChange = () => {
+  showMapDropdown.value = true;
+};
+
 // Handle team dropdown click
 const handleTeamDropdownClick = () => {
   showTeamDropdown.value = true;
@@ -785,6 +905,7 @@ const handleTeamIconClick = () => {
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
   if (!target.closest('.filter-dropdown-wrapper')) {
+    showMapDropdown.value = false;
     showTeamDropdown.value = false;
     showPlayerDropdown.value = false;
   }
@@ -844,6 +965,14 @@ watch(() => props.demoList.map(d => ({ id: d.id, status: d.status })), (newList,
 
 const sortedDemoList = computed(() => {
   let filteredList = [...props.demoList];
+  
+  // Filter by map names (support multiple)
+  if (filterMapNames.value.length > 0) {
+    filteredList = filteredList.filter(demo => {
+      const mapName = (demo.mapName || '').trim();
+      return filterMapNames.value.some(name => mapName === name);
+    });
+  }
   
   // Filter by team names (support multiple)
   if (filterTeamNames.value.length > 0) {
