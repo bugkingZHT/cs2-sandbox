@@ -1,12 +1,9 @@
 import type { ReplayMeta } from '../types/replay';
-import type { TacticFavorite, TacticTreeNode } from '../types/tactics';
 
 // Database schema
 const DB_NAME = 'cs-demobox';
-const DB_VERSION = 8; // + tactic-tree store
+const DB_VERSION = 9; // v8→v9: remove tactic-favorites and tactic-tree stores
 const META_STORE = 'replay-meta';
-const TACTIC_FAVORITES_STORE = 'tactic-favorites';
-const TACTIC_TREE_STORE = 'tactic-tree';
 
 export class IndexedDBMetaStorage {
   private db: IDBDatabase | null = null;
@@ -39,18 +36,14 @@ export class IndexedDBMetaStorage {
           store.createIndex('status', 'status', { unique: false });
           console.log('[IndexedDB] Created meta store with indexes');
         }
-        // Create tactic-favorites store (v7)
-        if (!db.objectStoreNames.contains(TACTIC_FAVORITES_STORE)) {
-          const store = db.createObjectStore(TACTIC_FAVORITES_STORE, { keyPath: 'id' });
-          store.createIndex('pageUrl', 'pageUrl', { unique: false });
-          store.createIndex('mapName', 'mapName', { unique: false });
-          console.log('[IndexedDB] Created tactic-favorites store with indexes');
+        // v9: remove legacy tactic stores if present (cleanup leaked 战术本 data)
+        if (db.objectStoreNames.contains('tactic-favorites')) {
+          db.deleteObjectStore('tactic-favorites');
+          console.log('[IndexedDB] Deleted legacy tactic-favorites store');
         }
-        // Create tactic-tree store (v8) - 单独维护树形结构
-        if (!db.objectStoreNames.contains(TACTIC_TREE_STORE)) {
-          const store = db.createObjectStore(TACTIC_TREE_STORE, { keyPath: 'favoriteId' });
-          store.createIndex('parentId', 'parentId', { unique: false });
-          console.log('[IndexedDB] Created tactic-tree store with indexes');
+        if (db.objectStoreNames.contains('tactic-tree')) {
+          db.deleteObjectStore('tactic-tree');
+          console.log('[IndexedDB] Deleted legacy tactic-tree store');
         }
       };
     });
@@ -220,97 +213,6 @@ export class IndexedDBMetaStorage {
   }
 }
 
-/** Tactic favorites CRUD using same DB (tactic-favorites store). */
-export class TacticFavoritesStorage {
-  constructor(private db: IDBDatabase) {}
-
-  async save(favorite: TacticFavorite): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readwrite');
-      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
-      const request = store.put(favorite);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getByPageUrl(pageUrl: string): Promise<TacticFavorite[]> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readonly');
-      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
-      const index = store.index('pageUrl');
-      const request = index.getAll(pageUrl);
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getAll(): Promise<TacticFavorite[]> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readonly');
-      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async delete(id: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_FAVORITES_STORE, 'readwrite');
-      const store = tx.objectStore(TACTIC_FAVORITES_STORE);
-      const request = store.delete(id);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-}
-
-/** 战术树结构 CRUD - 在 IndexedDB 单独维护父子关系 */
-export class TacticTreeStorage {
-  constructor(private db: IDBDatabase) {}
-
-  async getAll(): Promise<TacticTreeNode[]> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readonly');
-      const store = tx.objectStore(TACTIC_TREE_STORE);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async get(favoriteId: string): Promise<TacticTreeNode | null> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readonly');
-      const store = tx.objectStore(TACTIC_TREE_STORE);
-      const request = store.get(favoriteId);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async save(node: TacticTreeNode): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readwrite');
-      const store = tx.objectStore(TACTIC_TREE_STORE);
-      const request = store.put(node);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async delete(favoriteId: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(TACTIC_TREE_STORE, 'readwrite');
-      const store = tx.objectStore(TACTIC_TREE_STORE);
-      const request = store.delete(favoriteId);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-}
-
 // Singleton
 let metaStorageInstance: IndexedDBMetaStorage | null = null;
 let initPromise: Promise<IndexedDBMetaStorage> | null = null;
@@ -345,25 +247,3 @@ export async function getMetaStorage(): Promise<IndexedDBMetaStorage> {
   return initPromise;
 }
 
-let tacticStorageInstance: TacticFavoritesStorage | null = null;
-let tacticTreeStorageInstance: TacticTreeStorage | null = null;
-
-export async function getTacticFavoritesStorage(): Promise<TacticFavoritesStorage> {
-  const meta = await getMetaStorage();
-  const db = meta.getDb();
-  if (!db) throw new Error('DB not initialized');
-  if (!tacticStorageInstance) {
-    tacticStorageInstance = new TacticFavoritesStorage(db);
-  }
-  return tacticStorageInstance;
-}
-
-export async function getTacticTreeStorage(): Promise<TacticTreeStorage> {
-  const meta = await getMetaStorage();
-  const db = meta.getDb();
-  if (!db) throw new Error('DB not initialized');
-  if (!tacticTreeStorageInstance) {
-    tacticTreeStorageInstance = new TacticTreeStorage(db);
-  }
-  return tacticTreeStorageInstance;
-}

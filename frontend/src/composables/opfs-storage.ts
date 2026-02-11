@@ -99,6 +99,7 @@ export class OPFSReplayStorage {
   /**
    * Remove OPFS replay directories that have no corresponding meta in IndexedDB
    * (e.g. parsing started but meta was never saved, or meta was deleted).
+   * Also removes any legacy 战术本-related directories if present.
    */
   async cleanupOrphanedReplays(): Promise<CleanupOrphanedResult> {
     const opfsUuids = await this.listAllReplays();
@@ -115,7 +116,25 @@ export class OPFSReplayStorage {
         console.error(`[OPFS] Cleanup failed for ${uuid}:`, e);
       }
     }
+    await this.cleanupLegacyTacticDirs();
     return { deleted, count: deleted.length };
+  }
+
+  /**
+   * Remove legacy 战术本-related directories from OPFS root if they exist
+   * (cleans up leaked resources from removed feature).
+   */
+  async cleanupLegacyTacticDirs(): Promise<void> {
+    if (!this.root) return;
+    const legacyNames = ['tactics', 'tactic-favorites', 'tactic-tree'];
+    for (const name of legacyNames) {
+      try {
+        await this.root.removeEntry(name, { recursive: true });
+        console.log(`[OPFS] Removed legacy directory: ${name}`);
+      } catch (_) {
+        // NotFoundError or not a directory: ignore
+      }
+    }
   }
 
   private async getReplaysDir(): Promise<FileSystemDirectoryHandle> {

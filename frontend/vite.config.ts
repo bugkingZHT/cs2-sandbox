@@ -27,7 +27,6 @@ export default defineConfig({
         index: resolve(__dirname, 'index.html'),
         demolib: resolve(__dirname, 'demolib.html'),
         replayer: resolve(__dirname, 'replayer.html'),
-        tactics: resolve(__dirname, 'tactics.html'),
       },
       output: {
         manualChunks: undefined,

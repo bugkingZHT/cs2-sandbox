@@ -51,22 +51,6 @@
           </span>
         </button>
 
-        <button 
-          class="nav-btn" 
-          :class="{ active: currentPage === 'tactics' }"
-          @click="navigate('/tactics')"
-          :title="sidebarCollapsed ? '战术本' : ''"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="4" y="4" width="16" height="16" rx="1"/>
-            <line x1="7" y1="9" x2="17" y2="9"/>
-            <line x1="7" y1="12" x2="17" y2="12"/>
-            <line x1="7" y1="15" x2="17" y2="15"/>
-          </svg>
-          <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">战术本</span>
-          </span>
-        </button>
       </nav>
 
       <!-- Beta Button -->
@@ -129,8 +113,6 @@
         />
       </template>
 
-      <!-- 战术本 Page -->
-      <TacticsBook v-if="currentPage === 'tactics'" />
     </main>
 
     <!-- 解析进度弹窗（仅在上传 demo 后展示：先展示「等待解析器加载中」，再展示解析进度） -->
@@ -175,7 +157,6 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
-import TacticsBook from '@/components/TacticsBook/TacticsBook.vue';
 import ConsoleModal from '@/components/Settings/PanelModal.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import { DEBUG_CONFIG } from '@/config/debug';
@@ -201,9 +182,8 @@ const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
 
 useLocation();
 
-const currentPage = computed<'library' | 'player' | 'tactics'>(() => {
+const currentPage = computed<'library' | 'player'>(() => {
   const p = pathRef.value;
-  if (p === '/tactics') return 'tactics';
   if (p === '/replayer') return 'player';
   return 'library'; // /demolib or /
 });
