@@ -1,27 +1,25 @@
 <template>
   <div class="grenade-analyze-overlay" @click.self="$emit('close')">
-    <!-- 顶部信息栏 -->
-    <div class="top-bar">
-      <div class="thrower-info" v-if="throwerInfo">
-        <div class="thrower-avatar" :class="teamClass">
-          {{ throwerInfo.name?.charAt(0) || '?' }}
-        </div>
-        <div class="thrower-details">
-          <span class="thrower-name">{{ throwerInfo.name }}</span>
-          <span class="projectile-type">{{ projectileTypeName }}</span>
-        </div>
-      </div>
-
-      <button class="close-btn" @click="$emit('close')" title="关闭分析模式">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
-
-    <!-- 右下角区域：投掷标签 + 按键面板 + 微型进度条 -->
+    <!-- 右下角区域：投掷者信息 + 投掷标签 + 按键面板 + 微型进度条 -->
     <div class="bottom-right-area">
+      <!-- 投掷者信息行 -->
+      <div class="thrower-row" v-if="throwerInfo">
+        <div class="thrower-info">
+          <div class="thrower-avatar" :class="teamClass">
+            {{ throwerInfo.name?.charAt(0) || '?' }}
+          </div>
+          <div class="thrower-details">
+            <span class="thrower-name">{{ throwerInfo.name }}</span>
+            <span class="projectile-type">{{ projectileTypeName }}</span>
+          </div>
+        </div>
+        <button class="close-btn" @click="$emit('close')" title="关闭分析模式">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
       <!-- 投掷方式标签 + 复制按钮 -->
       <div class="tag-row">
         <button class="copy-pos-btn" @click="copyPosition" :title="copyTooltip">
@@ -312,29 +310,32 @@ async function copyPosition() {
   justify-content: space-between;
 }
 
-/* === 顶部栏 === */
-.top-bar {
+/* === 投掷者信息行（右下角内） === */
+.thrower-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 20px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.thrower-info { display: flex; align-items: center; gap: 12px; }
+.thrower-info { display: flex; align-items: center; gap: 10px; }
 
 .thrower-avatar {
-  width: 38px; height: 38px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 17px; font-weight: 600; color: #fff;
+  font-size: 14px; font-weight: 600; color: #fff;
   background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3);
 }
 .thrower-avatar.ct { background: rgba(59,130,246,0.6); border-color: rgba(59,130,246,0.8); }
 .thrower-avatar.t  { background: rgba(234,179,8,0.6);  border-color: rgba(234,179,8,0.8); }
 
-.thrower-details { display: flex; flex-direction: column; gap: 2px; }
-.thrower-name { font-size: 15px; font-weight: 600; color: #fff; }
-.projectile-type { font-size: 12px; color: rgba(255,255,255,0.6); }
+.thrower-details { display: flex; flex-direction: column; gap: 1px; }
+.thrower-name { font-size: 13px; font-weight: 600; color: #fff; }
+.projectile-type { font-size: 11px; color: rgba(255,255,255,0.6); }
 
 /* 投掷方式标签 + 复制按钮行 */
 .tag-row {
@@ -366,11 +367,11 @@ async function copyPosition() {
 .type-stand      { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.35); color: rgba(255,255,255,0.75); }
 
 .close-btn {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 28px; height: 28px; border-radius: 50%;
   background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
   color: rgba(255,255,255,0.7); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  margin-left: 12px; flex-shrink: 0; transition: all 0.2s ease;
+  flex-shrink: 0; transition: all 0.2s ease;
 }
 .close-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
 

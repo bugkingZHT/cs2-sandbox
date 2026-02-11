@@ -493,7 +493,7 @@ body {
   background: rgba(15, 23, 42, 0.96);
   border: 1px solid rgba(148, 163, 184, 0.6);
   font-size: 11px;
-  pointer-events: none;
+  pointer-events: auto;
   transform: translate(8px, -50%);
   color: var(--text-main);
   min-width: 120px;

@@ -6,6 +6,7 @@ import { getMetaStorage } from './indexdb-storage';
 import { decodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
 import { PARSER_CONFIG } from '@/config/parser';
 import { ParsingMonitor } from './parsingMonitor';
+import { adaptMeta, adaptRound, checkCompatibility } from './replayDataAdapter';
 
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
@@ -128,10 +129,19 @@ function createReplayData() {
     }
 
     // 从 IndexedDB 加载 meta
-    const meta = await metaStorage.loadMeta(targetUuid);
-    if (!meta) {
+    const rawMeta = await metaStorage.loadMeta(targetUuid);
+    if (!rawMeta) {
       console.log('[OPFS] 未找到 meta');
       return null;
+    }
+
+    // 数据适配层：归一化 meta
+    const meta = adaptMeta(rawMeta);
+
+    // 兼容性检查
+    const compat = checkCompatibility(meta.engineVersion);
+    if (!compat.compatible) {
+      console.warn('[OPFS]', compat.warning);
     }
 
     // 从 OPFS 加载第一回合
@@ -140,7 +150,7 @@ function createReplayData() {
       console.warn('[OPFS] 第一回合未找到');
       return null;
     }
-    const firstRound = await decodeReplayRound(roundBytes);
+    const firstRound = adaptRound(await decodeReplayRound(roundBytes), meta.engineVersion);
 
     console.log('[OPFS] Loaded meta and first round (round 1) with', firstRound.frames.length, 'frames');
 
@@ -187,7 +197,8 @@ function createReplayData() {
         return;
       }
 
-      const round = await decodeReplayRound(roundBytes);
+      const engineVersion = replay.value?.engineVersion;
+      const round = adaptRound(await decodeReplayRound(roundBytes), engineVersion);
       console.log('[LoadRoundData] Loaded round', roundNumber, 'with', round.frames.length, 'frames');
       
       // Sort and update frames
