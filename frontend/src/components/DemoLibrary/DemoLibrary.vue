@@ -199,7 +199,7 @@
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          <span>{{ parsing ? '解析中...' : '上传 DEMO' }}</span>
+          <span>{{ parsing ? '解析中...' : '解析 DEMO' }}</span>
         </button>
       </div>
     </div>
@@ -217,7 +217,7 @@
 
         <!-- Modal Header -->
         <div class="upload-modal-header">
-          <h3 class="upload-modal-title">上传 DEMO</h3>
+          <h3 class="upload-modal-title">解析 DEMO</h3>
           <p class="upload-modal-subtitle">导入您的 CS2 回放文件进行解析</p>
         </div>
 

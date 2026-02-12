@@ -1,12 +1,18 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
+
+const requestIDLen = 8
+const sessionCookieName = "session_id"
 
 // Server 提供前端静态资源与页面路由。
 //
@@ -197,4 +203,29 @@ func LogLimitConfig(cfg ServerLimitConfig) {
 		return
 	}
 	log.Println("[Server] Limit config: rate_limit_rps=", cfg.RateLimitRPS, " slow_delay_ms=", cfg.SlowDelayMs, " slow_kbps=", cfg.SlowKBPS)
+}
+
+// RequestLogMiddleware 仅对 /api 请求打日志（requestID + sessionID），前端页面与静态资源不记录。
+func RequestLogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		requestID := genRequestID()
+		sessionID := "-"
+		if c, _ := r.Cookie(sessionCookieName); c != nil && c.Value != "" {
+			sessionID = c.Value
+		}
+		log.Printf("[requestID=%s] [sessionID=%s] %s %s", requestID, sessionID, r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func genRequestID() string {
+	b := make([]byte, requestIDLen/2)
+	if _, err := rand.Read(b); err != nil {
+		return "00000000"
+	}
+	return hex.EncodeToString(b)
 }

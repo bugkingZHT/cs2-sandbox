@@ -26,13 +26,12 @@
           class="nav-btn" 
           :class="{ active: currentPage === 'library' }"
           @click="navigate('/demolib')"
-          :title="sidebarCollapsed ? 'Demo 库' : ''"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">本地 Demo 库</span>
+            <span class="nav-text">Demo 本地库</span>
           </span>
         </button>
         
@@ -200,14 +199,13 @@
         <button 
           class="console-toggle-btn"
           @click="showConsoleModal = true"
-          :title="sidebarCollapsed ? 'Dashboard' : '系统管理'"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
             <line x1="12" y1="2" x2="12" y2="12"></line>
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">系统管理</span>
+            <span class="nav-text">{{ currentUser ? truncatedUsername : '系统 / 登录' }}</span>
           </span>
         </button>
       </div>
@@ -321,6 +319,7 @@ import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
 import ConsoleModal from '@/components/Settings/PanelModal.vue';
 import { useReplayData } from '@/composables/useReplayData';
 import { useCloudArchive, type CloudArchiveItem } from '@/composables/useCloudArchive';
+import { useAuth } from '@/composables/useAuth';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
 import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery } from '@/location';
@@ -359,6 +358,8 @@ const replayerRouteLoading = ref(false);
 const showBetaModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
+
+const { currentUser, truncatedUsername, fetchAuthMe } = useAuth();
 
 const {
   archiveList,
@@ -548,13 +549,30 @@ function handleClickOutside() {
   cancelRenameArchive();
 }
 
-// 监听全局点击事件
+function handleSessionExpired() {
+  showArchiveToast('用户身份过期，需要重新登录', 'warning');
+}
+
+declare global {
+  interface WindowEventMap {
+    'app:toast': CustomEvent<{ message: string; type?: ToastType }>;
+  }
+}
+function handleAppToast(e: CustomEvent<{ message: string; type?: ToastType }>) {
+  showArchiveToast(e.detail.message, e.detail.type ?? 'info');
+}
+
+// 监听全局点击事件、session 过期、全局 toast
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
+  window.addEventListener('session-expired', handleSessionExpired);
+  window.addEventListener('app:toast', handleAppToast as EventListener);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
+  window.removeEventListener('session-expired', handleSessionExpired);
+  window.removeEventListener('app:toast', handleAppToast as EventListener);
 });
 
 const draggedArchiveIndex = ref<number | null>(null);
@@ -668,6 +686,7 @@ onMounted(async () => {
   if (stored !== null) {
     sidebarCollapsed.value = stored === 'true';
   }
+  fetchAuthMe();
   // 刷新进入 replayer 时立即根据 URL args 加载对局并定位回合
   ensureReplayerRouteData();
   // 等 IndexedDB 初始化完成后再加载云存档，避免刷新后列表为空
@@ -1181,11 +1200,6 @@ const showBetaWarning = () => {
   font-family: var(--ds-font-sans);
   outline: none;
   box-shadow: 0 0 0 2px rgba(78, 204, 163, 0.2);
-}
-
-.cloud-archive-item-content:hover {
-  background: var(--ds-surface-hover);
-  color: var(--ds-text-primary);
 }
 
 .cloud-archive-rename-input:focus {

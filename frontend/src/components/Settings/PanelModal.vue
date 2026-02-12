@@ -47,18 +47,254 @@
       <div class="console-tab-content">
         <!-- User Management Tab -->
         <div v-if="activeTab === 'user'" class="tab-panel">
-          <p class="modal-message">暂未上线 Coming Soon...</p>
+          <!-- 未登录状态 -->
+          <div v-if="!isAuthenticated" class="auth-section">
+            <div class="auth-card">
+              <div class="auth-header">
+                <h3 class="auth-title">用户登录</h3>
+                <p class="auth-subtitle">请输入您的账户信息</p>
+              </div>
+              
+              <form @submit.prevent="handleLogin" class="auth-form">
+                <div class="form-group">
+                  <div class="input-wrapper">
+                    <input
+                      id="panel-username"
+                      v-model="loginForm.username"
+                      type="text"
+                      class="form-input"
+                      :class="{ 'input-error': loginError }"
+                      placeholder="用户名"
+                      autocomplete="username"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div class="form-group">
+                  <div class="input-wrapper">
+                    <input
+                      id="panel-password"
+                      v-model="loginForm.password"
+                      :type="showLoginPassword ? 'text' : 'password'"
+                      class="form-input"
+                      :class="{ 'input-error': loginError }"
+                      placeholder="密码"
+                      autocomplete="current-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="password-toggle"
+                      @click="showLoginPassword = !showLoginPassword"
+                      :title="showLoginPassword ? '隐藏密码' : '显示密码'"
+                    >
+                      <svg v-if="showLoginPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </svg>
+                      <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                
+                <div v-if="loginError" class="error-message">
+                  {{ loginError }}
+                </div>
+                
+                <button
+                  type="submit"
+                  class="auth-button"
+                  :disabled="loginLoading"
+                >
+                  <span v-if="loginLoading" class="button-loading">
+                    <span class="loading-spinner"></span>
+                    登录中...
+                  </span>
+                  <span v-else>登录</span>
+                </button>
+              </form>
+            </div>
+          </div>
+          
+          <!-- 已登录状态 -->
+          <div v-else class="user-profile-section">
+            <div class="profile-card">
+              <div class="profile-header">
+                <div class="avatar-placeholder">
+                  <img 
+                    src="/icons/user.svg" 
+                    alt="User Avatar" 
+                    class="user-avatar"
+                    width="40" 
+                    height="40"
+                  />
+                </div>
+                <div class="user-info">
+                  <h3 class="username">{{ currentUser?.username }}</h3>
+                  <p class="user-id">ID: {{ currentUser?.uid }}</p>
+                </div>
+              </div>
+              
+              <div class="profile-actions">
+                <button
+                  type="button"
+                  class="secondary-button"
+                  @click="showChangePassword = true"
+                >
+                  修改密码
+                </button>
+                <button
+                  type="button"
+                  class="danger-button"
+                  :disabled="logoutLoading"
+                  @click="handleLogout"
+                >
+                  <span v-if="logoutLoading" class="button-loading">
+                    <span class="loading-spinner"></span>
+                    退出中...
+                  </span>
+                  <span v-else>退出登录</span>
+                </button>
+              </div>
+            </div>
+            
+            <!-- 修改密码表单 -->
+            <div v-if="showChangePassword" class="change-password-section">
+              <div class="password-card">
+                <h4 class="password-title">修改密码</h4>
+                
+                <form @submit.prevent="handleChangePassword" class="password-form">
+                  <div class="form-group">
+                    <div class="input-wrapper">
+                      <input
+                        id="old-password"
+                        v-model="passwordForm.oldPassword"
+                        :type="showOldPassword ? 'text' : 'password'"
+                        class="form-input"
+                        :class="{ 'input-error': passwordError }"
+                        placeholder="当前密码"
+                        required
+                      />
+                      <button
+                        type="button"
+                        class="password-toggle"
+                        @click="showOldPassword = !showOldPassword"
+                      >
+                        <svg v-if="showOldPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div class="form-group">
+                    <div class="input-wrapper">
+                      <input
+                        id="new-password"
+                        v-model="passwordForm.newPassword"
+                        :type="showNewPassword ? 'text' : 'password'"
+                        class="form-input"
+                        :class="{ 'input-error': passwordError }"
+                        placeholder="新密码"
+                        required
+                      />
+                      <button
+                        type="button"
+                        class="password-toggle"
+                        @click="showNewPassword = !showNewPassword"
+                      >
+                        <svg v-if="showNewPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div class="form-group">
+                    <div class="input-wrapper">
+                      <input
+                        id="confirm-password"
+                        v-model="passwordForm.confirmPassword"
+                        :type="showConfirmPassword ? 'text' : 'password'"
+                        class="form-input"
+                        :class="{ 'input-error': passwordError }"
+                        placeholder="确认新密码"
+                        required
+                      />
+                      <button
+                        type="button"
+                        class="password-toggle"
+                        @click="showConfirmPassword = !showConfirmPassword"
+                      >
+                        <svg v-if="showConfirmPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div v-if="passwordError" class="error-message">
+                    {{ passwordError }}
+                  </div>
+                  
+                  <div v-if="passwordSuccess" class="success-message">
+                    {{ passwordSuccess }}
+                  </div>
+                  
+                  <div class="form-actions">
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      @click="showChangePassword = false"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="submit"
+                      class="primary-button"
+                      :disabled="passwordLoading"
+                    >
+                      <span v-if="passwordLoading" class="button-loading">
+                        <span class="loading-spinner"></span>
+                        修改中...
+                      </span>
+                      <span v-else>确认修改</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- About Us Tab -->
         <div v-if="activeTab === 'about'" class="tab-panel">
           <div class="about-content">
-            <p class="about-featured">雪豹巨献</p>
+            <p class="about-featured">这是雪豹</p>
             <p class="about-developed-by">Developed by Snowbo</p>
             <div class="title-divider"></div>
             <div class="version-section">
               <div class="version-row">
-                <span class="version-label">Frontend</span>
+                <span class="version-label">Frontend Replayer</span>
                 <span class="version-value">{{ FRONTEND_VERSION }}</span>
               </div>
               <div class="version-row">
@@ -70,8 +306,8 @@
               <h4 class="social-title">关注我们 & 意见反馈</h4>
               <ul class="social-list">
                 <li class="social-item">抖音 @2#777</li>
-                <li class="social-item">小红书 @2#777</li>
-                <li class="social-item">bilibili @2#777</li>
+                <li class="social-item">小红书 @...</li>
+                <li class="social-item">bilibili @...</li>
               </ul>
             </div>
           </div>
@@ -249,6 +485,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { FRONTEND_VERSION, COMPATIBLE_ENGINE_VERSIONS } from '@/config/version';
 import { cleanupOrphanedReplayStorage } from '@/composables/opfs-storage';
+import { useAuth } from '@/composables/useAuth';
 
 interface Props {
   showModal: boolean;
@@ -261,10 +498,190 @@ interface Emits {
   (e: 'open-opfs-viewer'): void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const activeTab = ref<'user' | 'about' | 'debug'>('about');
+const activeTab = ref<'user' | 'about' | 'debug'>('user');
+
+// 打开 modal 时优先选中用户管理 tab
+watch(() => props.showModal, (visible) => {
+  if (visible) activeTab.value = 'user';
+});
+
+// 用户认证相关
+const { currentUser, fetchAuthMe: fetchAuthMeShared, setUser, clearUser, handleSessionExpired } = useAuth();
+const isAuthenticated = computed(() => !!currentUser.value);
+
+// 登录表单
+interface LoginForm {
+  username: string;
+  password: string;
+}
+
+const loginForm = ref<LoginForm>({ username: '', password: '' });
+const loginError = ref('');
+const loginLoading = ref(false);
+const showLoginPassword = ref(false);
+
+// 修改密码表单
+interface PasswordForm {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+const showChangePassword = ref(false);
+const passwordForm = ref<PasswordForm>({ 
+  oldPassword: '', 
+  newPassword: '', 
+  confirmPassword: '' 
+});
+const passwordError = ref('');
+const passwordSuccess = ref('');
+const passwordLoading = ref(false);
+const showOldPassword = ref(false);
+const showNewPassword = ref(false);
+const showConfirmPassword = ref(false);
+
+// 登出相关
+const logoutLoading = ref(false);
+
+// 登录处理
+const handleLogin = async () => {
+  const { username, password } = loginForm.value;
+  
+  if (!username.trim()) {
+    loginError.value = '请输入用户名';
+    return;
+  }
+  
+  if (!password) {
+    loginError.value = '请输入密码';
+    return;
+  }
+  
+  loginLoading.value = true;
+  loginError.value = '';
+  
+  try {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username: username.trim(), password })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.ok) {
+      setUser({ uid: data.data.uid, username: data.data.username });
+      loginForm.value = { username: '', password: '' };
+      showLoginPassword.value = false;
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '登录成功', type: 'info' } }));
+    } else {
+      loginError.value = data.error || '登录失败';
+    }
+  } catch (error) {
+    loginError.value = '网络错误，请重试';
+  } finally {
+    loginLoading.value = false;
+  }
+};
+
+// 登出处理
+const handleLogout = async () => {
+  logoutLoading.value = true;
+  
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+    clearUser();
+    showChangePassword.value = false;
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已退出登录', type: 'info' } }));
+  } catch (error) {
+    // 即使出错也清除本地状态
+    clearUser();
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已退出登录', type: 'info' } }));
+  } finally {
+    logoutLoading.value = false;
+  }
+};
+
+// 修改密码处理
+const handleChangePassword = async () => {
+  const { oldPassword, newPassword, confirmPassword } = passwordForm.value;
+  
+  if (!oldPassword) {
+    passwordError.value = '请输入当前密码';
+    return;
+  }
+  
+  if (!newPassword) {
+    passwordError.value = '请输入新密码';
+    return;
+  }
+  
+  if (newPassword.length < 6) {
+    passwordError.value = '新密码至少需要6位字符';
+    return;
+  }
+  
+  if (newPassword !== confirmPassword) {
+    passwordError.value = '两次输入的密码不一致';
+    return;
+  }
+  
+  passwordLoading.value = true;
+  passwordError.value = '';
+  passwordSuccess.value = '';
+  
+  try {
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ 
+        old_password: oldPassword, 
+        new_password: newPassword 
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (response.status === 401) {
+      handleSessionExpired();
+      showChangePassword.value = false;
+      return;
+    }
+    if (response.ok && data.ok) {
+      passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' };
+      showOldPassword.value = false;
+      showNewPassword.value = false;
+      showConfirmPassword.value = false;
+      showChangePassword.value = false;
+      // 后端已清理该用户全部 session 并清除 cookie，前端同步退出登录并提示
+      clearUser();
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '密码已修改，请重新登录', type: 'info' } }));
+    } else {
+      passwordError.value = data.error || '密码修改失败';
+    }
+  } catch (error) {
+    passwordError.value = '网络错误，请重试';
+  } finally {
+    passwordLoading.value = false;
+  }
+};
+
+// 组件挂载时检查登录状态
+onMounted(() => {
+  fetchAuthMeShared();
+});
+
+// Password change functionality is now handled by UserAuth component
+
+
 
 // Storage quota tracking
 const storageUsed = ref(0);
@@ -349,6 +766,11 @@ const parseFrameRatio = ref<number>(2);
 
 // Real-time update for usage info when debug tab is open (1s refresh)
 watch(activeTab, (tab) => {
+  // Restore auth state when opening user tab
+  if (tab === 'user') {
+    // User management is handled by UserModal component
+  }
+
   // Clear existing interval when leaving debug tab
   if (memoryUpdateInterval !== null) {
     clearInterval(memoryUpdateInterval);
@@ -699,6 +1121,453 @@ const handleCleanStorageLeak = async () => {
   text-align: center;
 }
 
+.user-logged-in,
+.user-login-form {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-md);
+  padding: var(--ds-space-lg);
+}
+
+.user-logged-in {
+  border-bottom: 1px solid var(--ds-border-default);
+}
+
+/* 用户面板占位符样式 */
+.user-panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: var(--ds-space-xl);
+}
+
+.user-panel-content {
+  text-align: center;
+  max-width: 300px;
+}
+
+.user-icon {
+  color: var(--ds-text-secondary);
+  margin-bottom: var(--ds-space-lg);
+}
+
+.user-panel-title {
+  font-size: var(--ds-text-xl);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-sm);
+}
+
+.user-panel-description {
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-secondary);
+  margin: 0 0 var(--ds-space-lg);
+  line-height: 1.5;
+}
+
+/* 内嵌用户管理样式 */
+.auth-section,
+.user-profile-section {
+  padding: var(--ds-space-lg);
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.auth-card,
+.profile-card,
+.password-card {
+  background: var(--ds-surface-elevated);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid var(--ds-border-default);
+  padding: var(--ds-space-lg);
+  box-shadow: var(--ds-shadow-md);
+  width: 100%;
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: var(--ds-space-md);
+}
+
+.auth-title {
+  font-size: var(--ds-text-lg);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-xs);
+}
+
+.auth-subtitle {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  margin: 0;
+}
+
+.auth-form,
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+  width: 100%;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+
+
+.input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.form-input {
+  width: 100%;
+  padding: var(--ds-space-sm);
+  background: var(--ds-surface-base);
+  border: 2px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  font-family: var(--ds-font-sans);
+  outline: none;
+  transition: all var(--ds-transition-base);
+  box-sizing: border-box;
+}
+
+/* 仅密码框右侧留空给眼睛图标 */
+.input-wrapper:has(.password-toggle) .form-input {
+  padding-right: 40px;
+}
+
+.form-input:focus {
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.2);
+  background: var(--ds-surface-hover);
+}
+
+.form-input.input-error {
+  border-color: var(--ds-danger);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.password-toggle {
+  position: absolute;
+  right: var(--ds-space-sm);
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  padding: var(--ds-space-xxs);
+  border-radius: var(--ds-radius-sm);
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover {
+  color: var(--ds-text-primary);
+  background: var(--ds-surface-hover);
+}
+
+.auth-button,
+.primary-button,
+.secondary-button,
+.danger-button {
+  width: 100%;
+  padding: var(--ds-space-sm);
+  border: none;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-xs);
+  min-height: 40px;
+}
+
+.auth-button,
+.primary-button {
+  background: var(--ds-primary);
+  color: var(--ds-primary-text);
+}
+
+.auth-button:hover:not(:disabled),
+.primary-button:hover:not(:disabled) {
+  background: var(--ds-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--ds-shadow-md);
+}
+
+.secondary-button {
+  background: var(--ds-surface-base);
+  color: var(--ds-text-primary);
+  border: 1px solid var(--ds-border-default);
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-hover);
+}
+
+.danger-button {
+  background: var(--ds-danger);
+  color: var(--ds-danger-text);
+}
+
+.danger-button:hover:not(:disabled) {
+  background: var(--ds-danger-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--ds-shadow-md);
+}
+
+.auth-button:disabled,
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.error-message {
+  padding: var(--ds-space-sm);
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-danger);
+  font-size: var(--ds-text-sm);
+  text-align: center;
+}
+
+.success-message {
+  padding: var(--ds-space-sm);
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-success);
+  font-size: var(--ds-text-sm);
+  text-align: center;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  margin-bottom: var(--ds-space-md);
+  width: 100%;
+}
+
+.avatar-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ds-surface-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-secondary);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.user-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.username {
+  font-size: var(--ds-text-base);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-xxs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-id {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  margin: 0;
+  font-family: var(--ds-font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-xs);
+  width: 100%;
+}
+
+.change-password-section {
+  margin-top: var(--ds-space-md);
+  width: 100%;
+}
+
+.password-title {
+  font-size: var(--ds-text-base);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-sm);
+  text-align: center;
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--ds-space-xs);
+  margin-top: var(--ds-space-sm);
+  width: 100%;
+}
+
+.button-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-xs);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+  .auth-section,
+  .user-profile-section {
+    padding: var(--ds-space-md);
+  }
+  
+  .auth-card,
+  .profile-card,
+  .password-card {
+    padding: var(--ds-space-lg);
+  }
+  
+  .form-actions {
+    flex-direction: column;
+  }
+}
+
+.user-logged-in-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-md);
+}
+
+.user-summary {
+  margin: 0;
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-primary);
+  font-weight: 600;
+  text-align: center;
+  padding: var(--ds-space-sm);
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-subtle);
+}
+
+.user-label {
+  color: var(--ds-text-secondary);
+  margin-right: var(--ds-space-sm);
+  font-weight: 500;
+}
+
+.user-uid {
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-sm);
+  margin-left: var(--ds-space-sm);
+  font-family: var(--ds-font-mono);
+  font-weight: 400;
+}
+
+.login-error {
+  margin: 0;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-danger);
+  padding: var(--ds-space-xs) var(--ds-space-sm);
+  background: rgba(239, 68, 68, 0.15);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  text-align: center;
+}
+
+.user-change-password {
+  width: 100%;
+  max-width: 320px;
+  margin-top: var(--ds-space-lg);
+  padding: var(--ds-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-md);
+  border-top: 1px solid var(--ds-border-default);
+}
+
+.change-password-title {
+  margin: 0 0 var(--ds-space-sm) 0;
+  font-size: var(--ds-text-base);
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  text-align: center;
+  padding: var(--ds-space-sm) 0;
+}
+
+.change-password-success {
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-success);
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  background: rgba(16, 185, 129, 0.15);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  text-align: center;
+  font-weight: 500;
+}
+
+.login-info-message {
+  margin: 0 0 var(--ds-space-sm) 0;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-success);
+  padding: var(--ds-space-xs) var(--ds-space-sm);
+  background: rgba(16, 185, 129, 0.15);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  text-align: center;
+  font-weight: 500;
+}
+
 .about-content {
   width: 100%;
   text-align: center;
@@ -785,11 +1654,11 @@ const handleCleanStorageLeak = async () => {
 
 .ds-btn-console {
   width: 100%;
-  padding: var(--ds-space-sm);
-  background: rgba(74, 171, 247, 0.1);
-  border: 1px solid rgba(74, 171, 247, 0.3);
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  background: var(--ds-primary);
+  border: none;
   border-radius: var(--ds-radius-md);
-  color: #4dabf7;
+  color: var(--ds-primary-text);
   font-size: var(--ds-text-base);
   font-weight: 600;
   cursor: pointer;
@@ -798,16 +1667,20 @@ const handleCleanStorageLeak = async () => {
   align-items: center;
   justify-content: center;
   gap: var(--ds-space-sm);
+  font-family: var(--ds-font-sans);
+  box-shadow: var(--ds-shadow-sm);
 }
 
-.ds-btn-console:hover {
-  background: rgba(74, 171, 247, 0.2);
-  border-color: rgba(74, 171, 247, 0.5);
-  box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
+.ds-btn-console:hover:not(:disabled) {
+  background: var(--ds-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .ds-btn-console svg {
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
 }
 
 /* Storage Quota Styles */
@@ -1015,6 +1888,7 @@ const handleCleanStorageLeak = async () => {
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-sm);
+  position: relative;
 }
 
 .input-label {
@@ -1022,22 +1896,97 @@ const handleCleanStorageLeak = async () => {
   font-weight: 600;
   color: var(--ds-text-primary);
   margin-bottom: var(--ds-space-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-xs);
 }
 
 .ds-input {
-  padding: var(--ds-space-sm);
-  background: var(--ds-bg-base);
-  border: 1px solid var(--ds-border-default);
+  padding: var(--ds-space-md);
+  background: var(--ds-surface-base);
+  border: 2px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
   font-size: var(--ds-text-base);
+  font-family: var(--ds-font-sans);
   outline: none;
-  transition: border-color var(--ds-transition-base);
+  transition: all var(--ds-transition-base);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ds-input.with-icon {
+  padding-right: 44px;
+}
+
+/* 带眼睛图标的密码框：右侧留空，图标在最右侧 */
+.input-wrapper-inline:has(.password-toggle) .ds-input-inline,
+.input-wrapper:has(.password-toggle) .ds-input-inline {
+  padding-left: var(--ds-space-sm);
+  padding-right: 40px;
+}
+
+.input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.input-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-xs);
+  margin-bottom: var(--ds-space-sm);
+}
+
+.input-label-inline {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  text-align: left;
+  margin-bottom: var(--ds-space-xxs);
+}
+
+.input-wrapper-inline {
+  position: relative;
+  width: 100%;
+}
+
+.ds-input-inline {
+  width: 100%;
+  padding: var(--ds-space-sm);
+  background: var(--ds-surface-base);
+  border: 2px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  font-family: var(--ds-font-sans);
+  outline: none;
+  transition: all var(--ds-transition-base);
+  box-sizing: border-box;
+}
+
+.ds-input-inline:focus {
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.2);
+  background: var(--ds-surface-hover);
+}
+
+/* 密码眼睛图标：固定在输入框最右侧（覆盖后面的重复定义） */
+.input-wrapper .password-toggle,
+.input-wrapper-inline .password-toggle {
+  left: auto;
+  right: var(--ds-space-sm);
+}
+
+.password-toggle:focus {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 2px;
 }
 
 .ds-input:focus {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 2px rgba(var(--ds-primary-rgb), 0.2);
+  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.2);
+  background: var(--ds-surface-hover);
 }
 
 /* 回合限制输入框：隐藏数字上下箭头，仅允许用户手动输入 */
@@ -1050,5 +1999,4 @@ const handleCleanStorageLeak = async () => {
   -moz-appearance: textfield;
   appearance: textfield;
 }
-
 </style>

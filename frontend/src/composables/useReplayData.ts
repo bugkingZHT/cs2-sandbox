@@ -512,7 +512,7 @@ function createReplayData() {
       // Don't automatically load any demo on first page load
       // User must manually select a demo from the list
       console.log('[Load] 不自动加载任何Demo，等待用户手动选择');
-      statusMsg.value = '请打开左上角 Demo 列表并上传 demo 文件';
+      statusMsg.value = '请打开左上角 Demo 列表并解析 demo 文件';
     } catch (e: any) {
       if (e.name === 'AbortError') return;
       console.error('Initial load failed', e);
