@@ -22,6 +22,7 @@ export default defineConfig({
   build: {
     outDir: '../web/static',
     emptyOutDir: false, // Don't delete main.wasm and wasm_exec.js
+    chunkSizeWarningLimit: 1000, // element-plus 体积较大，已做 manualChunks 与按路由懒加载
     rollupOptions: {
       input: {
         index: resolve(__dirname, 'index.html'),
@@ -29,7 +30,13 @@ export default defineConfig({
         replayer: resolve(__dirname, 'replayer.html'),
       },
       output: {
-        manualChunks: undefined,
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('element-plus')) return 'element-plus';
+            if (id.includes('pixi.js')) return 'pixi';
+            if (id.includes('protobufjs')) return 'protobuf';
+          }
+        },
       },
     },
   },

@@ -313,10 +313,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide } from 'vue';
-import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
-import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
-import ConsoleModal from '@/components/Settings/PanelModal.vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, defineAsyncComponent } from 'vue';
+
+const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlayer/ReplayPlayer.vue'));
+const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
+const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
 import { useReplayData } from '@/composables/useReplayData';
 import { useCloudArchive, type CloudArchiveItem } from '@/composables/useCloudArchive';
 import { useAuth } from '@/composables/useAuth';
