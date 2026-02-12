@@ -947,7 +947,7 @@ const showBetaWarning = () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--ds-space-md) var(--ds-space-sm);
+  padding: var(--ds-space-lg) var(--ds-space-md);
   gap: var(--ds-space-sm);
   border-top: 1px solid var(--ds-border-subtle);
   overflow: hidden;
@@ -971,7 +971,6 @@ const showBetaWarning = () => {
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all var(--ds-transition-base);
 }
 
 .collapsed .cloud-archive-header.is-collapsed.is-disabled {
@@ -982,8 +981,6 @@ const showBetaWarning = () => {
 .collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled) {
   background: var(--ds-surface-hover);
   border-color: var(--ds-border-strong);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled) .cloud-archive-title {
@@ -993,11 +990,11 @@ const showBetaWarning = () => {
 /* 收起时云图标降低不透明度，避免纯白，与侧栏风格一致 */
 .collapsed .cloud-archive-header .cloud-archive-icon {
   opacity: 0.72;
-  transition: opacity var(--ds-transition-base);
 }
 
 .collapsed .cloud-archive-section:hover .cloud-archive-header .cloud-archive-icon {
   opacity: 0.88;
+  transition: none;
 }
 
 .cloud-archive-icon {
@@ -1005,6 +1002,7 @@ const showBetaWarning = () => {
   height: 20px;
   flex-shrink: 0;
   object-fit: contain;
+  transition: none;
 }
 
 .cloud-archive-title {
