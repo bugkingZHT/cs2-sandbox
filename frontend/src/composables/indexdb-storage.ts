@@ -2,8 +2,9 @@ import type { ReplayMeta } from '../types/replay';
 
 // Database schema
 const DB_NAME = 'cs-demobox';
-const DB_VERSION = 9; // v8→v9: remove tactic-favorites and tactic-tree stores
+const DB_VERSION = 10; // v9→v10: add cloud-archive store
 const META_STORE = 'replay-meta';
+export const CLOUD_ARCHIVE_STORE = 'cloud-archive';
 
 export class IndexedDBMetaStorage {
   private db: IDBDatabase | null = null;
@@ -44,6 +45,10 @@ export class IndexedDBMetaStorage {
         if (db.objectStoreNames.contains('tactic-tree')) {
           db.deleteObjectStore('tactic-tree');
           console.log('[IndexedDB] Deleted legacy tactic-tree store');
+        }
+        if (!db.objectStoreNames.contains(CLOUD_ARCHIVE_STORE)) {
+          db.createObjectStore(CLOUD_ARCHIVE_STORE, { keyPath: 'id' });
+          console.log('[IndexedDB] Created cloud-archive store');
         }
       };
     });

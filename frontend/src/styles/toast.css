@@ -1,0 +1,80 @@
+/**
+ * 全局提示弹出（Toast）样式
+ * 类型：info / warning / error，搭配对应背景色和图标，文字统一白色。
+ * 使用方式：
+ *   <Transition name="toast-top">
+ *     <div v-if="visible" class="ds-toast-top ds-toast-info">
+ *       <span class="ds-toast-icon">...</span>
+ *       <span class="ds-toast-text">提示文字</span>
+ *     </div>
+ *   </Transition>
+ */
+
+.ds-toast-top {
+  position: fixed;
+  top: var(--ds-space-2xl, 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--ds-z-toast, 2000);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-sm, 8px);
+  padding: var(--ds-space-sm, 8px) var(--ds-space-lg, 20px);
+  font-size: var(--ds-text-sm, 13px);
+  font-weight: 500;
+  line-height: 1.4;
+  color: #ffffff;
+  border-radius: var(--ds-radius-md, 8px);
+  box-shadow: var(--ds-shadow-xl, 0 10px 40px rgba(0, 0, 0, 0.2));
+  pointer-events: none;
+}
+
+.ds-toast-top .ds-toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ds-toast-top .ds-toast-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: #ffffff;
+}
+
+.ds-toast-top .ds-toast-text {
+  color: #ffffff;
+}
+
+/* 类型：info（如保存成功） */
+.ds-toast-top.ds-toast-info {
+  background: var(--ds-primary, #4ecca3);
+}
+
+/* 类型：warning（如已存在） */
+.ds-toast-top.ds-toast-warning {
+  background: var(--ds-warning, #f59e0b);
+}
+
+/* 类型：error */
+.ds-toast-top.ds-toast-error {
+  background: var(--ds-danger, #ef4444);
+}
+
+/* Vue Transition name="toast-top" 的进入/离开动画 */
+.toast-top-enter-active,
+.toast-top-leave-active {
+  transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+}
+
+.toast-top-enter-from,
+.toast-top-leave-to {
+  transform: translate(-50%, -100%);
+  opacity: 0;
+}
+
+.toast-top-enter-to,
+.toast-top-leave-from {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
