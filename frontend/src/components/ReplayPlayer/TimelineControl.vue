@@ -1,7 +1,7 @@
 <template>
   <div class="timeline-widget-container">
     <!-- 一、上方：回合选择进度条 -->
-    <div class="round-selection-module">
+    <div v-if="!pureMode" class="round-selection-module">
       <!-- 核心进度条主体 -->
       <div class="round-nav-wrapper">
         <div class="round-buttons-grid">
@@ -185,6 +185,7 @@ const props = defineProps<{
   totalRounds?: number;
   roundResults?: RoundResultInfo[];
   replayMeta?: ReplayData | null;
+  pureMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -826,6 +827,7 @@ const speedOptions = [0.5, 1, 2] as const;
 /* === Timeline Track === */
 .timeline-track-main {
   flex: 1;
+  min-width: 0;
   height: 100%;
   background: rgba(0, 0, 0, 0.5);
   position: relative;
@@ -1076,6 +1078,139 @@ const speedOptions = [0.5, 1, 2] as const;
   width: 16px;
   height: 16px;
   filter: brightness(0) invert(1);
+}
+
+/* === 最小 1024×768 适配 === */
+@media (max-width: 1024px) {
+  .timeline-widget-container {
+    padding: 2px 4px;
+    gap: 1px;
+  }
+
+  .round-selection-module {
+    gap: var(--ds-space-xs);
+  }
+
+  .round-nav-wrapper {
+    height: 34px;
+  }
+
+  .round-square-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 10px;
+  }
+
+  .round-number {
+    font-size: 9px;
+    height: 12px;
+  }
+
+  .round-result-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .playback-control-module {
+    height: 32px;
+    gap: var(--ds-space-xs);
+  }
+
+  .playback-info-box {
+    width: 80px;
+    padding: 0 var(--ds-space-xs);
+  }
+
+  .circle-play-btn {
+    width: 22px;
+    height: 22px;
+  }
+
+  .speed-tabs {
+    height: 75%;
+  }
+
+  .speed-tab-btn {
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .time-font {
+    font-size: 12px;
+  }
+
+  .layer-control-btn {
+    width: 90px;
+    height: 28px;
+    font-size: 10px;
+    padding: 0 var(--ds-space-xs);
+  }
+}
+
+@media (max-height: 768px) {
+  .timeline-widget-container {
+    padding: 2px 4px;
+    gap: 1px;
+  }
+
+  .round-selection-module {
+    gap: 2px;
+  }
+
+  .round-nav-wrapper {
+    height: 32px;
+  }
+
+  .round-buttons-grid {
+    padding: 0 1px;
+  }
+
+  .round-square-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 9px;
+  }
+
+  .round-number {
+    font-size: 9px;
+    height: 10px;
+  }
+
+  .round-result-icon {
+    width: 11px;
+    height: 11px;
+  }
+
+  .playback-control-module {
+    height: 30px;
+  }
+
+  .playback-info-box {
+    width: 72px;
+    height: 100%;
+  }
+
+  .circle-play-btn {
+    width: 20px;
+    height: 20px;
+  }
+
+  .status-meta {
+    margin-left: var(--ds-space-xs);
+  }
+
+  .speed-tabs {
+    height: 70%;
+  }
+
+  .speed-tab-btn {
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .time-font {
+    font-size: 11px;
+  }
 }
 
 </style>

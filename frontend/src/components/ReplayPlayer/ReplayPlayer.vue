@@ -24,10 +24,13 @@
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :is-grenade-tracking-enabled="isGrenadeTrackingEnabled"
+          :pure-mode="pureMode"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           @projectile-click="handleProjectileClick"
           @toggle-grenade-tracking="toggleGrenadeTracking"
+          @toggle-pure-mode="pureMode = !pureMode"
+          @share="copyShareLink"
           :tab-recorder-supported="tabRecorder.isSupported"
           :tab-recorder-recording="tabRecorder.isRecording.value"
           :tab-recorder-converting="tabRecorder.isConverting.value"
@@ -54,8 +57,12 @@
           @seek="handleGrenadeSeek"
         />
 
+        <!-- 分享链接已复制提示 -->
+        <Transition name="share-toast">
+          <div v-if="shareCopied" class="share-toast">已复制链接</div>
+        </Transition>
         <!-- 击杀回传 (Kill Feed) -->
-        <div class="kill-feed-container">
+        <div v-if="!pureMode" class="kill-feed-container">
           <TransitionGroup name="list">
             <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
               <div class="kill-card">
@@ -70,7 +77,7 @@
         </div>
 
         <!-- Player Cards Panel (Top Left) -->
-        <div class="players-panel top-left">
+        <div v-if="!pureMode" class="players-panel top-left">
           <!-- First Half (1-12): T Team on top, Second Half (13+): CT Team on top -->
           
           <!-- First Team (T for rounds 1-12, CT for rounds 13+) -->
@@ -361,7 +368,7 @@
       </div>
     </section>
 
-    <section class="timeline-panel">
+    <section class="timeline-panel" :class="{ 'timeline-panel--pure': pureMode }">
       <TimelineControl
         :current-frame-index="effectiveFrameIndex"
         :total-frames="totalFrames"
@@ -379,6 +386,7 @@
         :total-rounds="replay?.totalRounds || 0"
         :round-results="replay?.roundResults || []"
         :replay-meta="replay"
+        :pure-mode="pureMode"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -391,7 +399,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { Ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
 import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
@@ -401,10 +410,36 @@ import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
-import { replaceLocation, pathRef, searchRef } from '@/location';
+import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
 }>();
+
+// 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
+const pureMode = ref(false);
+const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
+if (replayerPureMode) {
+  watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
+}
+
+// 打开链接时若带 pure=1 则默认启用纯净模式
+onMounted(() => {
+  const q = getQuery();
+  if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
+});
+
+// 分享：复制带 pure=1 的当前链接
+const shareCopied = ref(false);
+function copyShareLink() {
+  const q = getQuery();
+  q.pure = '1';
+  const search = '?' + new URLSearchParams(q).toString();
+  const url = window.location.origin + pathRef.value + search;
+  navigator.clipboard.writeText(url).then(() => {
+    shareCopied.value = true;
+    setTimeout(() => { shareCopied.value = false; }, 2000);
+  });
+}
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB } = useReplayData();
 
@@ -1540,6 +1575,35 @@ onBeforeUnmount(() => {
   transition: all var(--ds-transition-base);
 }
 
+/* === 分享链接已复制提示 === */
+.share-toast {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--ds-z-dropdown);
+  padding: var(--ds-space-sm) var(--ds-space-lg);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-lg);
+  pointer-events: none;
+}
+
+.share-toast-enter-active,
+.share-toast-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.share-toast-enter-from,
+.share-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
 /* === Kill Feed === */
 .kill-feed-container {
   position: absolute;
@@ -1640,6 +1704,7 @@ onBeforeUnmount(() => {
   flex: 1;
   position: relative;
   min-width: 0;
+  min-height: 0;
   width: 100%;
   height: 100%;
 }
@@ -1651,6 +1716,11 @@ onBeforeUnmount(() => {
   padding: var(--ds-space-md);
   border-top: 2px solid var(--ds-border-accent);
   background: var(--ds-bg-secondary);
+}
+
+.timeline-panel.timeline-panel--pure {
+  height: 50px;
+  padding: 4px var(--ds-space-sm);
 }
 
 /* === Empty State === */
@@ -1696,5 +1766,152 @@ onBeforeUnmount(() => {
   font-size: var(--ds-text-base);
   color: var(--ds-text-tertiary);
   line-height: 1.6;
+}
+
+/* === 最小 1024×768 适配 === */
+@media (max-width: 1024px) {
+  .players-panel.top-left {
+    left: 6px;
+  }
+
+  .team-cards-container {
+    gap: 3px;
+    padding: 2px;
+  }
+
+  .player-card-bottom {
+    width: 200px;
+    min-height: 52px;
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .player-id {
+    font-size: 11px;
+  }
+
+  .stat-icon {
+    width: 10px;
+    height: 10px;
+  }
+
+  .stat-value,
+  .health-value,
+  .money-symbol,
+  .money-value {
+    font-size: 11px;
+  }
+
+  .weapon-icon {
+    width: 32px;
+    height: 16px;
+  }
+
+  .utility-icon,
+  .gear-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .utility-items {
+    min-width: 72px;
+  }
+
+  .score-divider {
+    height: 32px;
+    margin: 4px 2px;
+  }
+
+  .team-score {
+    font-size: 20px;
+    min-width: 24px;
+  }
+
+  .score-separator {
+    font-size: 16px;
+  }
+
+  .kill-feed-container {
+    top: 8px;
+    right: 8px;
+    gap: 4px;
+  }
+
+  .kill-card {
+    padding: 4px 10px;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .k-weapon-icon {
+    width: 22px;
+    height: 12px;
+  }
+
+  .share-toast {
+    bottom: 64px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+@media (max-height: 768px) {
+  .timeline-panel {
+    height: 82px;
+    padding: 6px var(--ds-space-sm);
+  }
+
+  .timeline-panel.timeline-panel--pure {
+    height: 41px;
+    padding: 3px var(--ds-space-xs);
+  }
+
+  .players-panel.top-left {
+    gap: 0;
+  }
+
+  .team-cards-container {
+    gap: 2px;
+    padding: 2px;
+  }
+
+  .player-card-bottom {
+    min-height: 48px;
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .player-id {
+    font-size: 10px;
+  }
+
+  .stat-value,
+  .health-value {
+    font-size: 10px;
+  }
+
+  .weapon-icon {
+    width: 28px;
+    height: 14px;
+  }
+
+  .utility-icon,
+  .gear-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .score-divider {
+    height: 28px;
+    margin: 2px 2px;
+  }
+
+  .team-score {
+    font-size: 18px;
+  }
+
+  .share-toast {
+    bottom: 56px;
+  }
 }
 </style>

@@ -97,20 +97,45 @@
           <circle cx="12" cy="12" r="2" fill="currentColor" />
         </svg>
       </button>
+      <button
+        class="zoom-btn share-btn"
+        @click="emit('share')"
+        title="分享链接（复制带纯净模式的当前链接）"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+        </svg>
+      </button>
       <div class="controls-divider"></div>
-      <button class="zoom-btn" @click="zoomIn" title="放大">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-      </button>
-      <button class="zoom-btn" @click="zoomOut" title="缩小">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-      </button>
-      <button class="zoom-btn reset-btn" @click="resetZoom" title="重置视图">
-        <img src="/icons/scale.svg" width="18" height="18" alt="重置" />
+      <div class="zoom-reset-group">
+        <button class="zoom-btn zoom-in-btn" @click="zoomIn" title="放大">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button class="zoom-btn zoom-out-btn" @click="zoomOut" title="缩小">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button class="zoom-btn reset-btn" @click="resetZoom" title="重置视图">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="1" />
+          </svg>
+        </button>
+      </div>
+      <button
+        class="zoom-btn pure-mode-btn"
+        :class="{ 'active': pureMode || false }"
+        @click="emit('toggle-pure-mode')"
+        title="纯净模式"
+      >
+        <img src="/icons/scale.svg" width="18" height="18" alt="纯净模式" />
       </button>
     </div>
   </div>
@@ -149,6 +174,7 @@ const props = withDefaults(
     projectileConfigs?: Record<number, ProjectileRenderConfig>;
     isDrawingMode?: boolean;
     isGrenadeTrackingEnabled?: boolean;
+    pureMode?: boolean;
     tabRecorderSupported?: boolean;
     tabRecorderRecording?: boolean;
     tabRecorderConverting?: boolean;
@@ -163,6 +189,8 @@ const emit = defineEmits<{
   (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
   (e: 'toggle-grenade-tracking'): void;
+  (e: 'toggle-pure-mode'): void;
+  (e: 'share'): void;
   (e: 'tab-recorder-start'): void;
   (e: 'tab-recorder-stop'): void;
   (e: 'tab-recorder-clear-pending'): void;
@@ -765,8 +793,43 @@ onBeforeUnmount(() => {
   border-color: rgba(59, 130, 246, 0.8);
 }
 
-.reset-btn {
-  background: rgba(59, 130, 246, 0.6); /* Blueish for reset */
+/* + / - / 重置 三合一连体按钮 */
+.zoom-reset-group {
+  display: flex;
+  align-items: stretch;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+}
+
+.zoom-reset-group .zoom-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  box-shadow: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.zoom-reset-group .zoom-btn:last-child {
+  border-right: none;
+}
+
+.zoom-reset-group .zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: none;
+}
+
+.zoom-reset-group .zoom-btn.reset-btn {
+  background: rgba(59, 130, 246, 0.6);
+}
+
+.zoom-reset-group .zoom-btn.reset-btn:hover {
+  background: rgba(59, 130, 246, 0.8);
 }
 
 .reset-btn img {
@@ -774,14 +837,16 @@ onBeforeUnmount(() => {
   filter: brightness(0) invert(1);
 }
 
-.reset-btn:hover {
-  background: rgba(59, 130, 246, 0.8);
-}
-
 .tracking-btn.active {
   background: rgba(74, 171, 247, 0.5);
   border-color: rgba(74, 171, 247, 0.8);
   color: #4aabf7;
+}
+
+.pure-mode-btn.active {
+  background: rgba(34, 197, 94, 0.5);
+  border-color: rgba(34, 197, 94, 0.8);
+  color: #22c55e;
 }
 
 .tab-record-btn {
@@ -988,6 +1053,55 @@ onBeforeUnmount(() => {
 .player-tooltip .cmd-copy.copied {
   background: rgba(34, 197, 94, 0.5);
   color: white;
+}
+
+/* === 最小 1024×768 适配 === */
+@media (max-width: 1024px), (max-height: 768px) {
+  .map-controls-panel {
+    bottom: 12px;
+    right: 12px;
+    gap: 8px;
+  }
+
+  .map-zoom-controls {
+    gap: 6px;
+  }
+
+  .zoom-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .zoom-reset-group .zoom-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .zoom-btn svg,
+  .zoom-btn img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .controls-divider {
+    height: 20px;
+  }
+
+  .tab-recorder-actions {
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+
+  .tab-recorder-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .tab-recorder-actions .dismiss-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+  }
 }
 
 </style>

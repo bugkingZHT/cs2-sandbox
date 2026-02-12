@@ -1,7 +1,7 @@
 <template>
   <div class="app">
-    <!-- Collapsible Sidebar -->
-    <aside class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <!-- Collapsible Sidebar（纯净模式下播放器页不展示） -->
+    <aside v-show="!(currentPage === 'player' && replayerPureMode)" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- Sidebar Header -->
       <div class="sidebar-header">
         <div class="app-branding" v-show="!sidebarCollapsed">
@@ -154,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, provide } from 'vue';
 import ReplayPlayer from '@/components/ReplayPlayer/ReplayPlayer.vue';
 import DemoLibrary from '@/components/DemoLibrary/DemoLibrary.vue';
 import ConsoleModal from '@/components/Settings/PanelModal.vue';
@@ -190,6 +190,8 @@ const currentPage = computed<'library' | 'player'>(() => {
 
 const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
+const replayerPureMode = ref(false); // 播放器内「纯净模式」时隐藏侧边栏
+provide('replayerPureMode', replayerPureMode);
 const showConsoleModal = ref(false);
 const replayerRouteLoading = ref(false);
 const showBetaModal = ref(false);
@@ -207,6 +209,13 @@ async function ensureReplayerRouteData() {
   const query = getQuery(search);
   const uuid = query.uuid ?? null;
   const roundNum = parseInt(query.round || '', 10) || 1;
+
+  // pure=1 时从进入 replayer 路由起就隐藏侧边栏（含加载过程）
+  if (path === '/replayer') {
+    replayerPureMode.value = (query.pure === '1' || query.pure === 'true');
+  } else {
+    replayerPureMode.value = false;
+  }
 
   if (path !== '/replayer' || !uuid) {
     replayerRouteLoading.value = false;
@@ -269,6 +278,9 @@ const toggleSidebar = () => {
 watch(currentPage, (newPage) => {
   if (newPage === 'player' && !sidebarCollapsed.value) {
     sidebarCollapsed.value = true;
+  }
+  if (newPage !== 'player') {
+    replayerPureMode.value = false;
   }
 });
 
