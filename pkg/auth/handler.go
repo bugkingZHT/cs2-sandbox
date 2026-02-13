@@ -13,8 +13,8 @@ import (
 
 const (
 	cookieName = "session_id"
-	sessionTTL = 10 * time.Second // 测试用 10 秒
-	// sessionTTL   = 7 * 24 * time.Hour
+	// sessionTTL = 10 * time.Second // 测试用 10 秒
+	sessionTTL   = 7 * 24 * time.Hour
 	sessionIDLen = 32
 )
 

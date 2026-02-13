@@ -161,6 +161,8 @@
                 </button>
               </div>
             </div>
+
+            <div class="title-divider"></div>
             
             <!-- 修改密码表单 -->
             <div v-if="showChangePassword" class="change-password-section">
@@ -1180,11 +1182,8 @@ const handleCleanStorageLeak = async () => {
 .auth-card,
 .profile-card,
 .password-card {
-  background: var(--ds-surface-elevated);
   border-radius: var(--ds-radius-lg);
-  border: 1px solid var(--ds-border-default);
   padding: var(--ds-space-lg);
-  box-shadow: var(--ds-shadow-md);
   width: 100%;
 }
 
