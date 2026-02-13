@@ -5,10 +5,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 
 	"github.com/bugkingzht/cs-demobox/cmd/server/utils"
+	"github.com/bugkingzht/cs-demobox/pkg/archive"
 	"github.com/bugkingzht/cs-demobox/pkg/auth"
 	"github.com/bugkingzht/cs-demobox/pkg/database"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
@@ -86,6 +88,17 @@ func apiUnavailableHandler() http.HandlerFunc {
 	}
 }
 
+func archiveUnavailableHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": "cloud archive unavailable (SNOWBO_STORAGE_ROOTPATH not configured)",
+		})
+	}
+}
+
 func main() {
 	staticDir := utils.GetStaticDir()
 	root := http.Dir(staticDir)
@@ -103,7 +116,7 @@ func main() {
 			apiHandler = apiUnavailableHandler()
 		} else {
 			log.Println("[DB] Connected")
-			if err := db.AutoMigrate(&user.User{}, &session.Session{}); err != nil {
+			if err := db.AutoMigrate(&user.User{}, &session.Session{}, &archive.ArchiveItem{}, &archive.UserArchiveTree{}); err != nil {
 				log.Printf("[DB] Migrate failed: %v", err)
 			}
 			userStore := user.NewStore(db)
@@ -126,6 +139,28 @@ func main() {
 			mux.HandleFunc("/api/auth/logout", authHandlers.Logout)
 			mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 			mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
+			storageRoot := os.Getenv("SNOWBO_STORAGE_ROOTPATH")
+			if storageRoot != "" {
+				archiveStore := archive.NewStore(db)
+				archiveStorage := archive.NewFileStorage(storageRoot)
+				archiveHandlers := &archive.Handlers{Store: archiveStore, Storage: archiveStorage}
+				// 读且允许未登录访问 public：OptionalAuth
+				mux.HandleFunc("/api/archive/item", session.OptionalAuth(sessionStore, archiveHandlers.GetItemByDemo))
+				mux.HandleFunc("/api/archive/file", session.OptionalAuth(sessionStore, archiveHandlers.GetFileByDemo))
+				mux.HandleFunc("/api/archive/items/", session.OptionalAuth(sessionStore, archiveHandlers.ItemByID))
+				// 写及需登录的读：RequireAuth
+				mux.HandleFunc("/api/archive/tree", session.RequireAuth(sessionStore, archiveHandlers.PutTree))
+				mux.HandleFunc("/api/archive/items", session.RequireAuth(sessionStore, archiveHandlers.ItemsIndex))
+				log.Printf("[Archive] SNOWBO_STORAGE_ROOTPATH set to %s", storageRoot)
+			} else {
+				log.Printf("[Archive] SNOWBO_STORAGE_ROOTPATH not set; /api/archive/* will return 503")
+				archive503 := archiveUnavailableHandler()
+				mux.HandleFunc("/api/archive/tree", archive503)
+				mux.HandleFunc("/api/archive/item", archive503)
+				mux.HandleFunc("/api/archive/file", archive503)
+				mux.HandleFunc("/api/archive/items", archive503)
+				mux.HandleFunc("/api/archive/items/", archive503)
+			}
 			apiHandler = mux
 		}
 	} else {

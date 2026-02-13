@@ -83,3 +83,18 @@ export const DEBUG_CONFIG = {
    */
   enableBetaButton: true,
 };
+
+/** localStorage key for parse round limit (debug panel). */
+export const PARSING_ROUND_LIMIT_KEY = 'demoParsingRoundLimit';
+/** Default parse round limit when not set (positive integer). */
+export const PARSING_ROUND_LIMIT_DEFAULT = 999;
+
+/** localStorage key for parse frame ratio (debug panel). */
+export const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
+/** Default parse frame ratio when not set (1=1:1, 2=1:2, positive integer). */
+export const PARSE_FRAME_RATIO_DEFAULT = 2;
+
+/** localStorage key for OPFS leak cleanup max surge (debug panel). */
+export const MAX_SURGE_DEMO_NUM_KEY = 'maxSurgeDemoNum';
+/** Default max orphan dirs to keep when cleaning OPFS leak (non-negative integer). */
+export const MAX_SURGE_DEMO_NUM_DEFAULT = 16;

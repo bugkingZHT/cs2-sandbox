@@ -6,8 +6,8 @@
       <div class="round-nav-wrapper">
         <div class="round-buttons-grid">
           <template v-for="r in totalRoundsCount" :key="r">
-            <div class="round-btn-cell" :class="{ 'active': currentRound === r }">
-              <button class="round-square-btn" @click="seekToRound(r)" :class="getFlexDirectionClass(r)">
+            <div class="round-btn-cell" :class="{ 'active': currentRound === r, 'disabled': cloudReplay && r !== currentRound }">
+              <button class="round-square-btn" :disabled="cloudReplay && r !== currentRound" @click="seekToRound(r)" :class="getFlexDirectionClass(r)">
                 <!-- Icon on top or bottom based on logic -->
                 <img 
                   v-if="getRoundResultIcon(r) && shouldIconBeFirst(r)" 
@@ -186,6 +186,8 @@ const props = defineProps<{
   roundResults?: RoundResultInfo[];
   replayMeta?: ReplayData | null;
   pureMode?: boolean;
+  /** 云回放仅单回合，其他回合按钮禁用并置灰 */
+  cloudReplay?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -695,6 +697,18 @@ const speedOptions = [0.5, 1, 2] as const;
 .round-btn-cell.active .round-square-btn {
   background: var(--ds-surface-active);
   font-weight: bold;
+}
+
+.round-btn-cell.disabled .round-square-btn {
+  opacity: 0.4;
+  cursor: not-allowed;
+  color: var(--ds-text-tertiary);
+}
+.round-btn-cell.disabled .round-square-btn:hover {
+  background: transparent;
+}
+.round-btn-cell.disabled .round-result-icon {
+  opacity: 0.6;
 }
 
 .round-underline-static {

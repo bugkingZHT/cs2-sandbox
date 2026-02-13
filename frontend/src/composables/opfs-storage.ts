@@ -20,6 +20,12 @@ export interface CleanupOrphanedResult {
   count: number;
 }
 
+const REPLAYS_DIR_NAME = 'replays';
+
+function roundFileName(roundNum: number): string {
+  return `round_${roundNum}.pb`;
+}
+
 export class OPFSReplayStorage {
   private root: FileSystemDirectoryHandle | null = null;
 
@@ -46,7 +52,7 @@ export class OPFSReplayStorage {
   async saveRound(uuid: string, roundNum: number, roundBytes: Uint8Array): Promise<void> {
     console.log(`[OPFS] 💾 Saving round ${roundNum} for UUID: ${uuid}, size: ${roundBytes.byteLength} bytes`);
     const replayDir = await this.getReplayDir(uuid);
-    const fileHandle = await replayDir.getFileHandle(`round_${roundNum}.pb`, { create: true });
+    const fileHandle = await replayDir.getFileHandle(roundFileName(roundNum), { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(roundBytes as any);
     await writable.close();
@@ -57,13 +63,19 @@ export class OPFSReplayStorage {
     try {
       console.log(`[OPFS] 📖 Loading round ${roundNum} for UUID: ${uuid}`);
       const replayDir = await this.getReplayDirForRead(uuid);
-      const fileHandle = await replayDir.getFileHandle(`round_${roundNum}.pb`);
+      const fileHandle = await replayDir.getFileHandle(roundFileName(roundNum));
       const file = await fileHandle.getFile();
       const bytes = new Uint8Array(await file.arrayBuffer());
       console.log(`[OPFS] ✅ Round ${roundNum} loaded, size: ${bytes.byteLength} bytes`);
       return bytes;
     } catch (e) {
-      console.warn(`[OPFS] ⚠️ Round ${roundNum} not found for UUID: ${uuid}`);
+      const filePath = this.getRoundFilePath(uuid, roundNum);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      const errName = e instanceof Error && 'name' in e ? (e as { name?: string }).name : '';
+      console.warn(
+        `[OPFS] ⚠️ Round ${roundNum} not found for UUID: ${uuid}, path: ${filePath}`,
+        errName ? `(${errName}: ${errMsg})` : errMsg
+      );
       return null;
     }
   }
@@ -96,24 +108,60 @@ export class OPFSReplayStorage {
     }
   }
 
+  /** Remove a single round file. */
+  async deleteRound(uuid: string, roundNum: number): Promise<void> {
+    try {
+      const replayDir = await this.getReplayDirForRead(uuid);
+      await replayDir.removeEntry(roundFileName(roundNum));
+      console.log(`[OPFS] ✅ Deleted round ${roundNum} for ${uuid}`);
+    } catch (e: any) {
+      if (e.name === 'NotFoundError') {
+        return;
+      }
+      console.warn(`[OPFS] deleteRound ${uuid} round ${roundNum}:`, e);
+    }
+  }
+
   /**
-   * Remove OPFS replay directories that have no corresponding meta in IndexedDB
-   * (e.g. parsing started but meta was never saved, or meta was deleted).
+   * Remove OPFS replay directories that have no corresponding meta in IndexedDB.
+   * When maxSurge is set: only run cleanup when orphan count > maxSurge; then delete oldest (by file time) until count <= maxSurge.
+   * When maxSurge is omitted: delete all orphaned (legacy behavior).
    * Also removes any legacy 战术本-related directories if present.
    */
-  async cleanupOrphanedReplays(): Promise<CleanupOrphanedResult> {
+  async cleanupOrphanedReplays(maxSurge?: number): Promise<CleanupOrphanedResult> {
     const opfsUuids = await this.listAllReplays();
     const metaStorage = await getMetaStorage();
     const metas = await metaStorage.loadAllMetas();
     const metaUuidSet = new Set(metas.map(m => m.uuid));
     const orphaned = opfsUuids.filter(uuid => !metaUuidSet.has(uuid));
     const deleted: string[] = [];
-    for (const uuid of orphaned) {
-      try {
-        await this.deleteReplay(uuid);
-        deleted.push(uuid);
-      } catch (e) {
-        console.error(`[OPFS] Cleanup failed for ${uuid}:`, e);
+    if (maxSurge != null && maxSurge >= 0) {
+      if (orphaned.length <= maxSurge) {
+        await this.cleanupLegacyTacticDirs();
+        return { deleted, count: 0 };
+      }
+      const toRemove = orphaned.length - maxSurge;
+      const withTime: { uuid: string; lastModified: number }[] = await Promise.all(
+        orphaned.map(async (uuid) => ({ uuid, lastModified: await this.getReplayDirOldestTime(uuid) }))
+      );
+      withTime.sort((a, b) => a.lastModified - b.lastModified);
+      const toDelete = withTime.slice(0, toRemove).map((x) => x.uuid);
+      for (const uuid of toDelete) {
+        try {
+          await this.deleteReplay(uuid);
+          deleted.push(uuid);
+        } catch (e) {
+          console.error(`[OPFS] Cleanup failed for ${uuid}:`, e);
+        }
+      }
+    } else {
+      for (const uuid of orphaned) {
+        try {
+          await this.deleteReplay(uuid);
+          deleted.push(uuid);
+        } catch (e) {
+          console.error(`[OPFS] Cleanup failed for ${uuid}:`, e);
+        }
       }
     }
     await this.cleanupLegacyTacticDirs();
@@ -141,7 +189,12 @@ export class OPFSReplayStorage {
     if (!this.root) {
       throw new Error('OPFS not initialized. Call init() first.');
     }
-    return await this.root.getDirectoryHandle('replays', { create: true });
+    return await this.root.getDirectoryHandle(REPLAYS_DIR_NAME, { create: true });
+  }
+
+  /** 与 getReplaysDir / getReplayDir / roundFileName 一致的逻辑路径，仅用于日志 */
+  private getRoundFilePath(uuid: string, roundNum: number): string {
+    return `${REPLAYS_DIR_NAME}/${uuid}/${roundFileName(roundNum)}`;
   }
 
   private async getReplayDir(uuid: string): Promise<FileSystemDirectoryHandle> {
@@ -153,6 +206,23 @@ export class OPFSReplayStorage {
   private async getReplayDirForRead(uuid: string): Promise<FileSystemDirectoryHandle> {
     const replaysDir = await this.getReplaysDir();
     return await replaysDir.getDirectoryHandle(uuid);
+  }
+
+  /** 返回该 replay 目录下所有文件中最小的 lastModified（用于按时间排序清理）；无文件时返回 Infinity。 */
+  private async getReplayDirOldestTime(uuid: string): Promise<number> {
+    try {
+      const replayDir = await this.getReplayDirForRead(uuid);
+      let minTime = Infinity;
+      for await (const entry of (replayDir as any).values()) {
+        if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          if (file.lastModified < minTime) minTime = file.lastModified;
+        }
+      }
+      return minTime;
+    } catch {
+      return Infinity;
+    }
   }
 
   // Debug helper: List all files in OPFS for inspection
@@ -211,10 +281,10 @@ export async function getOPFSStorage(): Promise<OPFSReplayStorage> {
   return initPromise;
 }
 
-/** One-click cleanup: delete OPFS replay dirs that have no meta in IndexedDB. */
-export async function cleanupOrphanedReplayStorage(): Promise<CleanupOrphanedResult> {
+/** Cleanup OPFS replay dirs that have no meta in IndexedDB. When maxSurge is set, only trim to that many (delete oldest first). */
+export async function cleanupOrphanedReplayStorage(maxSurge?: number): Promise<CleanupOrphanedResult> {
   const storage = await getOPFSStorage();
-  return storage.cleanupOrphanedReplays();
+  return storage.cleanupOrphanedReplays(maxSurge);
 }
 
 // ========== Debug Helpers for Browser Console ==========

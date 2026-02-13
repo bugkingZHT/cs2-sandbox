@@ -36,11 +36,23 @@ func RequireAuth(store *Store, next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// OptionalAuth runs session lookup and sets user in context when valid; does not return 401 when missing. Use for routes that allow anonymous access with optional login (e.g. public archive view).
+func OptionalAuth(store *Store, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var u *user.User
+		if cookie, err := r.Cookie("session_id"); err == nil && cookie != nil && cookie.Value != "" {
+			_, u, _ = store.GetBySessionID(cookie.Value)
+		}
+		ctx := context.WithValue(r.Context(), userContextKey, u)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
 func writeJSONError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":    false,
-		"error": msg,
+		"status": "error",
+		"error":  msg,
 	})
 }

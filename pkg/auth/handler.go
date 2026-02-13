@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -43,11 +44,11 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 func writeJSONOK(w http.ResponseWriter, data interface{}) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "data": data})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "OK", "data": data})
 }
 
-func writeJSONErr(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]interface{}{"ok": false, "error": msg})
+func writeJSONErr(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]interface{}{"status": "error", "error": msg})
 }
 
 // Login handles POST /api/auth/login.
@@ -58,6 +59,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("[Auth] Login: invalid JSON: %v", err)
 		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
@@ -65,26 +67,32 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusBadRequest, "username and password required")
 		return
 	}
+	log.Printf("[Auth] Login: attempt username=%s", req.Username)
 	u, err := h.User.GetByUsername(req.Username)
 	if err != nil {
+		log.Printf("[Auth] Login: user not found username=%s", req.Username)
 		writeJSONErr(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 	if u.Status != user.StatusActive {
+		log.Printf("[Auth] Login: account disabled uid=%s", u.UID)
 		writeJSONErr(w, http.StatusUnauthorized, "account disabled")
 		return
 	}
 	if !ComparePassword(u.PasswordHash, req.Password) {
+		log.Printf("[Auth] Login: password mismatch username=%s", req.Username)
 		writeJSONErr(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 	sessionID, err := newSessionID()
 	if err != nil {
+		log.Printf("[Auth] Login: newSessionID failed: %v", err)
 		writeJSONErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	expiresAt := time.Now().Add(sessionTTL)
 	if err := h.Session.Create(sessionID, u.ID, expiresAt); err != nil {
+		log.Printf("[Auth] Login: Session.Create failed uid=%s: %v", u.UID, err)
 		writeJSONErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -92,6 +100,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		// non-fatal, continue
 	}
 	setSessionCookie(w, sessionID, expiresAt)
+	log.Printf("[Auth] Login: ok uid=%s username=%s", u.UID, u.Username)
 	writeJSONOK(w, UserSummary{UID: u.UID, Username: u.Username})
 }
 
@@ -103,6 +112,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if c, _ := r.Cookie(cookieName); c != nil && c.Value != "" {
 		_ = h.Session.DeleteBySessionID(c.Value)
+		log.Printf("[Auth] Logout: session cleared")
 	}
 	clearSessionCookie(w)
 	writeJSONOK(w, nil)
@@ -112,6 +122,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	u := session.UserFromContext(r.Context())
 	if u == nil {
+		log.Printf("[Auth] Me: not logged in")
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
@@ -137,6 +148,7 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	var req ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("[Auth] ChangePassword: invalid JSON uid=%s: %v", u.UID, err)
 		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
@@ -145,21 +157,25 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ComparePassword(u.PasswordHash, req.OldPassword) {
+		log.Printf("[Auth] ChangePassword: old password wrong uid=%s", u.UID)
 		writeJSONErr(w, http.StatusBadRequest, "旧密码错误")
 		return
 	}
 	newHash, err := HashPassword(req.NewPassword)
 	if err != nil {
+		log.Printf("[Auth] ChangePassword: HashPassword failed: %v", err)
 		writeJSONErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if err := h.User.UpdatePassword(u.ID, newHash); err != nil {
+		log.Printf("[Auth] ChangePassword: UpdatePassword failed uid=%s: %v", u.UID, err)
 		writeJSONErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	// 密码修改后清理该用户所有 session，强制所有端重新登录
 	_ = h.Session.DeleteByUserID(u.ID)
 	clearSessionCookie(w)
+	log.Printf("[Auth] ChangePassword: ok uid=%s", u.UID)
 	writeJSONOK(w, nil)
 }
 

@@ -1,10 +1,16 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
 import ParserWorker from '@/workers/wasm-parser.worker?worker';
-import { getOPFSStorage } from './opfs-storage';
+import { getOPFSStorage, cleanupOrphanedReplayStorage } from './opfs-storage';
 import { getMetaStorage } from './indexdb-storage';
 import { decodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
 import { PARSER_CONFIG } from '@/config/parser';
+import {
+  MAX_SURGE_DEMO_NUM_KEY,
+  MAX_SURGE_DEMO_NUM_DEFAULT,
+  PARSING_ROUND_LIMIT_KEY,
+  PARSE_FRAME_RATIO_KEY,
+} from '@/config/debug';
 import { ParsingMonitor } from './parsingMonitor';
 import { adaptMeta, adaptRound, checkCompatibility } from './replayDataAdapter';
 
@@ -27,6 +33,16 @@ interface UseReplayResult {
   deleteReplayById: (id: string) => Promise<void>;
   /** 等待首次 loadAllReplays 完成，与 demolib 一致，避免 replayer 刷新时竞态 */
   waitForInitialLoad: () => Promise<void>;
+  /** replayer 路由下加载失败原因：'not_found' 未找到回放，'forbidden' 回放无权限，null 无错误 */
+  replayRouteError: ReturnType<typeof ref<'not_found' | 'forbidden' | null>>;
+  /** 从云端下载回合时的进度；lengthComputable 为 true 时可展示百分比，false 时仅展示加载样式，null 时尚未确定 */
+  cloudDownloadProgress: ReturnType<typeof ref<{ active: boolean; progress: number; lengthComputable: boolean | null }>>;
+  /** 当前 replayer 来源：'local' | 'cloud'，用于 loadRoundData 与 URL 同步 */
+  replayerSource: ReturnType<typeof ref<'local' | 'cloud' | null>>;
+  /** 当前云存档 id（source=cloud 时），用于避免重复加载同一 archive */
+  replayerArchiveId: ReturnType<typeof ref<string | null>>;
+  loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
+  loadReplayByCloud: (archiveId: string) => Promise<void>;
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
@@ -47,6 +63,10 @@ function createReplayData() {
   const bounds = ref<WorldBounds | null>(null);
   const currentRoundNumber = ref<number>(1);
   const showUploadBlockedWarning = ref<{ fileName: string; progress: number } | null>(null);
+  const replayRouteError = ref<'not_found' | 'forbidden' | null>(null);
+  const cloudDownloadProgress = ref<{ active: boolean; progress: number; lengthComputable: boolean | null }>({ active: false, progress: 0, lengthComputable: null });
+  const replayerSource = ref<'local' | 'cloud' | null>(null);
+  const replayerArchiveId = ref<string | null>(null);
 
   const abortController = new AbortController();
   let initialLoadPromise: Promise<void> | null = null;
@@ -58,23 +78,15 @@ function createReplayData() {
   const loadAllReplays = async () => {
     console.log('[LoadAllReplays] 开始加载所有回放元数据');
     const metaStorage = await getMetaStorage();
-    const opfsStorage = await getOPFSStorage();
-    
+
     // Step 1: 从 IndexedDB 加载所有 meta
     const metas = await metaStorage.loadAllMetas();
     console.log('[LoadAllReplays] 从 IndexedDB 加载的 meta 数量:', metas.length);
     
-    // Step 2: 从 OPFS 获取所有 UUID（用于清理孤立目录）
-    const opfsUUIDs = await opfsStorage.listAllReplays();
-    const metaUUIDs = new Set(metas.map(m => m.uuid));
-    
-    // Step 3: 清理 OPFS 中孤立的目录（meta 已删除但 round 文件仍存在）
-    const orphanDirs = opfsUUIDs.filter(uuid => !metaUUIDs.has(uuid));
-    for (const uuid of orphanDirs) {
-      console.log(`[LoadAllReplays] 清理孤立的 OPFS 目录: ${uuid}`);
-      await opfsStorage.deleteReplay(uuid);
-    }
-    
+    // Step 2 & 3: 清理 OPFS 泄露（无 meta 的目录），超过 maxSurgeDemoNum 时按时间从旧到新清理至该数以内
+    const maxSurge = Math.max(0, parseInt(localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY) ?? String(MAX_SURGE_DEMO_NUM_DEFAULT), 10)) || MAX_SURGE_DEMO_NUM_DEFAULT;
+    await cleanupOrphanedReplayStorage(maxSurge);
+
     // Step 4: 直接映射 meta 到 replayList（无需 cache 合并）
     replayList.value = metas.map(meta => ({
       ...meta,
@@ -166,53 +178,188 @@ function createReplayData() {
   };
 
   const loadReplayById = async (uuid: string) => {
-    console.log('[LoadReplayById] 开始加载回放，UUID:', uuid);
-    try {
-      // 不设置 loading 状态，避免触发 UI 重渲染
-      const data = await loadReplayFromOPFS(uuid);
-      console.log('[LoadReplayById] 从数据库获取的数据:', data ? '存在数据' : '未找到数据', { frameCount: data?.frames?.length });
-      if (data) {
-        console.log('[LoadReplayById] 准备设置回放数据，帧数量:', data.frames?.length);
-        currentRoundNumber.value = 1; // Reset to first round
-        setReplayData(data);
-        localStorage.setItem(LATEST_KEY, uuid);
-        console.log('[LoadReplayById] 回放数据设置完成，已更新最新UUID');
-      } else {
-        console.warn('[LoadReplayById] 未找到UUID为', uuid, '的回放数据');
-      }
-    } catch (e) {
-      console.error('Failed to load replay', e);
+    await loadReplayByLocal(uuid, 1);
+    if (!replayRouteError.value) {
+      localStorage.setItem(LATEST_KEY, uuid);
     }
   };
 
-  // Load specific round data and update frames
+  // Apply decoded round bytes to frames and bounds (shared after loading from local or cloud).
+  const applyRoundBytes = async (roundBytes: Uint8Array, roundNumber: number) => {
+    const engineVersion = replay.value?.engineVersion;
+    const round = adaptRound(await decodeReplayRound(roundBytes), engineVersion);
+    const sortedFrames = round.frames.sort((a, b) => a.timeMs - b.timeMs);
+    frames.value = sortedFrames;
+    currentRoundNumber.value = roundNumber;
+    requestIdleCallback(() => {
+      bounds.value = estimateBounds(frames.value);
+    }, { timeout: 100 });
+  };
+
+  // Fetch round file from cloud with progress; returns arraybuffer on 2xx, throws on error.
+  const fetchRoundFileFromCloud = (demoUuid: string, demoRound: number): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const url = `/api/archive/file?demo_uuid=${encodeURIComponent(demoUuid)}&demo_round=${demoRound}`;
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url);
+      xhr.withCredentials = true;
+      xhr.responseType = 'arraybuffer';
+      xhr.onprogress = (e) => {
+        const prev = cloudDownloadProgress.value;
+        const lengthComputable = prev.lengthComputable ?? e.lengthComputable;
+        if (e.lengthComputable && e.total > 0) {
+          cloudDownloadProgress.value = { active: true, progress: Math.round((e.loaded / e.total) * 100), lengthComputable: true };
+        } else {
+          cloudDownloadProgress.value = { active: true, progress: prev.progress, lengthComputable: lengthComputable ?? false };
+        }
+      };
+      xhr.onload = () => {
+        cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+          resolve(xhr.response);
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => {
+        cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+        reject(new Error('Network error'));
+      };
+      xhr.onabort = () => {
+        cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+        reject(new Error('Aborted'));
+      };
+      xhr.send();
+    });
+  };
+
+  /** 本地录像：IndexedDB meta + OPFS uuid 路径，找不到即 not_found */
+  const loadReplayByLocal = async (uuid: string, roundNumber: number) => {
+    replayRouteError.value = null;
+    replayerSource.value = 'local';
+    replayerArchiveId.value = null;
+    try {
+      const metaStorage = await getMetaStorage();
+      const opfsStorage = await getOPFSStorage();
+      const rawMeta = await metaStorage.loadMeta(uuid);
+      if (!rawMeta) {
+        replayRouteError.value = 'not_found';
+        return;
+      }
+      const meta = adaptMeta(rawMeta);
+      setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
+      const roundBytes = await opfsStorage.loadRound(uuid, roundNumber);
+      if (!roundBytes) {
+        replayRouteError.value = 'not_found';
+        return;
+      }
+      await applyRoundBytes(roundBytes, roundNumber);
+    } catch (e) {
+      console.error('[LoadReplayByLocal]', e);
+      replayRouteError.value = 'not_found';
+    }
+  };
+
+  /** 云录像：GET item 拿 meta，用返回的 demo_uuid/demo_round 查 OPFS；有则复用，无则从服务器拉取并写入 OPFS */
+  const loadReplayByCloud = async (archiveId: string) => {
+    replayRouteError.value = null;
+    replayerSource.value = 'cloud';
+    replayerArchiveId.value = archiveId;
+    try {
+      const opfsStorage = await getOPFSStorage();
+      const res = await fetch(`/api/archive/items/${encodeURIComponent(archiveId)}`, { credentials: 'include' });
+      if (res.status === 403) {
+        replayRouteError.value = 'forbidden';
+        return;
+      }
+      if (res.status === 404) {
+        replayRouteError.value = 'not_found';
+        return;
+      }
+      if (!res.ok) {
+        replayRouteError.value = 'not_found';
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      const data = (json as { data?: { demo_uuid: string; demo_round: number; demo_meta?: string; title?: string } }).data;
+      if (!data?.demo_uuid) {
+        replayRouteError.value = 'not_found';
+        return;
+      }
+      const demoUuid = data.demo_uuid;
+      const demoRound = data.demo_round ?? 1;
+      let meta: ReplayMeta;
+      try {
+        const parsed = data.demo_meta ? (JSON.parse(data.demo_meta) as ReplayMeta) : null;
+        meta = parsed ? adaptMeta(parsed) : {
+          uuid: demoUuid,
+          uploaderUid: '',
+          uploadTime: 0,
+          mapName: '',
+          teamCT: '',
+          teamT: '',
+          scoreCT: 0,
+          scoreT: 0,
+          totalRounds: 0,
+          totalFrames: 0,
+          status: 1,
+          totalDurationMs: 0,
+        };
+      } catch {
+        meta = {
+          uuid: demoUuid,
+          uploaderUid: '',
+          uploadTime: 0,
+          mapName: '',
+          teamCT: '',
+          teamT: '',
+          scoreCT: 0,
+          scoreT: 0,
+          totalRounds: 0,
+          totalFrames: 0,
+          status: 1,
+          totalDurationMs: 0,
+        };
+      }
+      setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
+      const roundBytes = await opfsStorage.loadRound(demoUuid, demoRound);
+      if (roundBytes) {
+        await applyRoundBytes(roundBytes, demoRound);
+        return;
+      }
+      cloudDownloadProgress.value = { active: true, progress: 0, lengthComputable: null };
+      try {
+        const buf = await fetchRoundFileFromCloud(demoUuid, demoRound);
+        const roundBytesFetched = new Uint8Array(buf);
+        await opfsStorage.saveRound(demoUuid, demoRound, roundBytesFetched);
+        await applyRoundBytes(roundBytesFetched, demoRound);
+      } catch (e) {
+        console.warn('[LoadReplayByCloud] file fetch failed:', e);
+        replayRouteError.value = 'not_found';
+      }
+    } catch (e) {
+      console.error('[LoadReplayByCloud]', e);
+      replayRouteError.value = 'not_found';
+    }
+  };
+
+  /** 切换回合：仅 local 模式从 OPFS 加载；cloud 单回合不切换 */
   const loadRoundData = async (uuid: string, roundNumber: number) => {
-    console.log('[LoadRoundData] Loading round', roundNumber, 'for UUID:', uuid);
+    replayRouteError.value = null;
+    if (replayerSource.value === 'cloud') {
+      return;
+    }
     try {
       const storage = await getOPFSStorage();
       const roundBytes = await storage.loadRound(uuid, roundNumber);
-
       if (!roundBytes) {
-        console.warn('[LoadRoundData] Round', roundNumber, 'not found');
+        replayRouteError.value = 'not_found';
         return;
       }
-
-      const engineVersion = replay.value?.engineVersion;
-      const round = adaptRound(await decodeReplayRound(roundBytes), engineVersion);
-      console.log('[LoadRoundData] Loaded round', roundNumber, 'with', round.frames.length, 'frames');
-      
-      // Sort and update frames
-      const sortedFrames = round.frames.sort((a, b) => a.timeMs - b.timeMs);
-      frames.value = sortedFrames;
-      currentRoundNumber.value = roundNumber;
-      
-      // Recalculate bounds if needed
-      requestIdleCallback(() => {
-        bounds.value = estimateBounds(frames.value);
-        console.log('[LoadRoundData] Bounds recalculated for round', roundNumber);
-      }, { timeout: 100 });
+      await applyRoundBytes(roundBytes, roundNumber);
     } catch (e) {
-      console.error('[LoadRoundData] Failed to load round', roundNumber, e);
+      console.error('[LoadRoundData]', e);
+      replayRouteError.value = 'not_found';
     }
   };
 
@@ -464,13 +611,13 @@ function createReplayData() {
       };
 
       let roundLimit: number = -1;
-      const roundLimitStr = localStorage.getItem('demoParsingRoundLimit');
+      const roundLimitStr = localStorage.getItem(PARSING_ROUND_LIMIT_KEY);
       if (roundLimitStr) {
         const parsedLimit = parseInt(roundLimitStr, 10);
         if (parsedLimit > 0) roundLimit = parsedLimit;
       }
       let frameRatio = 1;
-      const frameRatioStr = localStorage.getItem('demoParsingFrameRatio');
+      const frameRatioStr = localStorage.getItem(PARSE_FRAME_RATIO_KEY);
       if (frameRatioStr) {
         const n = parseInt(frameRatioStr, 10);
         if (!isNaN(n) && n >= 1) frameRatio = n;
@@ -554,6 +701,12 @@ function createReplayData() {
     loadRoundData,
     deleteReplayById,
     waitForInitialLoad,
+    replayRouteError,
+    cloudDownloadProgress,
+    replayerSource,
+    replayerArchiveId,
+    loadReplayByLocal,
+    loadReplayByCloud,
   };
 }
 

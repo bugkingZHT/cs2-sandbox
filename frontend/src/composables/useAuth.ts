@@ -7,6 +7,21 @@ export interface AuthUser {
 
 const currentUser = ref<AuthUser | null>(null);
 
+/** 在页面挂载前调用，校验 session 并设置 currentUser，避免首屏闪烁。应在 main.ts 中 await 后再 mount。 */
+export async function initAuth(): Promise<void> {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status === 'OK' && json?.data) {
+      currentUser.value = { uid: json.data.uid, username: json.data.username };
+    } else {
+      currentUser.value = null;
+    }
+  } catch {
+    currentUser.value = null;
+  }
+}
+
 export function useAuth() {
   /** 发现 session 过期时调用：清除本地用户并触发 toast（任何需要登录的接口返回 401 时都应触发） */
   const handleSessionExpired = () => {
@@ -22,7 +37,7 @@ export function useAuth() {
     try {
       const res = await fetch('/api/auth/me', { credentials: 'include' });
       const json = await res.json().catch(() => ({}));
-      if (res.ok && json?.ok && json?.data) {
+      if (res.ok && json?.status === 'OK' && json?.data) {
         currentUser.value = { uid: json.data.uid, username: json.data.username };
       } else {
         currentUser.value = null;

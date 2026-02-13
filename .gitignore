@@ -62,3 +62,4 @@ test/manifests/*
 !test/manifests/.gitkeep
 frontend/public/backGroundMap.zip
 *.psd
+test/storage/*

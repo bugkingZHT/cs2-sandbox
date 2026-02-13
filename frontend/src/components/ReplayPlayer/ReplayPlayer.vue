@@ -2,15 +2,64 @@
   <div class="viewer-layout">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
-      <!-- 空状态提示 -->
-      <div v-if="!replay || !frames || frames.length === 0" class="empty-state">
-        <div class="empty-state-content">
+      <!-- Cover：按优先级只显示一种（route_loading / cloud_download / not_found / forbidden / no_data） -->
+      <div
+        v-if="coverType !== 'none'"
+        class="empty-state"
+        :class="{
+          'empty-state-not-found': coverType === 'not_found',
+          'empty-state-forbidden': coverType === 'forbidden',
+        }"
+      >
+        <!-- 1. 路由加载中 -->
+        <div v-if="coverType === 'route_loading'" class="empty-state-content empty-state-route-loading">
+          <div class="cover-spinner-container">
+            <div class="cover-spinner"></div>
+          </div>
+          <p class="cover-status">正在加载回放…</p>
+        </div>
+        <!-- 2. 云端下载回合 -->
+        <div v-else-if="coverType === 'cloud_download'" class="empty-state-content empty-state-cloud-download">
+          <div class="empty-icon">↓</div>
+          <h3>正在从云端下载回合</h3>
+          <div class="empty-state-download-track">
+            <div
+              class="empty-state-download-bar"
+              :class="{
+                'is-determinate': cloudDownloadProgress?.lengthComputable === true,
+                'is-indeterminate': cloudDownloadProgress?.lengthComputable === false,
+              }"
+              :style="downloadBarStyle"
+            ></div>
+          </div>
+          <p class="empty-state-download-percent">
+            {{ cloudDownloadProgress?.lengthComputable === true ? progress + '%' : '下载中…' }}
+          </p>
+        </div>
+        <!-- 3. 未找到回放 -->
+        <div v-else-if="coverType === 'not_found'" class="empty-state-content">
+          <div class="empty-icon empty-icon-not-found" aria-hidden="true">
+            <img src="/icons/notfound.svg" alt="" class="empty-icon-img" />
+          </div>
+          <h3>未找到回放</h3>
+          <p>该回放不存在或尚未同步到本机</p>
+        </div>
+        <!-- 4. 回放无权限 -->
+        <div v-else-if="coverType === 'forbidden'" class="empty-state-content">
+          <div class="empty-icon empty-icon-forbidden" aria-hidden="true">
+            <img src="/icons/unable.svg" alt="" class="empty-icon-img" />
+          </div>
+          <h3>回放无权限</h3>
+          <p>你没有权限访问此云存档回合</p>
+        </div>
+        <!-- 5. 暂无回放数据（兜底） -->
+        <div v-else class="empty-state-content">
           <div class="empty-icon">·</div>
           <h3>暂无回放数据</h3>
           <p>请从 Demo 库选择文件</p>
         </div>
       </div>
-      
+
       <!-- 地图画布 -->
       <div v-else class="map-canvas-wrapper">
         <MapCanvas 
@@ -403,6 +452,7 @@
         :round-results="replay?.roundResults || []"
         :replay-meta="replay"
         :pure-mode="pureMode"
+        :cloud-replay="replayerSource === 'cloud'"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -436,6 +486,7 @@ const pureMode = ref(false);
 // 左上角小眼睛：非纯净模式下可单独隐藏左侧玩家卡 + 右侧击杀
 const showOverlayPanels = ref(true);
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
+const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
 if (replayerPureMode) {
   watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
 }
@@ -455,7 +506,25 @@ onMounted(() => {
   if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
 });
 
-const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB } = useReplayData();
+const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource } = useReplayData();
+
+/** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
+type CoverType = 'route_loading' | 'cloud_download' | 'not_found' | 'forbidden' | 'no_data' | 'none';
+const coverType = computed<CoverType>(() => {
+  if (cloudDownloadProgress.value?.active) return 'cloud_download';
+  if (replayerRouteLoading?.value) return 'route_loading';
+  if (replayRouteError.value === 'not_found') return 'not_found';
+  if (replayRouteError.value === 'forbidden') return 'forbidden';
+  if (!replay.value || !frames.value || frames.value.length === 0) return 'no_data';
+  return 'none';
+});
+
+const progress = computed(() => cloudDownloadProgress.value?.progress ?? 0);
+const downloadBarStyle = computed(() => {
+  if (cloudDownloadProgress.value?.lengthComputable !== true) return {};
+  const p = progress.value;
+  return { width: `${p}%`, transform: 'none' };
+});
 
 // 投掷物分析功能
 const grenadeAnalyzer = useGrenadeAnalyzer(frames, replay);
@@ -1167,8 +1236,12 @@ const loadRoundData = async (roundNumber: number) => {
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
     
-    // 同步 URL，便于刷新或分享后能定向到当前回合（由 Go 托管 /replayer），并保留 pure 参数
-    const search = `uuid=${replay.value.uuid}&round=${roundNumber}` + (pureMode.value ? '&pure=1' : '');
+    // 同步 URL：local 用 source=local&uuid&round；cloud 保持 source=cloud&archive_id
+    const q = getQuery();
+    const pure = pureMode.value ? '&pure=1' : '';
+    const search = (q.source === 'cloud' && q.archive_id)
+      ? `source=cloud&archive_id=${encodeURIComponent(q.archive_id)}${pure}`
+      : `source=local&uuid=${replay.value.uuid}&round=${roundNumber}${pure}`;
     replaceLocation('/replayer', search);
     
     // Resume playback if it was playing before
@@ -1757,10 +1830,110 @@ onBeforeUnmount(() => {
   background: var(--ds-bg-secondary);
 }
 
+/* 未找到回放：偏中性灰 */
+.empty-state.empty-state-not-found {
+  background: linear-gradient(160deg, #2a2a2e 0%, #1c1c1f 100%);
+}
+
+.empty-state.empty-state-not-found .empty-state-content h3 {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.empty-state.empty-state-not-found .empty-state-content p {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 回放无权限：偏警示/冷色 */
+.empty-state.empty-state-forbidden {
+  background: linear-gradient(160deg, #2a2528 0%, #1f1a1c 50%, #1a1518 100%);
+}
+
+.empty-state.empty-state-forbidden .empty-state-content h3 {
+  color: rgba(235, 180, 180, 0.95);
+}
+
+.empty-state.empty-state-forbidden .empty-state-content p {
+  color: rgba(200, 160, 160, 0.6);
+}
+
 .empty-state-content {
   text-align: center;
   padding: var(--ds-space-3xl);
   max-width: 400px;
+}
+
+/* 路由加载中：转圈 + 文案（与原先 App 遮罩一致） */
+.empty-state-content.empty-state-route-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-lg);
+}
+.cover-spinner-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: var(--ds-space-2xl) 0;
+}
+.cover-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-primary);
+  border-radius: 50%;
+  animation: cover-spin 0.8s linear infinite;
+}
+@keyframes cover-spin {
+  to { transform: rotate(360deg); }
+}
+.cover-status {
+  margin: 0;
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-base);
+}
+
+/* 云端下载中：进度条 + 百分比 */
+.empty-state-content.empty-state-cloud-download {
+  min-width: 260px;
+}
+.empty-state-cloud-download .empty-icon {
+  font-size: 48px;
+  margin-bottom: var(--ds-space-md);
+}
+.empty-state-download-track {
+  width: 100%;
+  height: 8px;
+  background: var(--ds-border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: var(--ds-space-md) 0 var(--ds-space-xs);
+}
+.empty-state-download-bar {
+  display: block;
+  height: 100%;
+  width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border-radius: 4px;
+  transition: width 0.15s ease;
+}
+.empty-state-download-bar.is-determinate {
+  background: var(--ds-primary);
+}
+.empty-state-download-bar.is-indeterminate {
+  background: var(--ds-primary);
+  width: 36% !important;
+  animation: download-bar-indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes download-bar-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.empty-state-download-percent {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
 }
 
 .empty-icon {
@@ -1768,6 +1941,28 @@ onBeforeUnmount(() => {
   margin-bottom: var(--ds-space-xl);
   opacity: 0.6;
   animation: float 3s ease-in-out infinite;
+}
+
+.empty-icon-not-found,
+.empty-icon-forbidden {
+  width: 80px;
+  height: 80px;
+  margin-left: auto;
+  margin-right: auto;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.empty-icon-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.empty-icon-not-found svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 @keyframes float {

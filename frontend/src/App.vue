@@ -55,9 +55,9 @@
       <div class="cloud-archive-section">
         <div
           class="cloud-archive-header"
-          :class="{ 'is-collapsed': sidebarCollapsed, 'is-disabled': sidebarCollapsed && !canAddToArchive }"
-          :title="sidebarCollapsed ? (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合') : undefined"
-          @click="sidebarCollapsed && canAddToArchive && handleAddToArchive()"
+          :class="{ 'is-collapsed': sidebarCollapsed, 'is-disabled': sidebarCollapsed && (!canAddToArchive || !currentUser) }"
+          :title="sidebarCollapsed ? (!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')) : undefined"
+          @click="sidebarCollapsed && currentUser && canAddToArchive && handleAddToArchive()"
         >
           <img src="/icons/cloud.svg" alt="" class="cloud-archive-icon" />
           <span v-show="!sidebarCollapsed" class="cloud-archive-title">云存档</span>
@@ -65,8 +65,8 @@
             v-show="!sidebarCollapsed"
             type="button"
             class="cloud-archive-add-btn"
-            :title="canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合'"
-            :disabled="!canAddToArchive"
+            :title="!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')"
+            :disabled="!currentUser || !canAddToArchive || archiveUploading"
             @click="handleAddToArchive"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -76,7 +76,14 @@
           </button>
         </div>
         <div v-show="!sidebarCollapsed" class="cloud-archive-list-wrap">
-          <div v-if="archiveList.length === 0" class="cloud-archive-empty">暂无存档</div>
+          <div v-if="archiveUploading" class="cloud-archive-upload-progress">
+            <div class="cloud-archive-upload-progress-track">
+              <div class="cloud-archive-upload-progress-bar" :style="{ width: archiveUploadProgress + '%' }"></div>
+            </div>
+            <span class="cloud-archive-upload-progress-text">上传中 {{ archiveUploadProgress }}%</span>
+          </div>
+          <div v-else-if="!currentUser" class="cloud-archive-empty">请先登录</div>
+          <div v-else-if="archiveList.length === 0" class="cloud-archive-empty">暂无存档</div>
           <div v-else class="cloud-archive-list">
             <div
               v-for="(item, index) in archiveList"
@@ -223,18 +230,9 @@
         @upload-demo="onUploadDemo"
       />
 
-      <!-- Player Page -->
+      <!-- Player Page：cover 状态（含「正在加载回放…」）统一在 ReplayPlayer 内按优先级渲染，此处仅挂载 -->
       <template v-if="currentPage === 'player'">
-        <div v-if="replayerRouteLoading" class="replayer-loading-overlay">
-          <div class="replayer-loading-modal">
-            <div class="spinner-container">
-              <div class="spinner"></div>
-            </div>
-            <p class="replayer-loading-status">正在加载回放…</p>
-          </div>
-        </div>
         <ReplayPlayer
-          v-else
           @exit-replay="onExitReplay"
         />
       </template>
@@ -321,6 +319,8 @@ const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/Pa
 import { useReplayData } from '@/composables/useReplayData';
 import { useCloudArchive, type CloudArchiveItem } from '@/composables/useCloudArchive';
 import { useAuth } from '@/composables/useAuth';
+import { getOPFSStorage } from '@/composables/opfs-storage';
+import { getMetaStorage } from '@/composables/indexdb-storage';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
 import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery } from '@/location';
@@ -334,10 +334,15 @@ const {
   parseDemo,
   loadReplayById,
   loadRoundData,
+  loadReplayByLocal,
+  loadReplayByCloud,
   deleteReplayById,
   replay,
   currentRoundNumber,
   waitForInitialLoad,
+  replayRouteError,
+  replayerSource,
+  replayerArchiveId,
 } = useReplayData();
 
 const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
@@ -356,11 +361,12 @@ const replayerPureMode = ref(false); // 播放器内「纯净模式」时隐藏�
 provide('replayerPureMode', replayerPureMode);
 const showConsoleModal = ref(false);
 const replayerRouteLoading = ref(false);
+provide('replayerRouteLoading', replayerRouteLoading);
 const showBetaModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
 
-const { currentUser, truncatedUsername, fetchAuthMe } = useAuth();
+const { currentUser, truncatedUsername } = useAuth();
 
 const {
   archiveList,
@@ -369,6 +375,7 @@ const {
   removeItem: removeArchiveItemById,
   reorderItems: reorderArchiveItems,
   setItems,
+  updateItem: updateArchiveItem,
 } = useCloudArchive();
 
 const canAddToArchive = computed(
@@ -385,6 +392,8 @@ const archiveAddToast = ref(false);
 const archiveAddToastMessage = ref('已保存到云存档');
 const archiveAddToastType = ref<ToastType>('info');
 let archiveAddToastTimer: ReturnType<typeof setTimeout> | null = null;
+const archiveUploading = ref(false);
+const archiveUploadProgress = ref(0);
 
 function showArchiveToast(message: string, type: ToastType = 'info') {
   if (archiveAddToastTimer) clearTimeout(archiveAddToastTimer);
@@ -410,6 +419,64 @@ async function handleAddToArchive() {
   }
   const r = replay.value;
   const title = r.mapName ? `${r.mapName} · 第 ${round} 回合` : `回合 ${round}`;
+
+  if (currentUser.value) {
+    const opfs = await getOPFSStorage();
+    const roundBytes = await opfs.loadRound(uuid, round);
+    if (!roundBytes || roundBytes.length === 0) {
+      showArchiveToast('请先加载该回合', 'warning');
+      return;
+    }
+    const form = new FormData();
+    form.append('file', new Blob([roundBytes as BlobPart], { type: 'application/octet-stream' }), 'round.pb');
+    form.append('title', title);
+    form.append('demo_uuid', uuid);
+    form.append('demo_round', String(round));
+    form.append('permission', 'private');
+    // 原封不动上传 IndexedDB 中的 demo meta，不裁剪
+    const metaStorage = await getMetaStorage();
+    const fullMeta = await metaStorage.loadMeta(uuid);
+    if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
+
+    archiveUploading.value = true;
+    archiveUploadProgress.value = 0;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/archive/items');
+        xhr.withCredentials = true;
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            archiveUploadProgress.value = Math.round((e.loaded / e.total) * 100);
+          }
+        });
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            try {
+              const j = JSON.parse(xhr.responseText);
+              reject(new Error(j?.error || `HTTP ${xhr.status}`));
+            } catch {
+              reject(new Error(`HTTP ${xhr.status}`));
+            }
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Network error')));
+        xhr.send(form);
+      });
+      await loadArchive();
+      showArchiveToast('已保存到云存档', 'info');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '上传失败';
+      showArchiveToast(msg, 'error');
+    } finally {
+      archiveUploading.value = false;
+      archiveUploadProgress.value = 0;
+    }
+    return;
+  }
+
   const item: CloudArchiveItem = {
     id: crypto.randomUUID(),
     title,
@@ -444,7 +511,7 @@ function formatArchiveTime(ms: number): string {
 }
 
 function goToArchiveItem(item: CloudArchiveItem) {
-  navigate('/replayer', `uuid=${item.demo_uuid}&round=${item.demo_round}`);
+  navigate('/replayer', `source=cloud&archive_id=${encodeURIComponent(item.id)}`);
 }
 
 function onArchiveDragEnd() {
@@ -499,15 +566,22 @@ function startRenameArchive(item: CloudArchiveItem) {
 
 async function saveRenameArchive() {
   if (!renamingArchiveId.value) return;
-  
-  const item = archiveList.value.find(i => i.id === renamingArchiveId.value);
-  if (item && renamingTitle.value.trim() !== '') {
-    const updatedItem = { ...item, title: renamingTitle.value.trim() };
-    const index = archiveList.value.findIndex(i => i.id === renamingArchiveId.value);
-    if (index !== -1) {
-      const newItems = [...archiveList.value];
-      newItems[index] = updatedItem;
-      await setItems(newItems);
+  const title = renamingTitle.value.trim();
+  if (title === '') {
+    cancelRenameArchive();
+    return;
+  }
+  if (currentUser.value) {
+    await updateArchiveItem(renamingArchiveId.value, { title });
+  } else {
+    const item = archiveList.value.find(i => i.id === renamingArchiveId.value);
+    if (item) {
+      const index = archiveList.value.findIndex(i => i.id === renamingArchiveId.value);
+      if (index !== -1) {
+        const newItems = [...archiveList.value];
+        newItems[index] = { ...item, title };
+        await setItems(newItems);
+      }
     }
   }
   cancelRenameArchive();
@@ -629,55 +703,84 @@ function onArchiveDrop(toIndex: number) {
   onArchiveDragEnd();
 }
 
-// 根据当前 URL 的 uuid/round 加载 replayer 数据，并显示加载态（刷新时从 window.location 读以保证拿到 args）
+// 根据 URL source/uuid/round 或 archive_id 加载 replayer 数据
 async function ensureReplayerRouteData() {
-  // 刷新场景下 path/search 可能尚未同步，优先用 window.location
   const path = pathRef.value || window.location.pathname;
   const search = searchRef.value ?? window.location.search;
   pathRef.value = path;
   searchRef.value = search;
 
   const query = getQuery(search);
+  const source = query.source ?? null;
   const uuid = query.uuid ?? null;
   const roundNum = parseInt(query.round || '', 10) || 1;
+  const archiveId = query.archive_id ?? null;
 
-  // pure=1 时从进入 replayer 路由起就隐藏侧边栏（含加载过程）
   if (path === '/replayer') {
     replayerPureMode.value = (query.pure === '1' || query.pure === 'true');
   } else {
     replayerPureMode.value = false;
   }
 
-  if (path !== '/replayer' || !uuid) {
+  const isCloud = source === 'cloud' || (archiveId && source !== 'local');
+  const isLocal = !isCloud && (source === 'local' || uuid);
+
+  if (path !== '/replayer') {
     replayerRouteLoading.value = false;
-    if (path === '/replayer' && !uuid && currentDemoId.value) {
+    return;
+  }
+  if (!isCloud && !isLocal) {
+    replayerRouteLoading.value = false;
+    if (currentDemoId.value) {
       const q = getQuery();
-      const search = `uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}` + (q.pure === '1' || q.pure === 'true' ? '&pure=1' : '');
-      replaceLocation('/replayer', search);
+      const base = `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`;
+      replaceLocation('/replayer', base + (q.pure === '1' || q.pure === 'true' ? '&pure=1' : ''));
     }
     return;
   }
 
+  if (isCloud) {
+    if (!archiveId) {
+      replayerRouteLoading.value = false;
+      return;
+    }
+    const needLoad = !replay.value || replayerSource.value !== 'cloud' || replayerArchiveId.value !== archiveId;
+    if (!needLoad) {
+      replayerRouteLoading.value = false;
+      currentDemoId.value = replay.value?.uuid ?? null;
+      return;
+    }
+    replayerRouteLoading.value = true;
+    currentDemoId.value = null;
+    try {
+      await waitForInitialLoad();
+      await loadReplayByCloud(archiveId);
+      currentDemoId.value = replay.value?.uuid ?? null;
+    } finally {
+      replayerRouteLoading.value = false;
+    }
+    return;
+  }
+
+  if (!uuid) {
+    replayerRouteLoading.value = false;
+    return;
+  }
   const needLoadReplay = !replay.value || replay.value.uuid !== uuid;
   const needLoadRound = !needLoadReplay && currentRoundNumber.value !== roundNum;
-
   if (!needLoadReplay && !needLoadRound) {
     replayerRouteLoading.value = false;
     currentDemoId.value = uuid;
     return;
   }
-
   replayerRouteLoading.value = true;
   currentDemoId.value = uuid;
   try {
     await waitForInitialLoad();
     if (needLoadReplay) {
-      await loadReplayById(uuid);
-    }
-    if (roundNum !== 1 && (needLoadReplay || needLoadRound)) {
+      await loadReplayByLocal(uuid, roundNum);
+    } else if (needLoadRound) {
       await loadRoundData(uuid, roundNum);
-    } else if (needLoadReplay && roundNum === 1) {
-      // loadReplayById 已加载 round 1
     }
   } finally {
     replayerRouteLoading.value = false;
@@ -689,7 +792,7 @@ onMounted(async () => {
   if (stored !== null) {
     sidebarCollapsed.value = stored === 'true';
   }
-  fetchAuthMe();
+  // session 已在 main.ts 中 initAuth 提前校验，此处不再调用 fetchAuthMe 避免重复请求与闪烁
   // 刷新进入 replayer 时立即根据 URL args 加载对局并定位回合
   ensureReplayerRouteData();
   // 等 IndexedDB 初始化完成后再加载云存档，避免刷新后列表为空
@@ -702,6 +805,10 @@ watch(
   () => ensureReplayerRouteData(),
   { deep: true }
 );
+
+watch(currentUser, (user) => {
+  if (user) loadArchive();
+});
 
 watch(sidebarCollapsed, (val) => {
   localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(val));
@@ -719,7 +826,8 @@ watch(currentPage, (newPage) => {
 
 const goToPlayer = () => {
   if (hasSelectedDemo.value) {
-    navigate('/replayer', `uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`);
+    const pure = (getQuery().pure === '1' || getQuery().pure === 'true') ? '&pure=1' : '';
+    navigate('/replayer', `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}${pure}`);
   }
 };
 
@@ -730,7 +838,7 @@ const onLogoError = (event: Event) => {
 
 const onSelectDemo = (demoId: string) => {
   currentDemoId.value = demoId;
-  navigate('/replayer', `uuid=${demoId}&round=1`);
+  navigate('/replayer', `source=local&uuid=${demoId}&round=1`);
 };
 
 const onDeleteDemo = async (demoId: string) => {
@@ -1079,6 +1187,35 @@ const showBetaWarning = () => {
   flex-direction: column;
   gap: var(--ds-space-xs);
   padding: var(--ds-space-xs) 0;
+}
+
+.cloud-archive-upload-progress {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  padding: var(--ds-space-sm);
+  background: var(--ds-surface-base);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+}
+.cloud-archive-upload-progress-track {
+  height: 8px;
+  background: var(--ds-border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cloud-archive-upload-progress-bar {
+  height: 100%;
+  max-width: 100%;
+  background: var(--ds-accent-primary);
+  border-radius: 4px;
+  transition: width 0.15s ease;
+}
+.cloud-archive-upload-progress-text {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .cloud-archive-empty {
@@ -1432,29 +1569,6 @@ const showBetaWarning = () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* === Replayer 路由加载态 === */
-.replayer-loading-overlay {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: var(--ds-bg-primary);
-  animation: fadeIn 0.2s ease;
-}
-
-.replayer-loading-modal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--ds-space-lg);
-}
-
-.replayer-loading-status {
-  margin: 0;
-  color: var(--ds-text-tertiary);
-  font-size: var(--ds-text-base);
 }
 
 /* === Parsing Modal === */

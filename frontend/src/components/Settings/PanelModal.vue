@@ -428,6 +428,21 @@
                   />
                 </div>
               </div>
+              <div
+                v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+                class="parse-option-cell"
+              >
+                <div class="input-group">
+                  <label class="input-label">Max Surge Demo Num</label>
+                  <input
+                    v-model.number="maxSurgeDemoNum"
+                    type="number"
+                    min="0"
+                    class="ds-input round-limit-input"
+                    @change="saveMaxSurgeDemoNum"
+                  />
+                </div>
+              </div>
             </div>
             <div class="debug-actions-right">
               <div class="button-group">
@@ -484,7 +499,15 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { DEBUG_CONFIG } from '@/config/debug';
+import {
+  DEBUG_CONFIG,
+  PARSING_ROUND_LIMIT_KEY,
+  PARSING_ROUND_LIMIT_DEFAULT,
+  PARSE_FRAME_RATIO_KEY,
+  PARSE_FRAME_RATIO_DEFAULT,
+  MAX_SURGE_DEMO_NUM_KEY,
+  MAX_SURGE_DEMO_NUM_DEFAULT,
+} from '@/config/debug';
 import { FRONTEND_VERSION, COMPATIBLE_ENGINE_VERSIONS } from '@/config/version';
 import { cleanupOrphanedReplayStorage } from '@/composables/opfs-storage';
 import { useAuth } from '@/composables/useAuth';
@@ -575,7 +598,7 @@ const handleLogin = async () => {
     
     const data = await response.json();
     
-    if (response.ok && data.ok) {
+    if (response.ok && data.status === 'OK') {
       setUser({ uid: data.data.uid, username: data.data.username });
       loginForm.value = { username: '', password: '' };
       showLoginPassword.value = false;
@@ -657,7 +680,7 @@ const handleChangePassword = async () => {
       showChangePassword.value = false;
       return;
     }
-    if (response.ok && data.ok) {
+    if (response.ok && data.status === 'OK') {
       passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' };
       showOldPassword.value = false;
       showNewPassword.value = false;
@@ -676,10 +699,7 @@ const handleChangePassword = async () => {
   }
 };
 
-// 组件挂载时检查登录状态
-onMounted(() => {
-  fetchAuthMeShared();
-});
+// 登录状态由 main.ts 的 initAuth() 统一在首屏前拉取，此处不再 onMounted 请求，避免刷新时 me 重复请求
 
 // Password change functionality is now handled by UserAuth component
 
@@ -758,13 +778,10 @@ const updateStorageQuota = async () => {
   }
 };
 
-// Round limit configuration: default 999, must be positive integer > 0
-const PARSING_ROUND_LIMIT_KEY = 'demoParsingRoundLimit';
-const roundLimit = ref<number>(999);
-
-// Parse frame ratio: 1=1:1, 2=1:2, N=1:N (default 2, positive integer >= 1)
-const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
-const parseFrameRatio = ref<number>(2);
+// Round limit / parse frame ratio / max surge: keys and defaults from @/config/debug
+const roundLimit = ref<number>(PARSING_ROUND_LIMIT_DEFAULT);
+const parseFrameRatio = ref<number>(PARSE_FRAME_RATIO_DEFAULT);
+const maxSurgeDemoNum = ref<number>(MAX_SURGE_DEMO_NUM_DEFAULT);
 
 // Real-time update for usage info when debug tab is open (1s refresh)
 watch(activeTab, (tab) => {
@@ -802,6 +819,15 @@ onMounted(() => {
       if (!isNaN(parsedLimit) && parsedLimit > 0) {
         roundLimit.value = Math.floor(parsedLimit);
       }
+    }
+  }
+
+  // Load maxSurgeDemoNum from localStorage (default 32)
+  if (DEBUG_CONFIG.enableOPFSStorageViewer) {
+    const savedSurge = localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY);
+    if (savedSurge !== null) {
+      const n = parseInt(savedSurge, 10);
+      if (!isNaN(n) && n >= 0) maxSurgeDemoNum.value = n;
     }
   }
 
@@ -858,35 +884,48 @@ const updateWasmMemory = () => {
   }
 };
 
-// Save round limit to localStorage (must be > 0 integer, default 999)
+// Save round limit to localStorage (must be > 0 integer)
 const saveRoundLimit = () => {
   const v = Math.floor(Number(roundLimit.value));
   if (typeof roundLimit.value !== 'number' || isNaN(roundLimit.value) || v < 1) {
-    roundLimit.value = 999;
-    localStorage.setItem('demoParsingRoundLimit', '999');
+    roundLimit.value = PARSING_ROUND_LIMIT_DEFAULT;
+    localStorage.setItem(PARSING_ROUND_LIMIT_KEY, String(PARSING_ROUND_LIMIT_DEFAULT));
   } else {
     roundLimit.value = v;
-    localStorage.setItem('demoParsingRoundLimit', String(v));
+    localStorage.setItem(PARSING_ROUND_LIMIT_KEY, String(v));
   }
 };
 
-// Clear round limit (reset to default 999)
+// Clear round limit (reset to default)
 const clearRoundLimit = () => {
-  roundLimit.value = 999;
-  localStorage.setItem('demoParsingRoundLimit', '999');
+  roundLimit.value = PARSING_ROUND_LIMIT_DEFAULT;
+  localStorage.setItem(PARSING_ROUND_LIMIT_KEY, String(PARSING_ROUND_LIMIT_DEFAULT));
 };
 
-// Save parse frame ratio to localStorage (must be > 0 integer, default 2)
+// Save parse frame ratio to localStorage (must be > 0 integer)
 const saveParseFrameRatio = () => {
   let v = parseFrameRatio.value;
   if (typeof v !== 'number' || isNaN(v) || v < 1) {
-    v = 2;
-    parseFrameRatio.value = 2;
+    v = PARSE_FRAME_RATIO_DEFAULT;
+    parseFrameRatio.value = PARSE_FRAME_RATIO_DEFAULT;
   } else {
     v = Math.max(1, Math.floor(v));
     parseFrameRatio.value = v;
   }
   localStorage.setItem(PARSE_FRAME_RATIO_KEY, String(v));
+};
+
+// Save maxSurgeDemoNum to localStorage (non-negative integer)
+const saveMaxSurgeDemoNum = () => {
+  let v = maxSurgeDemoNum.value;
+  if (typeof v !== 'number' || isNaN(v) || v < 0) {
+    v = MAX_SURGE_DEMO_NUM_DEFAULT;
+    maxSurgeDemoNum.value = MAX_SURGE_DEMO_NUM_DEFAULT;
+  } else {
+    v = Math.max(0, Math.floor(v));
+    maxSurgeDemoNum.value = v;
+  }
+  localStorage.setItem(MAX_SURGE_DEMO_NUM_KEY, String(v));
 };
 
 let memoryUpdateInterval: number | null = null;
@@ -925,7 +964,8 @@ const handleCleanStorageLeak = async () => {
     cleanupMessageTimer = null;
   }
   try {
-    const result = await cleanupOrphanedReplayStorage();
+    const surge = Math.max(0, Math.floor(Number(maxSurgeDemoNum.value))) || MAX_SURGE_DEMO_NUM_DEFAULT;
+    const result = await cleanupOrphanedReplayStorage(surge);
     if (result.count === 0) {
       cleanupMessage.value = '没有发现泄露（所有 OPFS 目录均有对应 IndexedDB meta）';
       cleanupMessageType.value = 'info';
@@ -1874,12 +1914,17 @@ const handleCleanStorageLeak = async () => {
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
+  height: 50%;
   width: 100%;
   box-sizing: border-box;
 }
 
 .parse-option-cell .ds-input {
   width: 100%;
+  max-height: 36px;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: var(--ds-text-sm);
   box-sizing: border-box;
 }
 
@@ -1898,6 +1943,12 @@ const handleCleanStorageLeak = async () => {
   display: flex;
   align-items: center;
   gap: var(--ds-space-xs);
+}
+
+.input-hint {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  margin-top: 2px;
 }
 
 .ds-input {
