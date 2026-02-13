@@ -711,11 +711,7 @@ const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value;
 };
 
-// Auto-collapse sidebar when switching to player page
 watch(currentPage, (newPage) => {
-  if (newPage === 'player' && !sidebarCollapsed.value) {
-    sidebarCollapsed.value = true;
-  }
   if (newPage !== 'player') {
     replayerPureMode.value = false;
   }
@@ -1220,6 +1216,10 @@ const showBetaWarning = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.cloud-archive-item:not(.is-current) .cloud-archive-item-title {
+  color: var(--ds-text-tertiary);
 }
 
 .cloud-archive-delete-btn {
