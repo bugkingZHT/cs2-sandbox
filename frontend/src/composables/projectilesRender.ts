@@ -248,9 +248,10 @@ interface RenderContext {
   worldToMap: (x: number, y: number) => { x: number; y: number };
   configs?: Record<number, ProjectileRenderConfig>;
   timeMs?: number;
-  // 投掷物追踪模式相关
   isTrackingEnabled?: boolean;
   onProjectileClick?: (proj: ProjectileState) => void;
+  onProjectilePointerOver?: (proj: ProjectileState, clientX: number, clientY: number) => void;
+  onProjectilePointerOut?: () => void;
 }
 
 // 获取投掷物类型Key
@@ -344,7 +345,7 @@ const drawTrajectory = (
   ctx: RenderContext,
   colorOverride?: number,
 ) => {
-  const { worldToMap, players, projectileLayer, isTrackingEnabled, onProjectileClick } = ctx;
+  const { worldToMap, players, projectileLayer, onProjectileClick, onProjectilePointerOver, onProjectilePointerOut } = ctx;
   
   // 如果已爆炸，则不显示轨迹
   if (proj.isExploded) {
@@ -395,9 +396,8 @@ const drawTrajectory = (
     trajectoryG.circle(cpMapPos.x, cpMapPos.y, trajectoryPointRadius).fill({ color: trajColor, alpha: 1.0 });
   }
 
-  // 如果开启了追踪模式，添加点击交互
-  if (isTrackingEnabled && onProjectileClick) {
-    // 创建透明的点击热区（线条更粗便于点击）
+  // 可解析的投掷物：添加点击与 hover（用于提示「点击投掷物解析道具」）
+  if (onProjectileClick) {
     const hitArea = new Graphics();
     
     if (proj.trajectory.length > 0) {
@@ -413,11 +413,21 @@ const drawTrajectory = (
       hitArea.lineTo(currentMapPos.x, currentMapPos.y);
     }
     
-    // 透明的粗线条作为点击区域
     hitArea.stroke({ width: 12, color: 0x000000, alpha: 0.001 });
     hitArea.eventMode = 'static';
     hitArea.cursor = 'pointer';
-    hitArea.addEventListener('pointerdown', () => onProjectileClick(proj));
+    hitArea.addEventListener('pointerdown', (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onProjectileClick(proj);
+    });
+    if (onProjectilePointerOver) {
+      hitArea.addEventListener('pointerover', (e: { clientX: number; clientY: number }) => {
+        onProjectilePointerOver(proj, e.clientX, e.clientY);
+      });
+    }
+    if (onProjectilePointerOut) {
+      hitArea.addEventListener('pointerout', () => onProjectilePointerOut());
+    }
     
     projectileLayer.addChild(hitArea);
   }
@@ -432,7 +442,7 @@ const drawIcon = async (
   ctx: RenderContext,
   scale: number = 1.0,
 ) => {
-  const { worldToMap, players, projectileLayer, isTrackingEnabled, onProjectileClick } = ctx;
+  const { worldToMap, players, projectileLayer, onProjectileClick, onProjectilePointerOver, onProjectilePointerOut } = ctx;
   const assetPath = PROJECTILE_ASSETS[typeKey];
 
   try {
@@ -465,11 +475,21 @@ const drawIcon = async (
       sprite.tint = 0xff6b6b;
     }
 
-    // 如果开启了追踪模式，添加点击交互
-    if (isTrackingEnabled && onProjectileClick) {
+    if (onProjectileClick) {
       sprite.eventMode = 'static';
       sprite.cursor = 'pointer';
-      sprite.addEventListener('pointerdown', () => onProjectileClick(proj));
+      sprite.addEventListener('pointerdown', (e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
+        onProjectileClick(proj);
+      });
+      if (onProjectilePointerOver) {
+        sprite.addEventListener('pointerover', (e: { clientX: number; clientY: number }) => {
+          onProjectilePointerOver(proj, e.clientX, e.clientY);
+        });
+      }
+      if (onProjectilePointerOut) {
+        sprite.addEventListener('pointerout', () => onProjectilePointerOut());
+      }
     }
 
     projectileLayer.addChild(sprite);
@@ -795,9 +815,10 @@ export const drawProjectilesForFrame = async (options: {
   droppedEquipment?: DroppedEquipment[];
   timeMs?: number;
   currentRound?: number; // For team color flipping in second half
-  // 投掷物追踪模式相关
   isTrackingEnabled?: boolean;
   onProjectileClick?: (proj: ProjectileState) => void;
+  onProjectilePointerOver?: (proj: ProjectileState, clientX: number, clientY: number) => void;
+  onProjectilePointerOut?: () => void;
 }) => {
   const {
     projectiles,
@@ -812,6 +833,8 @@ export const drawProjectilesForFrame = async (options: {
     currentRound = 1,
     isTrackingEnabled = false,
     onProjectileClick,
+    onProjectilePointerOver,
+    onProjectilePointerOut,
   } = options;
 
   if (!projectileLayer || !mapSprite) return;
@@ -819,12 +842,14 @@ export const drawProjectilesForFrame = async (options: {
   const ctx: RenderContext = {
     projectileLayer,
     players,
-    currentRound, // For team color flipping in second half
+    currentRound,
     worldToMap,
     configs: projectileConfigs,
     timeMs,
     isTrackingEnabled,
     onProjectileClick,
+    onProjectilePointerOver,
+    onProjectilePointerOut,
   };
 
   // 1. 渲染正在运行的投掷物 (Projectiles)

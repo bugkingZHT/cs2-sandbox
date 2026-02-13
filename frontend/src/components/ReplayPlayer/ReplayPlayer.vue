@@ -23,14 +23,13 @@
           :map-name="replay?.mapName"
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
-          :is-grenade-tracking-enabled="isGrenadeTrackingEnabled"
           :pure-mode="pureMode"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
-          @projectile-click="handleProjectileClick"
+          :grenade-tracking-enabled="isGrenadeTrackingEnabled"
           @toggle-grenade-tracking="toggleGrenadeTracking"
+          @projectile-click="handleProjectileClick"
           @toggle-pure-mode="pureMode = !pureMode"
-          @share="copyShareLink"
           :tab-recorder-supported="tabRecorder.isSupported"
           :tab-recorder-recording="tabRecorder.isRecording.value"
           :tab-recorder-converting="tabRecorder.isConverting.value"
@@ -57,12 +56,27 @@
           @seek="handleGrenadeSeek"
         />
 
-        <!-- 分享链接已复制提示 -->
-        <Transition name="share-toast">
-          <div v-if="shareCopied" class="share-toast">已复制链接</div>
-        </Transition>
+        <!-- 左上角小眼睛：点击隐藏/显示左侧玩家卡与右侧击杀 -->
+        <button
+          v-if="!pureMode"
+          type="button"
+          class="overlay-eye-btn"
+          :class="{ 'is-hidden': !showOverlayPanels }"
+          :title="showOverlayPanels ? '隐藏玩家卡与击杀' : '显示玩家卡与击杀'"
+          @click="showOverlayPanels = !showOverlayPanels"
+        >
+          <svg v-if="showOverlayPanels" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg v-else class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+
         <!-- 击杀回传 (Kill Feed) -->
-        <div v-if="!pureMode" class="kill-feed-container">
+        <div v-if="!pureMode && showOverlayPanels" class="kill-feed-container">
           <TransitionGroup name="list">
             <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
               <div class="kill-card">
@@ -77,7 +91,7 @@
         </div>
 
         <!-- Player Cards Panel (Top Left) -->
-        <div v-if="!pureMode" class="players-panel top-left">
+        <div v-if="!pureMode && showOverlayPanels" class="players-panel top-left">
           <!-- First Half (1-12): T Team on top, Second Half (13+): CT Team on top -->
           
           <!-- First Team (T for rounds 1-12, CT for rounds 13+) -->
@@ -369,6 +383,8 @@
     </section>
 
     <section class="timeline-panel" :class="{ 'timeline-panel--pure': pureMode }">
+      <!-- 道具解析模式下遮罩 timeline，禁止点击主时间轴 -->
+      <div v-if="isGrenadeAnalyzeMode" class="timeline-block-mask" aria-hidden="true"></div>
       <TimelineControl
         :current-frame-index="effectiveFrameIndex"
         :total-frames="totalFrames"
@@ -417,29 +433,27 @@ const emit = defineEmits<{
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
+// 左上角小眼睛：非纯净模式下可单独隐藏左侧玩家卡 + 右侧击杀
+const showOverlayPanels = ref(true);
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 if (replayerPureMode) {
   watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
 }
+
+// 纯净模式与 URL 同步：点击 pure 后地址栏带上 pure=1，离开后去掉
+function syncPureToUrl() {
+  const q = getQuery();
+  if (pureMode.value) q.pure = '1'; else delete q.pure;
+  const search = new URLSearchParams(q).toString();
+  replaceLocation(pathRef.value, search);
+}
+watch(pureMode, syncPureToUrl);
 
 // 打开链接时若带 pure=1 则默认启用纯净模式
 onMounted(() => {
   const q = getQuery();
   if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
 });
-
-// 分享：复制带 pure=1 的当前链接
-const shareCopied = ref(false);
-function copyShareLink() {
-  const q = getQuery();
-  q.pure = '1';
-  const search = '?' + new URLSearchParams(q).toString();
-  const url = window.location.origin + pathRef.value + search;
-  navigator.clipboard.writeText(url).then(() => {
-    shareCopied.value = true;
-    setTimeout(() => { shareCopied.value = false; }, 2000);
-  });
-}
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB } = useReplayData();
 
@@ -516,10 +530,8 @@ const cancelAnimation = () => {
   }
 };
 
-// 处理投掷物点击事件
+// 处理投掷物点击事件：直接进入解析模式，无需先开「道具追踪」
 const handleProjectileClick = (proj: ProjectileState) => {
-  if (!isGrenadeTrackingEnabled.value) return;
-  
   // 暂停主播放
   if (isPlaying.value) {
     isPlaying.value = false;
@@ -1155,8 +1167,9 @@ const loadRoundData = async (roundNumber: number) => {
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
     
-    // 同步 URL，便于刷新或分享后能定向到当前回合（由 Go 托管 /replayer）
-    replaceLocation('/replayer', `uuid=${replay.value.uuid}&round=${roundNumber}`);
+    // 同步 URL，便于刷新或分享后能定向到当前回合（由 Go 托管 /replayer），并保留 pure 参数
+    const search = `uuid=${replay.value.uuid}&round=${roundNumber}` + (pureMode.value ? '&pure=1' : '');
+    replaceLocation('/replayer', search);
     
     // Resume playback if it was playing before
     if (wasPlaying) {
@@ -1265,9 +1278,8 @@ onBeforeUnmount(() => {
 }
 
 .players-panel.top-left {
-  top: 50%; /* Vertical center */
+  top: var(--ds-space-xl);
   left: var(--ds-space-md);
-  transform: translateY(-50%); /* Center adjustment */
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -1575,33 +1587,36 @@ onBeforeUnmount(() => {
   transition: all var(--ds-transition-base);
 }
 
-/* === 分享链接已复制提示 === */
-.share-toast {
+/* === 左上角小眼睛：隐藏/显示玩家卡与击杀 === */
+.overlay-eye-btn {
   position: absolute;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--ds-z-dropdown);
-  padding: var(--ds-space-sm) var(--ds-space-lg);
-  background: rgba(0, 0, 0, 0.85);
+  bottom: var(--ds-space-xl);
+  left: var(--ds-space-md);
+  z-index: calc(var(--ds-z-dropdown) + 1);
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--ds-radius-md);
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-primary);
-  box-shadow: var(--ds-shadow-lg);
-  pointer-events: none;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-
-.share-toast-enter-active,
-.share-toast-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+.overlay-eye-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: white;
 }
-
-.share-toast-enter-from,
-.share-toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(8px);
+.overlay-eye-btn.is-hidden {
+  color: rgba(255, 255, 255, 0.6);
+}
+.overlay-eye-btn .eye-icon {
+  width: 18px;
+  height: 18px;
 }
 
 /* === Kill Feed === */
@@ -1711,6 +1726,7 @@ onBeforeUnmount(() => {
 
 /* === Timeline === */
 .timeline-panel {
+  position: relative;
   height: 100px;
   flex-shrink: 0;
   padding: var(--ds-space-md);
@@ -1721,6 +1737,14 @@ onBeforeUnmount(() => {
 .timeline-panel.timeline-panel--pure {
   height: 50px;
   padding: 4px var(--ds-space-sm);
+}
+
+/* 道具解析模式下仅遮罩 timeline，禁止点击 */
+.timeline-block-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: auto;
 }
 
 /* === Empty State === */
@@ -1771,6 +1795,7 @@ onBeforeUnmount(() => {
 /* === 最小 1024×768 适配 === */
 @media (max-width: 1024px) {
   .players-panel.top-left {
+    top: 8px;
     left: 6px;
   }
 
@@ -1831,6 +1856,11 @@ onBeforeUnmount(() => {
     font-size: 16px;
   }
 
+  .overlay-eye-btn {
+    bottom: 8px;
+    left: 6px;
+  }
+
   .kill-feed-container {
     top: 8px;
     right: 8px;
@@ -1846,12 +1876,6 @@ onBeforeUnmount(() => {
   .k-weapon-icon {
     width: 22px;
     height: 12px;
-  }
-
-  .share-toast {
-    bottom: 64px;
-    padding: 6px 12px;
-    font-size: 12px;
   }
 }
 
@@ -1908,10 +1932,6 @@ onBeforeUnmount(() => {
 
   .team-score {
     font-size: 18px;
-  }
-
-  .share-toast {
-    bottom: 56px;
   }
 }
 </style>

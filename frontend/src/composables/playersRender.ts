@@ -58,8 +58,8 @@ interface RenderContext {
   isPlaying: boolean;
   isDragging: boolean;
   worldToMap: (x: number, y: number) => { x: number; y: number };
-  onPlayerPointerOver?: (e: any, player: PlayerState) => void;
-  onPlayerPointerMove?: (e: any, player: PlayerState) => void;
+  onPlayerPointerOver?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
+  onPlayerPointerMove?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
 }
 
@@ -171,13 +171,11 @@ const createPlayerSprite = (
   g.cursor = 'pointer';
 
   if (ctx.onPlayerPointerOver) {
-    (g as any).on('pointerover', (e: any) => ctx.onPlayerPointerOver?.(e, player));
+    (g as any).on('pointerover', (e: { clientX: number; clientY: number }) => ctx.onPlayerPointerOver?.(e, player));
   }
-
   if (ctx.onPlayerPointerMove) {
-    (g as any).on('pointermove', (e: any) => ctx.onPlayerPointerMove?.(e, player));
+    (g as any).on('pointermove', (e: { clientX: number; clientY: number }) => ctx.onPlayerPointerMove?.(e, player));
   }
-
   if (ctx.onPlayerPointerOut) {
     (g as any).on('pointerout', () => ctx.onPlayerPointerOut?.(player));
   }
@@ -387,8 +385,8 @@ export const drawPlayersForFrame = (options: {
   isPlaying: boolean;
   isDragging: boolean;
   worldToMap: (x: number, y: number) => { x: number; y: number };
-  onPlayerPointerOver?: (e: any, player: PlayerState) => void;
-  onPlayerPointerMove?: (e: any, player: PlayerState) => void;
+  onPlayerPointerOver?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
+  onPlayerPointerMove?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
 }) => {
   const {
@@ -414,7 +412,7 @@ export const drawPlayersForFrame = (options: {
   const ctx: RenderContext = {
     playerLayer,
     currentFrameIndex,
-    currentRound: frame.round, // For team color flipping in second half
+    currentRound: frame.round,
     isPlaying,
     isDragging,
     worldToMap,

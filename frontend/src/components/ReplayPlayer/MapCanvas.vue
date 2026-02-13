@@ -1,41 +1,93 @@
 <template>
-  <div ref="host" class="map-canvas-element"></div>
-  <div
-    v-if="hoverPlayer"
-    class="player-tooltip"
-    :style="tooltipStyle"
-    @mouseenter="onTooltipMouseEnter"
-    @mouseleave="onTooltipMouseLeave"
-  >
-    <div class="name">{{ hoverPlayer.name }}</div>
-    <div class="meta">
-      <span :class="['team', hoverPlayer.team === 3 ? 'ct' : 't']">
-        {{ hoverPlayer.team === 3 ? 'CT' : 'T' }}
-      </span>
-      <span>{{ hoverPlayer.alive ? '存活' : '已阵亡' }}</span>
+  <div class="map-canvas-root">
+    <div ref="host" class="map-canvas-element"></div>
+    <div
+      v-if="hoverPlayer && tooltipPlayer && !(isDrawingMode ?? false)"
+      class="player-tooltip"
+      :style="tooltipStyle"
+      @mouseenter="onTooltipMouseEnter"
+      @mouseleave="onTooltipMouseLeave"
+    >
+      <div class="tooltip-header">
+        <span class="name">{{ tooltipPlayer.name ?? hoverPlayer?.name ?? 'UNKNOWN' }}</span>
+        <span class="kda">K {{ tooltipPlayer.kills ?? 0 }} / D {{ tooltipPlayer.deaths ?? 0 }} / A {{ tooltipPlayer.assists ?? 0 }}</span>
+      </div>
+      <div class="meta">
+        <span class="money">$ {{ (tooltipPlayer.money ?? 0).toLocaleString() }}</span>
+        <span>{{ tooltipPlayer.alive ? '存活' : '已阵亡' }}</span>
+      </div>
+      <div class="hp-row">
+        <span class="hp-label">HP</span>
+        <div class="hp-bar-wrap">
+          <div class="hp-bar" :style="{ width: `${Math.min(100, Math.max(0, tooltipPlayer.health ?? 0))}%` }"></div>
+        </div>
+        <span class="hp-value">{{ tooltipPlayer.health ?? 0 }}</span>
+      </div>
+      <div class="tooltip-equipment">
+        <div class="tooltip-weapon">
+          <img
+            v-if="getPrimaryWeapon(tooltipPlayer)"
+            :src="getWeaponIconPath(getPrimaryWeapon(tooltipPlayer))"
+            class="tooltip-weapon-icon"
+            :class="{
+              'is-active': isWeaponActiveForCard(tooltipPlayer, getPrimaryWeapon(tooltipPlayer)),
+              'is-rifle': isRifleWeapon(getPrimaryWeapon(tooltipPlayer))
+            }"
+            @error="onWeaponIconError"
+          />
+        </div>
+        <div class="tooltip-utility">
+          <img
+            v-for="(item, idx) in getUtilityItems(tooltipPlayer)"
+            :key="idx"
+            :src="getWeaponIconPath(item)"
+            class="tooltip-utility-icon"
+            :class="{ 'is-active': isWeaponActiveForCard(tooltipPlayer, item), 'is-c4': item === '404' }"
+            @error="onWeaponIconError"
+          />
+        </div>
+        <div class="tooltip-gear">
+          <img
+            v-for="(item, idx) in getGearItems(tooltipPlayer)"
+            :key="idx"
+            :src="getWeaponIconPath(item)"
+            class="tooltip-gear-icon"
+            :class="{ 'is-armor-full': item === 'armor_full' }"
+            :title="item === 'armor_full' ? '护甲+头盔' : item === 'armor' ? '护甲' : item === 'defuser' ? '拆弹器' : ''"
+            @error="onWeaponIconError"
+          />
+        </div>
+      </div>
+      <div class="cmd-row" @click="copyText(mergedPosAngCmd)">
+        <code class="cmd-text">{{ mergedPosAngCmd }}</code>
+        <span class="cmd-copy" :class="{ copied: copiedField === 'cmd' }" title="复制">
+          <svg v-if="copiedField !== 'cmd'" class="cmd-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+          <svg v-else class="cmd-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </span>
+      </div>
     </div>
-    <div class="meta">
-      <span>HP: {{ hoverPlayer.health ?? '-' }}</span>
-      <span>Armor: {{ hoverPlayer.armor ?? '-' }}</span>
+    <!-- 投掷物 hover 提示：开启右下角道具追踪后，点击投掷物可解析（画笔模式下不展示） -->
+    <div
+      v-if="hoverProjectile && !(isDrawingMode ?? false)"
+      class="projectile-tip"
+      :style="{ left: `${hoverProjectilePos.x}px`, top: `${hoverProjectilePos.y}px` }"
+    >
+      点击分析投掷动作
     </div>
-    <div class="cmd-row" @click="copyText(setposCmd)">
-      <code class="cmd-text">{{ setposCmd }}</code>
-      <span class="cmd-copy" :class="{ copied: copiedField === 'setpos' }">{{ copiedField === 'setpos' ? '✓' : '复制' }}</span>
-    </div>
-    <div class="cmd-row" @click="copyText(setangCmd)">
-      <code class="cmd-text">{{ setangCmd }}</code>
-      <span class="cmd-copy" :class="{ copied: copiedField === 'setang' }">{{ copiedField === 'setang' ? '✓' : '复制' }}</span>
-    </div>
-  </div>
-  <!-- Drawing Board -->
-  <DrawingBoard
-    :active="isDrawingMode || false"
-    :getBackgroundCanvas="getCanvasForDrawing"
-    @close="emit('close-drawing')"
-  />
+    <!-- Drawing Board -->
+    <DrawingBoard
+      :active="isDrawingMode || false"
+      :getBackgroundCanvas="getCanvasForDrawing"
+      @close="emit('close-drawing')"
+    />
 
-  <!-- Right side controls panel -->
-  <div class="map-controls-panel">
+    <!-- Right side controls panel -->
+    <div class="map-controls-panel">
     <!-- Zoom Controls (Bottom) -->
     <div class="map-zoom-controls">
       <button
@@ -82,61 +134,35 @@
           <span class="rec-dot"></span>
         </button>
       </div>
-      <button
-        class="zoom-btn tracking-btn"
-        :class="{ 'active': isGrenadeTrackingEnabled || false }"
-        @click="emit('toggle-grenade-tracking')"
-        title="道具追踪"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="2" x2="12" y2="6" />
-          <line x1="12" y1="18" x2="12" y2="22" />
-          <line x1="2" y1="12" x2="6" y2="12" />
-          <line x1="18" y1="12" x2="22" y2="12" />
-          <circle cx="12" cy="12" r="2" fill="currentColor" />
-        </svg>
-      </button>
-      <button
-        class="zoom-btn share-btn"
-        @click="emit('share')"
-        title="分享链接（复制带纯净模式的当前链接）"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="18" cy="5" r="3" />
-          <circle cx="6" cy="12" r="3" />
-          <circle cx="18" cy="19" r="3" />
-          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-        </svg>
-      </button>
-      <div class="controls-divider"></div>
-      <div class="zoom-reset-group">
-        <button class="zoom-btn zoom-in-btn" @click="zoomIn" title="放大">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
-        <button class="zoom-btn zoom-out-btn" @click="zoomOut" title="缩小">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
-        <button class="zoom-btn reset-btn" @click="resetZoom" title="重置视图">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="4" y="4" width="16" height="16" rx="1" />
-          </svg>
+      <div class="zoom-pure-column">
+        <div class="zoom-reset-group">
+          <button class="zoom-btn zoom-in-btn" @click="zoomIn" title="放大">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button class="zoom-btn zoom-out-btn" @click="zoomOut" title="缩小">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button class="zoom-btn reset-btn" @click="resetZoom" title="重置视图">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="4" y="4" width="16" height="16" rx="1" />
+            </svg>
+          </button>
+        </div>
+        <button
+          class="zoom-btn pure-mode-btn"
+          :class="{ 'active': pureMode || false }"
+          @click="emit('toggle-pure-mode')"
+          title="纯净模式"
+        >
+          <img src="/icons/scale.svg" width="18" height="18" alt="纯净模式" />
         </button>
       </div>
-      <button
-        class="zoom-btn pure-mode-btn"
-        :class="{ 'active': pureMode || false }"
-        @click="emit('toggle-pure-mode')"
-        title="纯净模式"
-      >
-        <img src="/icons/scale.svg" width="18" height="18" alt="纯净模式" />
-      </button>
+    </div>
     </div>
   </div>
 </template>
@@ -147,6 +173,7 @@ import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl, MAP_IMAGE_SIZE, MAP_SVG_IMAGE_SIZE, SVG_TEXTURE_RESOLUTION } from '@/config/map';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
+import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { useMapConfig } from '@/composables/useMapConfig';
 import {
   clearProjectilesLayer,
@@ -160,7 +187,6 @@ import {
   resetPlayerRenderer,
 } from '../../composables/playersRender';
 import DrawingBoard from './DrawingBoard.vue';
-import { nextTick } from 'vue';
 
 const props = withDefaults(
   defineProps<{
@@ -173,8 +199,8 @@ const props = withDefaults(
     mapName?: string;
     projectileConfigs?: Record<number, ProjectileRenderConfig>;
     isDrawingMode?: boolean;
-    isGrenadeTrackingEnabled?: boolean;
     pureMode?: boolean;
+    grenadeTrackingEnabled?: boolean;
     tabRecorderSupported?: boolean;
     tabRecorderRecording?: boolean;
     tabRecorderConverting?: boolean;
@@ -188,9 +214,8 @@ const emit = defineEmits<{
   (e: 'close-drawing'): void;
   (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
-  (e: 'toggle-grenade-tracking'): void;
   (e: 'toggle-pure-mode'): void;
-  (e: 'share'): void;
+  (e: 'toggle-grenade-tracking'): void;
   (e: 'tab-recorder-start'): void;
   (e: 'tab-recorder-stop'): void;
   (e: 'tab-recorder-clear-pending'): void;
@@ -253,30 +278,153 @@ const copiedField = ref<string | null>(null);
 let tooltipHovered = false;
 let tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
 
+const hoverProjectile = ref<ProjectileState | null>(null);
+const hoverProjectilePos = reactive({ x: 0, y: 0 });
+const PROJECTILE_TIP_OFFSET = 10;
+const HOVER_TOOLTIP_OFFSET = -2;
+
 const tooltipStyle = computed(() => ({
   left: `${hoverScreenPos.x}px`,
   top: `${hoverScreenPos.y}px`,
 }));
 
-const setposCmd = computed(() => {
-  if (!hoverPlayer.value) return '';
-  const p = hoverPlayer.value;
-  return `setpos ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${(p.z ?? 0).toFixed(2)}`;
+/** 用于 tooltip 的玩家数据：优先用当前帧的玩家，与左侧大卡片一致 */
+const tooltipPlayer = computed(() => {
+  const hover = hoverPlayer.value;
+  if (!hover || !props.frames || hover.id === undefined) return hover;
+  const frame = props.frames[props.currentFrameIndex];
+  const current = frame?.players?.[hover.id];
+  return current ?? hover;
 });
 
-const setangCmd = computed(() => {
+const mergedPosAngCmd = computed(() => {
   if (!hoverPlayer.value) return '';
-  const p = hoverPlayer.value;
-  return `setang ${(p.pitch ?? 0).toFixed(2)} ${p.yaw.toFixed(2)} 0`;
+  const p = tooltipPlayer.value ?? hoverPlayer.value;
+  const setpos = `setpos ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${(p.z ?? 0).toFixed(2)}`;
+  const setang = `setang ${(p.pitch ?? 0).toFixed(2)} ${p.yaw.toFixed(2)} 0`;
+  return `${setpos}; ${setang}`;
 });
 
 const copyText = async (text: string) => {
   try {
     await navigator.clipboard.writeText(text);
-    copiedField.value = text.startsWith('setpos') ? 'setpos' : 'setang';
+    copiedField.value = 'cmd';
     setTimeout(() => { copiedField.value = null; }, 1200);
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制到剪贴板', type: 'info' } }));
   } catch {
-    // fallback
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
+  }
+};
+
+function getWeaponIconPath(weaponId: unknown): string {
+  if (weaponId === undefined || weaponId === null) return '/weapons/default.svg';
+  if (typeof weaponId === 'string') {
+    if (weaponId === 'defuser') return '/utility/defuser.svg';
+    if (weaponId === 'armor_full') return '/utility/armor_full.svg';
+    if (weaponId === 'armor') return '/utility/armor.svg';
+  }
+  const id = Number(weaponId);
+  const fileName = EQUIPMENT_ID_MAP[id];
+  if (!fileName) return '/weapons/default.svg';
+  const isUtilityFolder = (id >= 501 && id <= 506) || id === 404;
+  const folder = isUtilityFolder ? 'utility' : 'weapons';
+  return `/${folder}/${fileName}.svg`;
+}
+
+function isActiveWeapon(player: PlayerState, itemId: string, idx: number): boolean {
+  if (!player.activeWeapon) return false;
+  const activeId = Number(player.activeWeapon);
+  if (Number(itemId) !== activeId) return false;
+  const firstMatch = player.inventory?.findIndex((inv) => Number(inv) === activeId) ?? -1;
+  return idx === firstMatch;
+}
+
+function getPrimaryWeapon(player: PlayerState): string | null {
+  if (!player.inventory) return null;
+  const rifle = player.inventory.find(item => { const id = Number(item); return id >= 300 && id < 400; });
+  if (rifle) return rifle;
+  const smg = player.inventory.find(item => { const id = Number(item); return (id >= 200 && id < 300) || (id >= 100 && id < 200); });
+  if (smg) return smg;
+  const pistol = player.inventory.find(item => { const id = Number(item); return id >= 1 && id < 100 && id !== 405; });
+  return pistol ?? null;
+}
+
+function getUtilityItems(player: PlayerState): string[] {
+  if (!player.inventory) return [];
+  return player.inventory.filter(item => {
+    const id = Number(item);
+    return (id >= 501 && id <= 506) || id === 404;
+  });
+}
+
+// 与大卡一致：护甲区分仅护甲 / 护甲+头盔，用 armor_full 表示带头盔
+function getGearItems(player: PlayerState): string[] {
+  const items: string[] = [];
+  if (!player) return items;
+  if (player.hasDefuseKit) items.push('defuser');
+  if (player.armor && player.armor > 0) {
+    if (player.hasHelmet) {
+      items.push('armor_full');
+    } else {
+      items.push('armor');
+    }
+  }
+  return items;
+}
+
+function isWeaponActiveForCard(player: PlayerState, weaponId: string | null): boolean {
+  if (!weaponId || !player.activeWeapon) return false;
+  return Number(player.activeWeapon) === Number(weaponId);
+}
+
+function isRifleWeapon(weaponId: string | null): boolean {
+  if (!weaponId) return false;
+  const id = Number(weaponId);
+  return (id >= 200 && id < 400) || (id >= 100 && id < 200);
+}
+
+const onWeaponIconError = (event: Event) => {
+  const img = event.target as HTMLImageElement;
+  img.src = '/weapons/default.svg';
+};
+
+/** 将地图坐标转为屏幕 client 坐标（与玩家圆绘制同一套坐标系与缩放） */
+function mapToClient(mapX: number, mapY: number): { x: number; y: number } | null {
+  if (!app?.view || !worldContainer) return null;
+  const screen = app.renderer.screen;
+  const scale = worldContainer.scale.x;
+  const stageX = worldContainer.position.x + mapX * scale;
+  const stageY = worldContainer.position.y + mapY * scale;
+  const rect = app.view.getBoundingClientRect();
+  const scaleX = rect.width / screen.width;
+  const scaleY = rect.height / screen.height;
+  return {
+    x: rect.left + stageX * scaleX,
+    y: rect.top + stageY * scaleY,
+  };
+}
+
+const onPlayerPointerOver = (e: { clientX: number; clientY: number }, p: PlayerState) => {
+  if (props.isPlaying) return;
+  if (tooltipHovered) return;
+  if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+  hoverPlayer.value = p;
+  copiedField.value = null;
+  hoverScreenPos.x = e.clientX + HOVER_TOOLTIP_OFFSET;
+  hoverScreenPos.y = e.clientY + HOVER_TOOLTIP_OFFSET;
+};
+
+// 不随鼠标在圆圈上的移动而更新 tooltip 位置，避免卡片漂移、便于移入卡片内操作
+const onPlayerPointerMove = (_e: { clientX: number; clientY: number }, p: PlayerState) => {
+  if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
+  // 位置仅在 pointerover 时设定一次，此处不再更新
+};
+
+const onPlayerPointerOut = (p: PlayerState) => {
+  if (hoverPlayer.value && hoverPlayer.value.id === p.id) {
+    tooltipHideTimer = setTimeout(() => {
+      if (!tooltipHovered) hoverPlayer.value = null;
+    }, 150);
   }
 };
 
@@ -287,7 +435,7 @@ const onTooltipMouseEnter = () => {
 
 const onTooltipMouseLeave = () => {
   tooltipHovered = false;
-  tooltipHideTimer = setTimeout(() => { hoverPlayer.value = null; }, 100);
+  tooltipHideTimer = setTimeout(() => { hoverPlayer.value = null; }, 150);
 };
 
 const worldToMap = (x: number, y: number) => {
@@ -343,9 +491,8 @@ const ensureApp = async () => {
   worldContainer.addChild(mapSprite);
 
   projectileLayer = new Container();
-  worldContainer.addChild(projectileLayer);
-
   playerLayer = new Container();
+  worldContainer.addChild(projectileLayer);
   worldContainer.addChild(playerLayer);
 
   worldContainer.eventMode = 'static';
@@ -491,36 +638,19 @@ const clearProjectiles = () => {
   clearProjectilesLayer(projectileLayer);
 };
 
-const onPlayerPointerOver = (e: any, p: PlayerState) => {
-  if (props.isPlaying) return;
-  if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
-  hoverPlayer.value = p;
-  copiedField.value = null;
-  const global = e.global;
-  hoverScreenPos.x = global.x;
-  hoverScreenPos.y = global.y;
-};
-
-const onPlayerPointerMove = (e: any, p: PlayerState) => {
-  if (!hoverPlayer.value || hoverPlayer.value.id !== p.id || props.isPlaying) return;
-  hoverScreenPos.x = e.global.x;
-  hoverScreenPos.y = e.global.y;
-};
-
-const onPlayerPointerOut = (p: PlayerState) => {
-  if (hoverPlayer.value && hoverPlayer.value.id === p.id) {
-    // 延迟隐藏，给用户时间移到 tooltip 上
-    tooltipHideTimer = setTimeout(() => {
-      if (!tooltipHovered) {
-        hoverPlayer.value = null;
-      }
-    }, 200);
-  }
-};
-
-// 处理投掷物点击事件
 const handleProjectileClick = (proj: ProjectileState) => {
+  hoverProjectile.value = null;
   emit('projectile-click', proj);
+};
+
+const onProjectilePointerOver = (proj: ProjectileState, clientX: number, clientY: number) => {
+  hoverProjectile.value = proj;
+  hoverProjectilePos.x = clientX + PROJECTILE_TIP_OFFSET;
+  hoverProjectilePos.y = clientY + PROJECTILE_TIP_OFFSET;
+};
+
+const onProjectilePointerOut = () => {
+  hoverProjectile.value = null;
 };
 
 const drawProjectilesForFrame = async (
@@ -542,9 +672,9 @@ const drawProjectilesForFrame = async (
     droppedEquipment,
     timeMs,
     currentRound,
-    // 投掷物追踪模式参数
-    isTrackingEnabled: props.isGrenadeTrackingEnabled,
     onProjectileClick: handleProjectileClick,
+    onProjectilePointerOver,
+    onProjectilePointerOut,
   });
 };
 
@@ -757,7 +887,7 @@ onBeforeUnmount(() => {
 .map-zoom-controls {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -793,9 +923,18 @@ onBeforeUnmount(() => {
   border-color: rgba(59, 130, 246, 0.8);
 }
 
-/* + / - / 重置 三合一连体按钮 */
+/* 缩放 + 纯净 垂直一列：上方 + / - / []，下方纯净按钮 */
+.zoom-pure-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* + / - / [] 垂直连体按钮 */
 .zoom-reset-group {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   border-radius: 8px;
   overflow: hidden;
@@ -812,11 +951,11 @@ onBeforeUnmount(() => {
   border-radius: 0;
   margin: 0;
   box-shadow: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .zoom-reset-group .zoom-btn:last-child {
-  border-right: none;
+  border-bottom: none;
 }
 
 .zoom-reset-group .zoom-btn:hover {
@@ -968,27 +1107,52 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.2);
 }
 
+.map-canvas-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
 .player-tooltip {
-  position: absolute;
+  position: fixed;
   background: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   color: white;
   pointer-events: auto;
   z-index: 1000;
-  transform: translate(10px, 10px);
-  min-width: 180px;
-  max-width: 340px;
+  min-width: 150px;
+  max-width: 280px;
+}
+
+.player-tooltip .tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 4px;
 }
 
 .player-tooltip .name {
   font-weight: bold;
-  font-size: 14px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  padding-bottom: 2px;
+  font-size: 13px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-tooltip .kda {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  flex-shrink: 0;
 }
 
 .player-tooltip .meta {
@@ -999,27 +1163,125 @@ onBeforeUnmount(() => {
   margin-top: 2px;
 }
 
-.player-tooltip .team.ct {
-  color: #60a5fa;
-  font-weight: bold;
+.player-tooltip .hp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
 }
 
-.player-tooltip .team.t {
-  color: #fb923c;
-  font-weight: bold;
+.player-tooltip .hp-label {
+  flex-shrink: 0;
+  width: 22px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.player-tooltip .hp-bar-wrap {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.player-tooltip .hp-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.15s;
+  background: #22c55e;
+}
+.player-tooltip .hp-value {
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.player-tooltip .tooltip-equipment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  min-height: 20px;
+}
+
+.player-tooltip .tooltip-weapon {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  min-width: 36px;
+}
+
+.player-tooltip .tooltip-weapon-icon {
+  width: 28px;
+  height: 14px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+}
+.player-tooltip .tooltip-weapon-icon.is-rifle {
+  width: 32px;
+  height: 16px;
+}
+
+.player-tooltip .tooltip-utility {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.player-tooltip .tooltip-utility-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+}
+.player-tooltip .tooltip-utility-icon.is-c4 {
+  filter: brightness(0) saturate(1) invert(0.3) sepia(0.8) saturate(5) hue-rotate(330deg);
+  opacity: 1;
+}
+
+.player-tooltip .tooltip-gear {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.player-tooltip .tooltip-gear-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+}
+
+.player-tooltip .money {
+  color: #22c55e;
+  font-weight: 600;
 }
 
 .player-tooltip .cmd-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   margin-top: 4px;
-  padding: 3px 6px;
+  padding: 6px 8px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: background 0.15s;
+  min-width: 0;
 }
 
 .player-tooltip .cmd-row:hover {
@@ -1028,21 +1290,35 @@ onBeforeUnmount(() => {
 
 .player-tooltip .cmd-text {
   font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 11px;
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.9);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.player-tooltip .cmd-text::-webkit-scrollbar {
+  display: none;
 }
 
 .player-tooltip .cmd-copy {
   flex-shrink: 0;
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.7);
   transition: all 0.15s;
+}
+.player-tooltip .cmd-copy-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .player-tooltip .cmd-copy:hover {
@@ -1053,6 +1329,21 @@ onBeforeUnmount(() => {
 .player-tooltip .cmd-copy.copied {
   background: rgba(34, 197, 94, 0.5);
   color: white;
+}
+
+/* 投掷物 hover 提示 */
+.projectile-tip {
+  position: fixed;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1001;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* === 最小 1024×768 适配 === */

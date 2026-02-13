@@ -651,7 +651,9 @@ async function ensureReplayerRouteData() {
   if (path !== '/replayer' || !uuid) {
     replayerRouteLoading.value = false;
     if (path === '/replayer' && !uuid && currentDemoId.value) {
-      replaceLocation('/replayer', `uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`);
+      const q = getQuery();
+      const search = `uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}` + (q.pure === '1' || q.pure === 'true' ? '&pure=1' : '');
+      replaceLocation('/replayer', search);
     }
     return;
   }

@@ -205,7 +205,6 @@ export function useGrenadeAnalyzer(
   }
 
   function activateAnalyze(proj: ProjectileState) {
-    if (!isTrackingEnabled.value) return;
     selectedProjectile.value = proj;
 
     const frameIdx = findThrowFrame(proj.entityID);

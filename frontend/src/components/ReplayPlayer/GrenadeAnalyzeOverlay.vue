@@ -23,14 +23,11 @@
       <!-- 投掷方式标签 + 复制按钮 -->
       <div class="tag-row">
         <button class="copy-pos-btn" @click="copyPosition" :title="copyTooltip">
-          <svg v-if="!copied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2"/>
             <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
           </svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          {{ copied ? '已复制' : '复制坐标' }}
+          复制坐标
         </button>
         <div class="throw-type-tag" :class="throwTypeClass">
           {{ throwType }}
@@ -144,8 +141,6 @@ const progressTrackRef = ref<HTMLElement | null>(null);
 const isPlaying = ref(false);
 const playbackSpeed = ref(0.25);
 const speedOptions = [0.25, 0.5, 1] as const;
-const copied = ref(false);
-let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 let animationFrameId: number | null = null;
 let lastTimestamp = 0;
@@ -273,7 +268,6 @@ function playbackLoop(timestamp: number) {
 
 onUnmounted(() => {
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
-  if (copyTimer) clearTimeout(copyTimer);
 });
 
 // --- 复制坐标 ---
@@ -290,16 +284,15 @@ async function copyPosition() {
   const cmd = `setpos ${p.x.toFixed(6)} ${p.y.toFixed(6)} ${p.z.toFixed(6)}; setang ${p.pitch.toFixed(6)} ${p.yaw.toFixed(6)} 0`;
   try {
     await navigator.clipboard.writeText(cmd);
-    copied.value = true;
-    if (copyTimer) clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => { copied.value = false; }, 2000);
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '坐标已复制到剪贴板', type: 'info' } }));
   } catch {
-    console.warn('[GrenadeAnalyzer] 复制失败');
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
   }
 }
 </script>
 
 <style scoped>
+/* 容器不拦截事件，保证地图可拖动；仅右下角 UI 区域可点 */
 .grenade-analyze-overlay {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -308,6 +301,10 @@ async function copyPosition() {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  pointer-events: none;
+}
+.grenade-analyze-overlay .bottom-right-area {
+  pointer-events: auto;
 }
 
 /* === 投掷者信息行（右下角内） === */
@@ -375,7 +372,7 @@ async function copyPosition() {
 }
 .close-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
-/* === 右下角区域 === */
+/* === 右下角区域（分析模式下唯一可点击区域） === */
 .bottom-right-area {
   position: absolute; right: 24px; bottom: 24px;
   display: flex; flex-direction: column; align-items: flex-end;
