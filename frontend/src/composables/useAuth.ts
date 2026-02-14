@@ -3,9 +3,22 @@ import { ref, computed } from 'vue';
 export interface AuthUser {
   uid: string;
   username: string;
+  role?: 'normal' | 'pro' | 'pro+';
+  quota_limit?: number;
+  quota_used?: number;
 }
 
 const currentUser = ref<AuthUser | null>(null);
+
+function parseMeData(data: Record<string, unknown>): AuthUser {
+  return {
+    uid: String(data?.uid ?? ''),
+    username: String(data?.username ?? ''),
+    role: data?.role === 'pro' || data?.role === 'pro+' ? data.role : 'normal',
+    quota_limit: typeof data?.quota_limit === 'number' ? data.quota_limit : 5,
+    quota_used: typeof data?.quota_used === 'number' ? data.quota_used : 0,
+  };
+}
 
 /** 在页面挂载前调用，校验 session 并设置 currentUser，避免首屏闪烁。应在 main.ts 中 await 后再 mount。 */
 export async function initAuth(): Promise<void> {
@@ -13,7 +26,7 @@ export async function initAuth(): Promise<void> {
     const res = await fetch('/api/auth/me', { credentials: 'include' });
     const json = await res.json().catch(() => ({}));
     if (res.ok && json?.status === 'OK' && json?.data) {
-      currentUser.value = { uid: json.data.uid, username: json.data.username };
+      currentUser.value = parseMeData(json.data as Record<string, unknown>);
     } else {
       currentUser.value = null;
     }
@@ -38,7 +51,7 @@ export function useAuth() {
       const res = await fetch('/api/auth/me', { credentials: 'include' });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json?.status === 'OK' && json?.data) {
-        currentUser.value = { uid: json.data.uid, username: json.data.username };
+        currentUser.value = parseMeData(json.data as Record<string, unknown>);
       } else {
         currentUser.value = null;
         if (res.status === 401 && wasLoggedIn) {

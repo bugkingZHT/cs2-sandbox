@@ -65,6 +65,13 @@ func (s *Store) ListItemsByOwner(ownerID uint) ([]*ArchiveItem, error) {
 	return items, err
 }
 
+// CountByOwnerID returns the number of non-deleted archive items for the owner.
+func (s *Store) CountByOwnerID(ownerID uint) (int64, error) {
+	var n int64
+	err := s.db.Model(&ArchiveItem{}).Where("owner_id = ?", ownerID).Count(&n).Error
+	return n, err
+}
+
 // UpdateItem updates title, permission, demo_meta for an item. Owner must match.
 func (s *Store) UpdateItem(id string, ownerID uint, updates map[string]interface{}) error {
 	res := s.db.Model(&ArchiveItem{}).Where("id = ? AND owner_id = ?", id, ownerID).Updates(updates)

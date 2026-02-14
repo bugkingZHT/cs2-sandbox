@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bugkingzht/cs-demobox/pkg/archive"
+	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
 	"github.com/bugkingzht/cs-demobox/pkg/user"
 )
@@ -21,8 +23,10 @@ const (
 
 // Handlers holds dependencies for auth HTTP handlers.
 type Handlers struct {
-	User    *user.Store
-	Session *session.Store
+	User         *user.Store
+	Session      *session.Store
+	RoleStore    *role.Store
+	ArchiveStore *archive.Store
 }
 
 // LoginRequest is the JSON body for POST /api/auth/login.
@@ -31,10 +35,19 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// UserSummary is returned in login and me responses.
+// UserSummary is returned in login response.
 type UserSummary struct {
 	UID      string `json:"uid"`
 	Username string `json:"username"`
+}
+
+// MeResponse is returned by GET /api/auth/me (includes role and quota).
+type MeResponse struct {
+	UID        string `json:"uid"`
+	Username   string `json:"username"`
+	Role       string `json:"role"` // normal, pro, pro+
+	QuotaLimit int    `json:"quota_limit"`
+	QuotaUsed  int    `json:"quota_used"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -126,7 +139,17 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	writeJSONOK(w, UserSummary{UID: u.UID, Username: u.Username})
+	resp := MeResponse{UID: u.UID, Username: u.Username, Role: role.RoleNormal, QuotaLimit: role.RoleQuotaLimit[role.RoleNormal], QuotaUsed: 0}
+	if h.RoleStore != nil {
+		resp.Role, _, resp.QuotaLimit = h.RoleStore.GetEffectiveRole(u.ID)
+	}
+	if h.ArchiveStore != nil {
+		count, err := h.ArchiveStore.CountByOwnerID(u.ID)
+		if err == nil {
+			resp.QuotaUsed = int(count)
+		}
+	}
+	writeJSONOK(w, resp)
 }
 
 // ChangePasswordRequest is the JSON body for POST /api/auth/change-password.

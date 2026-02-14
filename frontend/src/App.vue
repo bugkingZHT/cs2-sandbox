@@ -50,6 +50,13 @@
         >
           <img src="/icons/cloud.svg" alt="" class="cloud-archive-icon" />
           <span v-show="!sidebarCollapsed" class="cloud-archive-title">云存档</span>
+          <div v-show="!sidebarCollapsed && currentUser" class="cloud-archive-quota-wrap">
+            <div
+              class="cloud-archive-quota-fan"
+              :style="quotaFanStyle"
+            ></div>
+            <div class="cloud-archive-quota-tooltip">云存储用量 {{ quotaUsed }}/{{ quotaLimit }}</div>
+          </div>
           <button
             v-show="!sidebarCollapsed"
             type="button"
@@ -64,7 +71,7 @@
             </svg>
           </button>
         </div>
-        <div v-show="!sidebarCollapsed" class="cloud-archive-list-wrap">
+        <div v-show="!sidebarCollapsed" class="cloud-archive-list-wrap ds-scrollbar">
           <div v-if="!currentUser" class="cloud-archive-empty">请先登录</div>
           <div v-else-if="archiveList.length === 0" class="cloud-archive-empty">暂无存档</div>
           <div v-else class="cloud-archive-list">
@@ -215,6 +222,8 @@
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">{{ currentUser ? truncatedUsername : '系统 / 登录' }}</span>
+            <span v-if="currentUser?.role === 'pro'" class="role-badge role-badge-pro">pro</span>
+            <span v-else-if="currentUser?.role === 'pro+'" class="role-badge role-badge-proplus">pro+</span>
           </span>
         </button>
       </div>
@@ -362,6 +371,17 @@
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 云存储用量已达上限 -->
+    <div v-if="showQuotaExceededModal" class="beta-modal-overlay" @click="showQuotaExceededModal = false">
+      <div class="beta-modal" @click.stop>
+        <h3 class="modal-title">云存储用量已达上限</h3>
+        <p class="modal-message">云存储用量 {{ quotaUsed }}/{{ quotaLimit }}，无法继续上传。请升级或清理后再试。</p>
+        <div class="modal-actions">
+          <button type="button" class="ds-btn-primary" @click="showQuotaExceededModal = false">关闭</button>
         </div>
       </div>
     </div>
@@ -528,7 +548,7 @@ const showBetaModal = ref(false);
 
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
 
-const { currentUser, truncatedUsername } = useAuth();
+const { currentUser, truncatedUsername, fetchAuthMe } = useAuth();
 
 const {
   archiveList,
@@ -547,6 +567,16 @@ const canAddToArchive = computed(
     !!currentRoundNumber.value &&
     !!replay.value
 );
+
+const quotaUsed = computed(() => currentUser.value?.quota_used ?? 0);
+const quotaLimit = computed(() => currentUser.value?.quota_limit ?? 5);
+const quotaFanStyle = computed(() => {
+  const used = quotaUsed.value;
+  const limit = quotaLimit.value;
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  return { background: `conic-gradient(var(--ds-primary) 0% ${pct}%, var(--ds-border-subtle) ${pct}% 100%)` };
+});
+const isQuotaFull = computed(() => quotaUsed.value >= quotaLimit.value);
 
 type ToastType = 'info' | 'warning' | 'error';
 
@@ -579,8 +609,9 @@ function openUploadModal() {
   const day = String(now.getDate()).padStart(2, '0');
   const dateStr = `${month}.${day}`;
   
-  // Remove 'de_' prefix from map name if present
-  const cleanMapName = r.mapName?.startsWith('de_') ? r.mapName.substring(3) : r.mapName;
+  // Remove 'de_' prefix from map name if present, then uppercase
+  const rawName = r.mapName?.startsWith('de_') ? r.mapName.substring(3) : r.mapName;
+  const cleanMapName = rawName ? rawName.toUpperCase() : rawName;
   
   // Format the default title as "mapname-MM.DD-回合N"
   const defaultTitle = cleanMapName ? `${cleanMapName} - ${dateStr} - 回合${round}` : `${dateStr} - 回合${round}`;
@@ -618,6 +649,10 @@ async function submitUploadFromModal() {
   const title = uploadFormTitle.value.trim();
   if (!title) {
     showArchiveToast('请输入存档名称', 'warning');
+    return;
+  }
+  if (isQuotaFull.value) {
+    showQuotaExceededModal.value = true;
     return;
   }
   if (!canAddToArchive.value || !currentDemoId.value || !currentRoundNumber.value || !replay.value) return;
@@ -668,8 +703,12 @@ async function submitUploadFromModal() {
           }
         } else {
           try {
-            const j = JSON.parse(xhr.responseText);
-            reject(new Error(j?.error || `HTTP ${xhr.status}`));
+            const j = JSON.parse(xhr.responseText || '{}');
+            if (xhr.status === 403 && (j?.error === 'cloud_archive_quota_exceeded' || j?.code === 'QUOTA_EXCEEDED')) {
+              reject({ status: 403, code: 'QUOTA_EXCEEDED', quota: j?.quota });
+            } else {
+              reject(new Error(j?.error || `HTTP ${xhr.status}`));
+            }
           } catch {
             reject(new Error(`HTTP ${xhr.status}`));
           }
@@ -681,9 +720,16 @@ async function submitUploadFromModal() {
     createdArchiveId.value = result.id;
     await loadArchive();
     uploadModalStep.value = 'success';
+    await fetchAuthMe();
   } catch (err) {
-    uploadError.value = err instanceof Error ? err.message : '上传失败';
-    uploadModalStep.value = 'error';
+    const quotaErr = err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'QUOTA_EXCEEDED';
+    if (quotaErr) {
+      closeUploadModal();
+      showQuotaExceededModal.value = true;
+    } else {
+      uploadError.value = err instanceof Error ? err.message : '上传失败';
+      uploadModalStep.value = 'error';
+    }
   } finally {
     archiveUploading.value = false;
     uploadProgress.value = 0;
@@ -738,6 +784,10 @@ async function handleAddToArchive() {
   const title = r.mapName ? `${r.mapName} · 第 ${round} 回合` : `回合 ${round}`;
 
   if (currentUser.value) {
+    if (isQuotaFull.value) {
+      showQuotaExceededModal.value = true;
+      return;
+    }
     openUploadModal();
     return;
   }
@@ -757,6 +807,8 @@ async function handleAddToArchive() {
 }
 
 const confirmDeleteArchiveId = ref<string | null>(null);
+
+const showQuotaExceededModal = ref(false);
 
 const shareModalArchiveId = ref<string | null>(null);
 const shareModalPermission = ref<'private' | 'public'>('private');
@@ -1519,7 +1571,6 @@ const showBetaWarning = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
   min-width: 0;
   letter-spacing: 0.5px;
   transition: color var(--ds-transition-base);
@@ -1529,6 +1580,7 @@ const showBetaWarning = () => {
   width: 28px;
   height: 28px;
   padding: 0;
+  margin-left: auto;
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-sm);
@@ -1560,10 +1612,71 @@ const showBetaWarning = () => {
   transform: none;
 }
 
+.cloud-archive-quota-wrap {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+.cloud-archive-quota-fan {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.cloud-archive-quota-tooltip {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+  z-index: 10;
+}
+
+.cloud-archive-quota-wrap:hover .cloud-archive-quota-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.role-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px 4px 6px; /* 下边距略大，补偿 pro 的 p 下伸，视觉居中 */
+  border-radius: 4px;
+}
+
+.role-badge-pro {
+  background: rgba(34, 197, 94, 0.35);
+  color: #22c55e;
+}
+
+.role-badge-proplus {
+  background: rgba(234, 179, 8, 0.35);
+  color: #eab308;
+}
+
 .cloud-archive-list-wrap {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-xs);
@@ -1755,6 +1868,8 @@ const showBetaWarning = () => {
   display: flex;
   align-items: center;
   gap: var(--ds-space-xs);
+  min-height: 40px;
+  flex-shrink: 0;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--ds-radius-sm);

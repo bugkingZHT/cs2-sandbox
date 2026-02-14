@@ -15,9 +15,14 @@ spec:
         app: demobox
     spec:
       hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default  # hostDNS is required for demobox to access the database
       imagePullSecrets:
         - name: acr-secret
+      volumes:
+        - name: data
+          hostPath:
+            path: /data0
+            type: DirectoryOrCreate
       containers:
         - name: demobox
           image: registry.cn-hangzhou.aliyuncs.com/snowbo/demobox:latest
@@ -25,6 +30,23 @@ spec:
           ports:
             - containerPort: 8080
               protocol: TCP
+          env:
+            # Database (required for auth & archive API)
+            - name: SNOWBO_DB_URL
+              value: "{mysql_host}"
+            - name: SNOWBO_DB_PORT
+              value: "{mysql_port}"
+            - name: SNOWBO_DB_USER
+              value: "{mysql_user}"
+            - name: SNOWBO_DB_PASSWD
+              value: "{mysql_password}"
+            - name: SNOWBO_DB_NAME
+              value: "{mysql_database}"
+            - name: SNOWBO_STORAGE_ROOTPATH
+              value: "/data"
+          volumeMounts:
+            - name: data
+              mountPath: /data
           resources:
             requests:
               cpu: "1"

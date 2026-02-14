@@ -134,7 +134,11 @@
                   />
                 </div>
                 <div class="user-info">
-                  <h3 class="username">{{ currentUser?.username }}</h3>
+                  <div class="username-row">
+                    <h3 class="username">{{ currentUser?.username }}</h3>
+                    <span v-if="currentUser?.role === 'pro'" class="profile-role-badge profile-role-badge-pro">pro</span>
+                    <span v-else-if="currentUser?.role === 'pro+'" class="profile-role-badge profile-role-badge-proplus">pro+</span>
+                  </div>
                   <p class="user-id">ID: {{ currentUser?.uid }}</p>
                 </div>
               </div>
@@ -603,6 +607,7 @@ const handleLogin = async () => {
       loginForm.value = { username: '', password: '' };
       showLoginPassword.value = false;
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '登录成功', type: 'info' } }));
+      window.location.reload();
     } else {
       loginError.value = data.error || '登录失败';
     }
@@ -625,10 +630,12 @@ const handleLogout = async () => {
     clearUser();
     showChangePassword.value = false;
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已退出登录', type: 'info' } }));
+    window.location.reload();
   } catch (error) {
     // 即使出错也清除本地状态
     clearUser();
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已退出登录', type: 'info' } }));
+    window.location.reload();
   } finally {
     logoutLoading.value = false;
   }
@@ -689,6 +696,7 @@ const handleChangePassword = async () => {
       // 后端已清理该用户全部 session 并清除 cookie，前端同步退出登录并提示
       clearUser();
       window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '密码已修改，请重新登录', type: 'info' } }));
+      window.location.reload();
     } else {
       passwordError.value = data.error || '密码修改失败';
     }
@@ -1435,20 +1443,46 @@ const handleCleanStorageLeak = async () => {
   min-width: 0;
 }
 
+.username-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  margin-bottom: var(--ds-space-xxs);
+  min-width: 0;
+}
+
 .username {
   font-size: var(--ds-text-base);
   font-weight: 700;
   color: var(--ds-text-primary);
-  margin: 0 0 var(--ds-space-xxs);
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.profile-role-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px 4px 6px; /* 下边距略大，补偿 pro 的 p 下伸，视觉居中 */
+  border-radius: 4px;
+}
+
+.profile-role-badge-pro {
+  background: rgba(34, 197, 94, 0.35);
+  color: #22c55e;
+}
+
+.profile-role-badge-proplus {
+  background: rgba(234, 179, 8, 0.35);
+  color: #eab308;
+}
+
 .user-id {
   font-size: var(--ds-text-xs);
   color: var(--ds-text-secondary);
-  margin: 0;
+  margin-top: var(--ds-space-xs);
   font-family: var(--ds-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;

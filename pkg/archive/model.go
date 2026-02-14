@@ -38,6 +38,7 @@ type UserArchiveTree struct {
 	UserID    uint   `gorm:"uniqueIndex;not null"`
 	Tree      string `gorm:"type:json;not null"` // {"order":["id1","id2",...]}
 	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 // TableName overrides table name.

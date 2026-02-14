@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
 	"github.com/bugkingzht/cs-demobox/pkg/user"
 	"gorm.io/gorm"
@@ -23,8 +24,9 @@ const (
 
 // Handlers holds dependencies for archive HTTP handlers.
 type Handlers struct {
-	Store   *Store
-	Storage *FileStorage
+	Store     *Store
+	Storage   *FileStorage
+	RoleStore *role.Store
 }
 
 // ItemsIndex handles GET (List) and POST (Create) for /api/archive/items exactly. Use with RequireAuth.
@@ -52,6 +54,16 @@ func writeJSONOK(w http.ResponseWriter, data interface{}) {
 
 func writeJSONErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]interface{}{"status": "ERROR", "error": msg})
+}
+
+// writeJSONQuotaExceeded returns 403 with error and quota for frontend modal.
+func writeJSONQuotaExceeded(w http.ResponseWriter, quota int) {
+	writeJSON(w, http.StatusForbidden, map[string]interface{}{
+		"status": "ERROR",
+		"error":  "cloud_archive_quota_exceeded",
+		"code":   "QUOTA_EXCEEDED",
+		"quota":  quota,
+	})
 }
 
 func genShortID() (string, error) {
@@ -130,6 +142,20 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[Archive] Create: storage not configured")
 		writeJSONErr(w, http.StatusServiceUnavailable, "storage not configured")
 		return
+	}
+	if h.RoleStore != nil {
+		_, _, quotaLimit := h.RoleStore.GetEffectiveRole(u.ID)
+		count, err := h.Store.CountByOwnerID(u.ID)
+		if err != nil {
+			log.Printf("[Archive] Create: CountByOwnerID failed for user_id=%d: %v", u.ID, err)
+			writeJSONErr(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if count >= int64(quotaLimit) {
+			log.Printf("[Archive] Create: quota exceeded uid=%s count=%d limit=%d", u.UID, count, quotaLimit)
+			writeJSONQuotaExceeded(w, quotaLimit)
+			return
+		}
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
