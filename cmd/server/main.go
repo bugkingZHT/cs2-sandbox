@@ -5,10 +5,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strings"
 
+	"github.com/bugkingzht/cs-demobox/cmd/server/constants"
 	"github.com/bugkingzht/cs-demobox/cmd/server/utils"
 	"github.com/bugkingzht/cs-demobox/pkg/archive"
 	"github.com/bugkingzht/cs-demobox/pkg/auth"
@@ -106,7 +106,7 @@ func main() {
 
 	// API handler: auth routes when DB is configured, else 503
 	var apiHandler http.Handler
-	dbCfg := database.ConfigFromEnv()
+	dbCfg := utils.GetDBConfig()
 	if dbCfg.IsConfigured() {
 		dbName := dbCfg.Name
 		log.Printf("[DB] Connecting to %s:%s (database %s)...", dbCfg.URL, dbCfg.Port, dbName)
@@ -139,7 +139,7 @@ func main() {
 			mux.HandleFunc("/api/auth/logout", authHandlers.Logout)
 			mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 			mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
-			storageRoot := os.Getenv("SNOWBO_STORAGE_ROOTPATH")
+			storageRoot := utils.GetStorageRootPath()
 			if storageRoot != "" {
 				archiveStore := archive.NewStore(db)
 				archiveStorage := archive.NewFileStorage(storageRoot)
@@ -151,9 +151,9 @@ func main() {
 				// 写及需登录的读：RequireAuth
 				mux.HandleFunc("/api/archive/tree", session.RequireAuth(sessionStore, archiveHandlers.PutTree))
 				mux.HandleFunc("/api/archive/items", session.RequireAuth(sessionStore, archiveHandlers.ItemsIndex))
-				log.Printf("[Archive] SNOWBO_STORAGE_ROOTPATH set to %s", storageRoot)
+				log.Printf("[Archive] %s set to %s", constants.EnvSnowboStorageRootPath, storageRoot)
 			} else {
-				log.Printf("[Archive] SNOWBO_STORAGE_ROOTPATH not set; /api/archive/* will return 503")
+				log.Printf("[Archive] %s not set; /api/archive/* will return 503", constants.EnvSnowboStorageRootPath)
 				archive503 := archiveUnavailableHandler()
 				mux.HandleFunc("/api/archive/tree", archive503)
 				mux.HandleFunc("/api/archive/item", archive503)
@@ -164,8 +164,7 @@ func main() {
 			apiHandler = mux
 		}
 	} else {
-		missing := dbCfg.MissingEnv()
-		log.Printf("[DB] Skipped: missing env %v (auth API will return 503)", missing)
+		log.Printf("[DB] Skipped: missing env %v (auth API will return 503)", utils.DBConfigMissingEnvKeys(dbCfg))
 		apiHandler = apiUnavailableHandler()
 	}
 

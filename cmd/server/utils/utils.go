@@ -4,7 +4,49 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/bugkingzht/cs-demobox/cmd/server/constants"
+	"github.com/bugkingzht/cs-demobox/pkg/database"
 )
+
+// EnvOr returns os.Getenv(key), or def if unset or empty.
+func EnvOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// GetDBConfig builds database.Config from environment using constants.
+func GetDBConfig() database.Config {
+	return database.Config{
+		URL:    os.Getenv(constants.EnvSnowboDBURL),
+		Port:   EnvOr(constants.EnvSnowboDBPort, "3306"),
+		User:   os.Getenv(constants.EnvSnowboDBUser),
+		Passwd: os.Getenv(constants.EnvSnowboDBPasswd),
+		Name:   EnvOr(constants.EnvSnowboDBName, database.DefaultDBName),
+	}
+}
+
+// DBConfigMissingEnvKeys returns env key names (for logging) that are missing for the given DB config.
+func DBConfigMissingEnvKeys(cfg database.Config) []string {
+	var missing []string
+	if cfg.URL == "" {
+		missing = append(missing, constants.EnvSnowboDBURL)
+	}
+	if cfg.User == "" {
+		missing = append(missing, constants.EnvSnowboDBUser)
+	}
+	if cfg.Passwd == "" {
+		missing = append(missing, constants.EnvSnowboDBPasswd)
+	}
+	return missing
+}
+
+// GetStorageRootPath returns SNOWBO_STORAGE_ROOTPATH (archive/file storage root); empty if unset.
+func GetStorageRootPath() string {
+	return os.Getenv(constants.EnvSnowboStorageRootPath)
+}
 
 // ServerLimitConfig 限流与慢速网络模拟配置（通过环境变量启用）
 type ServerLimitConfig struct {
@@ -21,9 +63,9 @@ type ServerLimitConfig struct {
 // SERVER_SLOW_DELAY_MS=500 （每个请求前延迟 500ms，0 关闭）
 // SERVER_SLOW_KBPS=50      （响应体 50 KB/s，0 关闭）
 func GetServerLimitConfig() ServerLimitConfig {
-	rps, _ := strconv.Atoi(os.Getenv("SERVER_RATE_LIMIT_RPS"))
-	delayMs, _ := strconv.Atoi(os.Getenv("SERVER_SLOW_DELAY_MS"))
-	kbps, _ := strconv.Atoi(os.Getenv("SERVER_SLOW_KBPS"))
+	rps, _ := strconv.Atoi(os.Getenv(constants.EnvServerRateLimitRPS))
+	delayMs, _ := strconv.Atoi(os.Getenv(constants.EnvServerSlowDelayMs))
+	kbps, _ := strconv.Atoi(os.Getenv(constants.EnvServerSlowKbps))
 	if rps < 0 {
 		rps = 0
 	}
@@ -39,9 +81,6 @@ func GetServerLimitConfig() ServerLimitConfig {
 		SlowKBPS:     kbps,
 	}
 }
-
-// Conf final fallback absolute path to static directory
-const defaultAbsPath = ""
 
 // GetStaticDir returns the absolute path to the static directory
 func GetStaticDir() string {
@@ -80,6 +119,9 @@ func GetStaticDir() string {
 		return absPath
 	}
 
-	// fallback to default absolute path
-	return defaultAbsPath
+	// Fallback: SNOWBO_STATIC_PATH env, or empty if unset
+	if p := os.Getenv(constants.EnvSnowboStaticPath); p != "" {
+		return p
+	}
+	return ""
 }
