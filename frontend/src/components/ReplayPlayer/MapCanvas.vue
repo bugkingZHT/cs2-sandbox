@@ -135,6 +135,16 @@
         </button>
       </div>
       <div class="zoom-pure-column">
+        <div v-if="replaySource" class="replay-source-wrap">
+          <div
+            class="replay-source-indicator"
+            :class="replaySource === 'cloud' ? 'is-cloud' : 'is-local'"
+          >
+            <img v-if="replaySource === 'cloud'" src="/icons/cloudsource.svg" width="20" height="20" alt="" />
+            <img v-else src="/icons/localsource.svg" width="20" height="20" alt="" />
+          </div>
+          <div class="replay-source-tooltip">{{ replaySource === 'cloud' ? '云存档' : '本地存档' }}</div>
+        </div>
         <div class="zoom-reset-group">
           <button class="zoom-btn zoom-in-btn" @click="zoomIn" title="放大">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -206,6 +216,8 @@ const props = withDefaults(
     tabRecorderConverting?: boolean;
     tabRecorderConvertingProgress?: number;
     tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
+    /** 当前回放来源：用于在 zoom 区域上方显示本地/云存档图标 */
+    replaySource?: 'local' | 'cloud' | null;
   }>(),
   {}
 );
@@ -923,12 +935,66 @@ onBeforeUnmount(() => {
   border-color: rgba(59, 130, 246, 0.8);
 }
 
-/* 缩放 + 纯净 垂直一列：上方 + / - / []，下方纯净按钮 */
+/* 缩放 + 纯净 垂直一列：上方来源图标，+ / - / []，下方纯净按钮 */
 .zoom-pure-column {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
+}
+
+.replay-source-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.replay-source-indicator {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.replay-source-indicator.is-local {
+  background: rgba(120, 120, 120, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.replay-source-indicator.is-cloud {
+  background: rgba(34, 197, 94, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.replay-source-indicator img {
+  display: block;
+  opacity: 0.95;
+}
+
+.replay-source-tooltip {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+}
+
+.replay-source-wrap:hover .replay-source-tooltip {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* + / - / [] 垂直连体按钮 */

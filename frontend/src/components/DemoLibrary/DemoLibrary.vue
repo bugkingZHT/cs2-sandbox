@@ -302,7 +302,7 @@
           :key="demo.id"
           class="demo-card ds-card"
           :class="{ 
-            'is-current': demo.id === currentDemoId,
+            'is-current': replayerSource === 'local' && demo.id === currentDemoId,
             'loading': isLoadingDemo && selectedDemoId === demo.id,
             'is-parsing': demo.status === 0,
             'is-failed': demo.status === -1
@@ -348,7 +348,7 @@
                 </div>
                 
                 <!-- Current Playing Badge -->
-                <div v-if="demo.id === currentDemoId" class="playing-badge">
+                <div v-if="replayerSource === 'local' && demo.id === currentDemoId" class="playing-badge">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="5 3 19 12 5 21 5 3"/>
                   </svg>
@@ -580,6 +580,8 @@ import { getMetaStorage } from '@/composables/indexdb-storage';
 const props = defineProps<{
   demoList: ReplayData[];
   currentDemoId: string | null;
+  /** 当前播放器来源：仅 source=local 时高亮 demolib 卡片 */
+  replayerSource?: 'local' | 'cloud' | null;
   loading?: boolean;
 }>();
 

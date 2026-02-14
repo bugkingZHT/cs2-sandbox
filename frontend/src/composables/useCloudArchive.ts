@@ -8,6 +8,7 @@ const ARCHIVE_LIST_KEY = 'list';
 export interface CloudArchiveItem {
   id: string;
   title: string;
+  permission?: string;
   demo_uuid: string;
   demo_round: number;
   add_time: number;
@@ -50,6 +51,7 @@ function mapApiItemToCloud(item: ApiArchiveItem): CloudArchiveItem {
   return {
     id: item.id,
     title: item.title,
+    permission: item.permission,
     demo_uuid: item.demo_uuid,
     demo_round: item.demo_round,
     add_time,
@@ -118,6 +120,7 @@ export function useCloudArchive() {
       items: items.map((item) => ({
         id: String(item.id),
         title: String(item.title),
+        permission: item.permission != null ? String(item.permission) : undefined,
         demo_uuid: String(item.demo_uuid),
         demo_round: Number(item.demo_round),
         add_time: Number(item.add_time),
@@ -240,6 +243,7 @@ export function useCloudArchive() {
     if (idx === -1) return;
     const next = [...archiveList.value];
     if (payload.title !== undefined) next[idx] = { ...next[idx], title: payload.title };
+    if (payload.permission !== undefined) next[idx] = { ...next[idx], permission: payload.permission };
     await persistItems(next);
   }
 

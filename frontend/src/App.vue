@@ -57,7 +57,7 @@
           class="cloud-archive-header"
           :class="{ 'is-collapsed': sidebarCollapsed, 'is-disabled': sidebarCollapsed && (!canAddToArchive || !currentUser) }"
           :title="sidebarCollapsed ? (!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')) : undefined"
-          @click="sidebarCollapsed && currentUser && canAddToArchive && handleAddToArchive()"
+          @click="sidebarCollapsed && currentUser && canAddToArchive && !uploadModalOpen && handleAddToArchive()"
         >
           <img src="/icons/cloud.svg" alt="" class="cloud-archive-icon" />
           <span v-show="!sidebarCollapsed" class="cloud-archive-title">云存档</span>
@@ -66,7 +66,7 @@
             type="button"
             class="cloud-archive-add-btn"
             :title="!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')"
-            :disabled="!currentUser || !canAddToArchive || archiveUploading"
+            :disabled="!currentUser || !canAddToArchive || archiveUploading || uploadModalOpen"
             @click="handleAddToArchive"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -76,13 +76,7 @@
           </button>
         </div>
         <div v-show="!sidebarCollapsed" class="cloud-archive-list-wrap">
-          <div v-if="archiveUploading" class="cloud-archive-upload-progress">
-            <div class="cloud-archive-upload-progress-track">
-              <div class="cloud-archive-upload-progress-bar" :style="{ width: archiveUploadProgress + '%' }"></div>
-            </div>
-            <span class="cloud-archive-upload-progress-text">上传中 {{ archiveUploadProgress }}%</span>
-          </div>
-          <div v-else-if="!currentUser" class="cloud-archive-empty">请先登录</div>
+          <div v-if="!currentUser" class="cloud-archive-empty">请先登录</div>
           <div v-else-if="archiveList.length === 0" class="cloud-archive-empty">暂无存档</div>
           <div v-else class="cloud-archive-list">
             <div
@@ -91,7 +85,7 @@
               class="cloud-archive-item"
               :class="{
                 'is-dragging': draggedArchiveIndex === index,
-                'is-current': currentDemoId === item.demo_uuid && currentRoundNumber === item.demo_round,
+                'is-current': replayerSource === 'cloud' && replayerArchiveId === item.id,
                 'is-drag-over-before': dragOverIndex === index && dragOverPosition === 'before',
                 'is-drag-over-after': dragOverIndex === index && dragOverPosition === 'after'
               }"
@@ -142,34 +136,47 @@
                     <circle cx="12" cy="19" r="1"/>
                   </svg>
                 </button>
-                <div 
-                  v-if="openArchiveMenuId === item.id"
-                  class="cloud-archive-dropdown"
-                  :style="dropdownPosition"
-                  @click.stop
-                >
-                  <button
-                    type="button"
-                    class="cloud-archive-dropdown-item"
-                    @click="startRenameArchive(item)"
+                <Teleport to="body">
+                  <div
+                    v-if="openArchiveMenuId === item.id"
+                    class="cloud-archive-dropdown"
+                    :style="dropdownPosition"
+                    @click.stop
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                    </svg>
-                    重命名
-                  </button>
-                  <button
-                    type="button"
-                    class="cloud-archive-dropdown-item"
-                    @click="confirmDeleteArchiveId = item.id"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                    删除
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      class="cloud-archive-dropdown-item"
+                      @click="openShareModal(item)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                      </svg>
+                      分享
+                    </button>
+                    <button
+                      type="button"
+                      class="cloud-archive-dropdown-item"
+                      @click="startRenameArchive(item)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                      </svg>
+                      重命名
+                    </button>
+                    <button
+                      type="button"
+                      class="cloud-archive-dropdown-item"
+                      @click="openArchiveMenuId = null; confirmDeleteArchiveId = item.id"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                      删除
+                    </button>
+                  </div>
+                </Teleport>
               </div>
             </div>
             <!-- 拖拽目标位置指示器 -->
@@ -224,6 +231,7 @@
         v-if="currentPage === 'library'"
         :demo-list="replayList || []"
         :current-demo-id="currentDemoId"
+        :replayer-source="replayerSource"
         :loading="loading"
         @select-demo="onSelectDemo"
         @delete-demo="onDeleteDemo"
@@ -297,14 +305,172 @@
     </Transition>
 
     <!-- 云存档删除确认 -->
-    <div v-if="confirmDeleteArchiveId !== null" class="beta-modal-overlay" @click="confirmDeleteArchiveId = null">
+    <div v-if="confirmDeleteArchiveId !== null" class="beta-modal-overlay" @click="confirmDeleteArchiveId = null; openArchiveMenuId = null">
       <div class="beta-modal" @click.stop>
-        <h3 class="modal-title">删除存档</h3>
-        <p class="modal-message">确定删除该存档？</p>
-        <div class="modal-actions">
-          <button type="button" class="ds-btn-secondary" @click="confirmDeleteArchiveId = null">取消</button>
-          <button type="button" class="ds-btn-primary" @click="confirmDeleteArchiveConfirm">确定</button>
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 9v4"/>
+            <path d="M12 17h.01"/>
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          </svg>
         </div>
+        <h3 class="modal-title">删除存档</h3>
+        <p class="modal-message">确定要删除此存档吗？</p>
+        <div class="modal-actions">
+          <button type="button" class="ds-btn-secondary" @click="confirmDeleteArchiveId = null; openArchiveMenuId = null">取消</button>
+          <button type="button" class="ds-btn-primary" @click="confirmDeleteArchiveConfirm">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 云存档分享弹窗 -->
+    <div
+      v-if="shareModalArchiveId !== null"
+      class="beta-modal-overlay"
+      @click="closeShareModal"
+    >
+      <div class="beta-modal" @click.stop>
+        <button type="button" class="modal-close-btn" aria-label="关闭" @click="closeShareModal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">分享存档</h3>
+        <div class="modal-form">
+          <div class="form-group">
+            <div class="form-radios">
+              <label class="form-radio">
+                <input v-model="shareModalPermission" type="radio" value="private" @change="saveShareModalPermission" />
+                <span>仅自己可见</span>
+              </label>
+              <label class="form-radio">
+                <input v-model="shareModalPermission" type="radio" value="public" @change="saveShareModalPermission" />
+                <span>获得链接即可查看</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="share-link-row" @click="copyShareLinkInShareModal">
+          <code class="share-link-url">{{ getShareUrlForArchiveId(shareModalArchiveId) }}</code>
+          <span class="share-link-copy" :class="{ copied: shareModalCopyCopied }" title="复制链接">
+            <svg v-if="!shareModalCopyCopied" class="share-link-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+            <svg v-else class="share-link-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 云存档上传弹窗 -->
+    <div
+      v-if="uploadModalOpen"
+      class="beta-modal-overlay"
+      @click="uploadModalStep !== 'uploading' && closeUploadModal()"
+    >
+      <div class="beta-modal" @click.stop>
+        <!-- 表单 -->
+        <template v-if="uploadModalStep === 'form'">
+          <div class="modal-icon">
+            <img src="/icons/cloud.svg" alt="云存档" class="modal-icon-svg" />
+          </div>
+          <h3 class="modal-title">存档当前回合</h3>
+          <div class="modal-form">
+            <div class="form-group">
+              <input
+                v-model="uploadFormTitle"
+                type="text"
+                class="form-input"
+                maxlength="32"
+                placeholder="存档名称"
+              />
+            </div>
+            <div class="form-group">
+              <div class="form-radios">
+                <label class="form-radio">
+                  <input v-model="uploadFormPermission" type="radio" value="private" />
+                  <span>仅自己可见</span>
+                </label>
+                <label class="form-radio">
+                  <input v-model="uploadFormPermission" type="radio" value="public" />
+                  <span>公开链接</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="ds-btn-secondary" @click="closeUploadModal">取消</button>
+            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">保存</button>
+          </div>
+        </template>
+        <!-- 上传中 -->
+        <template v-else-if="uploadModalStep === 'uploading'">
+          <div class="modal-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <h3 class="modal-title">正在上传</h3>
+          <div class="upload-progress">
+            <div class="upload-progress-track">
+              <div class="upload-progress-bar" :style="{ width: uploadProgress + '%' }"></div>
+            </div>
+            <span class="upload-progress-text">{{ uploadProgress }}%</span>
+          </div>
+        </template>
+        <!-- 成功 -->
+        <template v-else-if="uploadModalStep === 'success'">
+          <div class="modal-icon success">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <h3 class="modal-title">上传成功</h3>
+          <p class="modal-message success">已保存到云存档</p>
+          <div class="share-link-row" @click="copyShareLink">
+            <code class="share-link-url">{{ getShareUrl() }}</code>
+            <span class="share-link-copy" :class="{ copied: copyLinkCopied }" title="复制链接">
+              <svg v-if="!copyLinkCopied" class="share-link-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+              <svg v-else class="share-link-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </span>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="ds-btn-primary" @click="closeUploadModal">完成</button>
+          </div>
+        </template>
+        <!-- 失败 -->
+        <template v-else-if="uploadModalStep === 'error'">
+          <div class="modal-icon error">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <h3 class="modal-title">上传失败</h3>
+          <p class="modal-message error">{{ uploadError }}</p>
+          <div class="modal-actions">
+            <button type="button" class="ds-btn-secondary" @click="retryUploadForm">重试</button>
+            <button type="button" class="ds-btn-primary" @click="closeUploadModal">关闭</button>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -393,7 +559,162 @@ const archiveAddToastMessage = ref('已保存到云存档');
 const archiveAddToastType = ref<ToastType>('info');
 let archiveAddToastTimer: ReturnType<typeof setTimeout> | null = null;
 const archiveUploading = ref(false);
-const archiveUploadProgress = ref(0);
+
+// 云存档上传弹窗
+type UploadModalStep = 'form' | 'uploading' | 'success' | 'error';
+const uploadModalOpen = ref(false);
+const uploadModalStep = ref<UploadModalStep>('form');
+const uploadFormTitle = ref('');
+const uploadFormPermission = ref<'private' | 'public'>('private');
+const uploadProgress = ref(0);
+const uploadError = ref('');
+const createdArchiveId = ref<string | null>(null);
+const copyLinkCopied = ref(false);
+let copyLinkCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+function openUploadModal() {
+  if (!replay.value || currentRoundNumber.value == null) return;
+  const r = replay.value;
+  const round = currentRoundNumber.value;
+  
+  // Format date as MM.DD
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const dateStr = `${month}.${day}`;
+  
+  // Remove 'de_' prefix from map name if present
+  const cleanMapName = r.mapName?.startsWith('de_') ? r.mapName.substring(3) : r.mapName;
+  
+  // Format the default title as "mapname-MM.DD-回合N"
+  const defaultTitle = cleanMapName ? `${cleanMapName} - ${dateStr} - 回合${round}` : `${dateStr} - 回合${round}`;
+  
+  uploadFormTitle.value = defaultTitle.slice(0, 32);
+  uploadFormPermission.value = 'private';
+  uploadModalStep.value = 'form';
+  uploadError.value = '';
+  createdArchiveId.value = null;
+  copyLinkCopied.value = false;
+  if (copyLinkCopiedTimer) {
+    clearTimeout(copyLinkCopiedTimer);
+    copyLinkCopiedTimer = null;
+  }
+  uploadModalOpen.value = true;
+}
+
+function closeUploadModal() {
+  uploadModalOpen.value = false;
+  uploadModalStep.value = 'form';
+  uploadError.value = '';
+  createdArchiveId.value = null;
+  if (copyLinkCopiedTimer) {
+    clearTimeout(copyLinkCopiedTimer);
+    copyLinkCopiedTimer = null;
+  }
+}
+
+function retryUploadForm() {
+  uploadModalStep.value = 'form';
+  uploadError.value = '';
+}
+
+async function submitUploadFromModal() {
+  const title = uploadFormTitle.value.trim();
+  if (!title) {
+    showArchiveToast('请输入存档名称', 'warning');
+    return;
+  }
+  if (!canAddToArchive.value || !currentDemoId.value || !currentRoundNumber.value || !replay.value) return;
+  const uuid = currentDemoId.value;
+  const round = currentRoundNumber.value;
+
+  const opfs = await getOPFSStorage();
+  const roundBytes = await opfs.loadRound(uuid, round);
+  if (!roundBytes || roundBytes.length === 0) {
+    uploadError.value = '请先加载该回合';
+    uploadModalStep.value = 'error';
+    return;
+  }
+
+  const form = new FormData();
+  form.append('file', new Blob([roundBytes as BlobPart], { type: 'application/octet-stream' }), 'round.pb');
+  form.append('title', title);
+  form.append('demo_uuid', uuid);
+  form.append('demo_round', String(round));
+  form.append('permission', uploadFormPermission.value);
+  const metaStorage = await getMetaStorage();
+  const fullMeta = await metaStorage.loadMeta(uuid);
+  if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
+
+  uploadModalStep.value = 'uploading';
+  archiveUploading.value = true;
+  uploadProgress.value = 0;
+  uploadError.value = '';
+  try {
+    const result = await new Promise<{ id: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/archive/items');
+      xhr.withCredentials = true;
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+        }
+      });
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const j = JSON.parse(xhr.responseText);
+            const id = j?.data?.id;
+            if (id) resolve({ id });
+            else reject(new Error('Invalid response'));
+          } catch {
+            reject(new Error('Invalid response'));
+          }
+        } else {
+          try {
+            const j = JSON.parse(xhr.responseText);
+            reject(new Error(j?.error || `HTTP ${xhr.status}`));
+          } catch {
+            reject(new Error(`HTTP ${xhr.status}`));
+          }
+        }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.send(form);
+    });
+    createdArchiveId.value = result.id;
+    await loadArchive();
+    uploadModalStep.value = 'success';
+  } catch (err) {
+    uploadError.value = err instanceof Error ? err.message : '上传失败';
+    uploadModalStep.value = 'error';
+  } finally {
+    archiveUploading.value = false;
+    uploadProgress.value = 0;
+  }
+}
+
+function getShareUrl(): string {
+  const id = createdArchiveId.value;
+  if (!id) return '';
+  return `${window.location.origin}/replayer?source=cloud&archive_id=${encodeURIComponent(id)}&pure=1`;
+}
+
+async function copyShareLink() {
+  const url = getShareUrl();
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    copyLinkCopied.value = true;
+    if (copyLinkCopiedTimer) clearTimeout(copyLinkCopiedTimer);
+    copyLinkCopiedTimer = setTimeout(() => {
+      copyLinkCopied.value = false;
+      copyLinkCopiedTimer = null;
+    }, 2000);
+  } catch {
+    showArchiveToast('复制失败', 'error');
+  }
+}
 
 function showArchiveToast(message: string, type: ToastType = 'info') {
   if (archiveAddToastTimer) clearTimeout(archiveAddToastTimer);
@@ -421,59 +742,7 @@ async function handleAddToArchive() {
   const title = r.mapName ? `${r.mapName} · 第 ${round} 回合` : `回合 ${round}`;
 
   if (currentUser.value) {
-    const opfs = await getOPFSStorage();
-    const roundBytes = await opfs.loadRound(uuid, round);
-    if (!roundBytes || roundBytes.length === 0) {
-      showArchiveToast('请先加载该回合', 'warning');
-      return;
-    }
-    const form = new FormData();
-    form.append('file', new Blob([roundBytes as BlobPart], { type: 'application/octet-stream' }), 'round.pb');
-    form.append('title', title);
-    form.append('demo_uuid', uuid);
-    form.append('demo_round', String(round));
-    form.append('permission', 'private');
-    // 原封不动上传 IndexedDB 中的 demo meta，不裁剪
-    const metaStorage = await getMetaStorage();
-    const fullMeta = await metaStorage.loadMeta(uuid);
-    if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
-
-    archiveUploading.value = true;
-    archiveUploadProgress.value = 0;
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/archive/items');
-        xhr.withCredentials = true;
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            archiveUploadProgress.value = Math.round((e.loaded / e.total) * 100);
-          }
-        });
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            try {
-              const j = JSON.parse(xhr.responseText);
-              reject(new Error(j?.error || `HTTP ${xhr.status}`));
-            } catch {
-              reject(new Error(`HTTP ${xhr.status}`));
-            }
-          }
-        });
-        xhr.addEventListener('error', () => reject(new Error('Network error')));
-        xhr.send(form);
-      });
-      await loadArchive();
-      showArchiveToast('已保存到云存档', 'info');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '上传失败';
-      showArchiveToast(msg, 'error');
-    } finally {
-      archiveUploading.value = false;
-      archiveUploadProgress.value = 0;
-    }
+    openUploadModal();
     return;
   }
 
@@ -493,11 +762,65 @@ async function handleAddToArchive() {
 
 const confirmDeleteArchiveId = ref<string | null>(null);
 
+const shareModalArchiveId = ref<string | null>(null);
+const shareModalPermission = ref<'private' | 'public'>('private');
+const shareModalCopyCopied = ref(false);
+let shareModalCopyCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+function getShareUrlForArchiveId(archiveId: string): string {
+  return `${window.location.origin}/replayer?source=cloud&archive_id=${encodeURIComponent(archiveId)}&pure=1`;
+}
+
+function openShareModal(item: CloudArchiveItem) {
+  openArchiveMenuId.value = null;
+  shareModalArchiveId.value = item.id;
+  shareModalPermission.value = (item.permission === 'public' ? 'public' : 'private');
+  shareModalCopyCopied.value = false;
+  if (shareModalCopyCopiedTimer) {
+    clearTimeout(shareModalCopyCopiedTimer);
+    shareModalCopyCopiedTimer = null;
+  }
+}
+
+function closeShareModal() {
+  shareModalArchiveId.value = null;
+  if (shareModalCopyCopiedTimer) {
+    clearTimeout(shareModalCopyCopiedTimer);
+    shareModalCopyCopiedTimer = null;
+  }
+  // Close dropdown when share modal is closed
+  openArchiveMenuId.value = null;
+}
+
+function saveShareModalPermission() {
+  if (shareModalArchiveId.value === null) return;
+  updateArchiveItem(shareModalArchiveId.value, { permission: shareModalPermission.value });
+  showArchiveToast('可见范围已修改', 'info');
+}
+
+async function copyShareLinkInShareModal() {
+  if (shareModalArchiveId.value === null) return;
+  const url = getShareUrlForArchiveId(shareModalArchiveId.value);
+  try {
+    await navigator.clipboard.writeText(url);
+    shareModalCopyCopied.value = true;
+    if (shareModalCopyCopiedTimer) clearTimeout(shareModalCopyCopiedTimer);
+    shareModalCopyCopiedTimer = setTimeout(() => {
+      shareModalCopyCopied.value = false;
+      shareModalCopyCopiedTimer = null;
+    }, 2000);
+  } catch {
+    showArchiveToast('复制失败', 'error');
+  }
+}
+
 function confirmDeleteArchiveConfirm() {
   if (confirmDeleteArchiveId.value !== null) {
     removeArchiveItemById(confirmDeleteArchiveId.value);
     confirmDeleteArchiveId.value = null;
   }
+  // Close any open dropdown when deletion is confirmed
+  openArchiveMenuId.value = null;
 }
 
 function formatArchiveTime(ms: number): string {
@@ -539,12 +862,12 @@ function toggleArchiveMenu(id: string) {
   
   // 下一帧计算位置
   nextTick(() => {
-    const btn = document.querySelector(`[data-item-id="${id}"] .cloud-archive-menu-btn`);
+    const btn = document.querySelector(`[data-item-id="${id}"]`);
     if (btn) {
       const rect = btn.getBoundingClientRect();
       dropdownPosition.value = {
-        top: `${rect.bottom + window.scrollY}px`,
-        left: `${rect.left + window.scrollX}px`
+        top: `${rect.top}px`,
+        left: `${rect.right + 4}px`
       };
     }
   });
@@ -766,7 +1089,7 @@ async function ensureReplayerRouteData() {
     replayerRouteLoading.value = false;
     return;
   }
-  const needLoadReplay = !replay.value || replay.value.uuid !== uuid;
+  const needLoadReplay = !replay.value || replay.value.uuid !== uuid || replayerSource.value !== 'local';
   const needLoadRound = !needLoadReplay && currentRoundNumber.value !== roundNum;
   if (!needLoadReplay && !needLoadRound) {
     replayerRouteLoading.value = false;
@@ -1189,33 +1512,166 @@ const showBetaWarning = () => {
   padding: var(--ds-space-xs) 0;
 }
 
-.cloud-archive-upload-progress {
-  font-size: var(--ds-text-xs);
-  color: var(--ds-text-tertiary);
-  padding: var(--ds-space-sm);
-  background: var(--ds-surface-base);
-  border-radius: var(--ds-radius-md);
-  border: 1px solid var(--ds-border-subtle);
+
+
+/* Modal Form */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-lg);
+  margin: 0 0 var(--ds-space-xl);
+}
+
+.form-group {
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-sm);
 }
-.cloud-archive-upload-progress-track {
+
+.form-label {
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  color: var(--ds-text-secondary);
+}
+
+.form-input {
+  width: 100%;
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  font-size: var(--ds-text-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-primary);
+  color: var(--ds-text-primary);
+  box-sizing: border-box;
+}
+
+.form-input::placeholder {
+  color: var(--ds-text-tertiary);
+}
+
+.form-radios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+}
+
+.form-radios-with-button {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-lg);
+}
+
+.form-radios-with-button .form-radios {
+  flex: 1;
+  margin: 0;
+}
+
+.form-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+}
+
+.form-radio input {
+  margin: 0;
+}
+
+/* Upload Progress */
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+  margin: 0 0 var(--ds-space-xl);
+}
+
+.upload-progress-track {
   height: 8px;
+  width: 100%;
   background: var(--ds-border-subtle);
   border-radius: 4px;
   overflow: hidden;
+  flex-shrink: 0;
 }
-.cloud-archive-upload-progress-bar {
+
+.upload-progress-bar {
   height: 100%;
-  max-width: 100%;
-  background: var(--ds-accent-primary);
+  min-width: 0;
+  background: var(--ds-primary);
   border-radius: 4px;
   transition: width 0.15s ease;
 }
-.cloud-archive-upload-progress-text {
+
+.upload-progress-text {
   text-align: center;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+/* Share Link */
+.share-link-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  margin: 0 0 var(--ds-space-xl);
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-subtle);
+  cursor: pointer;
+  transition: background 0.15s;
+  min-width: 0;
+}
+
+.share-link-row:hover {
+  background: var(--ds-surface-hover);
+}
+
+.share-link-url {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ds-font-mono, 'Consolas', 'Monaco', monospace);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.share-link-url::-webkit-scrollbar {
+  display: none;
+}
+
+.share-link-copy {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-secondary);
+  transition: all 0.15s;
+}
+
+.share-link-copy-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.share-link-row:hover .share-link-copy {
+  background: var(--ds-accent-primary);
+  color: white;
+}
+
+.share-link-copy.copied {
+  background: var(--ds-accent-success, #22c55e);
+  color: white;
 }
 
 .cloud-archive-empty {
@@ -1305,7 +1761,7 @@ const showBetaWarning = () => {
   min-width: 0;
   display: flex;
   align-items: center;
-  margin: 0 var(--ds-space-xs);
+  margin: 0;
 }
 
 .cloud-archive-item-content {
@@ -1386,11 +1842,12 @@ const showBetaWarning = () => {
   display: flex;
   align-items: center;
   margin-left: var(--ds-space-xs);
+  height: 100%;
 }
 
 .cloud-archive-menu-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 100%;
   flex-shrink: 0;
   padding: 0;
   background: transparent;
@@ -1420,9 +1877,8 @@ const showBetaWarning = () => {
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
   box-shadow: var(--ds-shadow-lg);
-  z-index: 1000;
+  z-index: var(--ds-z-modal);
   overflow: hidden;
-  margin-top: var(--ds-space-xs);
 }
 
 .cloud-archive-dropdown-item {
@@ -1698,14 +2154,38 @@ const showBetaWarning = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #ffc107;
+  color: var(--ds-primary);
   width: 64px;
   height: 64px;
-  background: rgba(255, 193, 7, 0.1);
+  background: rgba(78, 204, 163, 0.1);
   border-radius: var(--ds-radius-full);
   margin-left: auto;
   margin-right: auto;
   padding: var(--ds-space-md);
+}
+
+.modal-icon-svg {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.beta-modal .modal-icon.success {
+  color: var(--ds-success, #10b981);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.beta-modal .modal-icon.success .modal-icon-svg {
+  filter: brightness(0) saturate(100%) invert(43%) sepia(85%) saturate(7200%) hue-rotate(143deg) brightness(92%) contrast(89%);
+}
+
+.beta-modal .modal-icon.error {
+  color: var(--ds-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.beta-modal .modal-icon.error .modal-icon-svg {
+  filter: brightness(0) saturate(100%) invert(29%) sepia(88%) saturate(3207%) hue-rotate(342deg) brightness(95%) contrast(97%);
 }
 
 .beta-modal .modal-title {
@@ -1717,14 +2197,18 @@ const showBetaWarning = () => {
 }
 
 .beta-modal .modal-message {
-  margin: 0 0 var(--ds-space-2xl) 0;
+  margin: 0 0 var(--ds-space-xl) 0;
   color: var(--ds-text-secondary);
   font-size: var(--ds-text-base);
   line-height: 1.6;
-  background: var(--ds-surface-base);
-  padding: var(--ds-space-lg);
-  border-radius: var(--ds-radius-md);
-  border-left: 3px solid #ffc107;
+}
+
+.beta-modal .modal-message.success {
+  color: var(--ds-success, #10b981);
+}
+
+.beta-modal .modal-message.error {
+  color: var(--ds-danger, #ef4444);
 }
 
 .beta-modal .modal-actions {
@@ -1744,6 +2228,7 @@ const showBetaWarning = () => {
   min-width: 80px;
   background: transparent;
   border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-secondary);
   transition: all var(--ds-transition-base);
 }
@@ -1772,11 +2257,24 @@ const showBetaWarning = () => {
   gap: var(--ds-space-md);
 }
 
+.ds-btn-primary.ds-btn-small {
+  width: auto;
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  font-size: var(--ds-text-xs);
+  min-width: 60px;
+  border-radius: var(--ds-radius-md);
+}
+
 .ds-btn-primary:hover {
   background: var(--ds-primary-hover);
   border-color: var(--ds-primary-hover);
   box-shadow: 0 2px 8px rgba(78, 204, 163, 0.3);
   transform: translateY(-2px);
+}
+
+.ds-btn-primary.ds-btn-small:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(78, 204, 163, 0.25);
 }
 
 /* === Debug Modal === */

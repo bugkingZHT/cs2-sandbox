@@ -73,6 +73,7 @@
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
+          :replay-source="replayerSource"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
