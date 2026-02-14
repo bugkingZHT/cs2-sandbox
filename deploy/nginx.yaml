@@ -14,13 +14,16 @@ data:
       server {
         listen 80;
         server_name snowbo.cn;  # 替换为你的域名，或留空 _
-        # 修复：补充完整的重定向目标（包含域名）
+        client_max_body_size 50M;
+
         return 301 https://$host$request_uri;
     }
 
     server {
         listen 443 ssl;
         server_name snowbo.cn;  # 必须匹配证书域名
+
+        client_max_body_size 50M;
 
         ssl_certificate /etc/nginx/ssl/tls.crt;      # Secret 挂载路径
         ssl_certificate_key /etc/nginx/ssl/tls.key;  # Secret 挂载路径
