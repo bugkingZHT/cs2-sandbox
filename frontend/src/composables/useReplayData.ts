@@ -43,6 +43,8 @@ interface UseReplayResult {
   replayerArchiveId: ReturnType<typeof ref<string | null>>;
   loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
   loadReplayByCloud: (archiveId: string) => Promise<void>;
+  /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
+  clearCloudPlaybackState: () => void;
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
@@ -344,6 +346,19 @@ function createReplayData() {
   };
 
   /** 切换回合：仅 local 模式从 OPFS 加载；cloud 单回合不切换 */
+  /** 清理云存档播放状态：清空 source/archiveId/replay/frames，用于切到本地库时不再保留 cloud 后台播放 */
+  const clearCloudPlaybackState = () => {
+    if (replayerSource.value !== 'cloud') return;
+    replayerSource.value = null;
+    replayerArchiveId.value = null;
+    replayRouteError.value = null;
+    cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+    replay.value = null;
+    frames.value = [];
+    bounds.value = null;
+    currentRoundNumber.value = 1;
+  };
+
   const loadRoundData = async (uuid: string, roundNumber: number) => {
     replayRouteError.value = null;
     if (replayerSource.value === 'cloud') {
@@ -707,6 +722,7 @@ function createReplayData() {
     replayerArchiveId,
     loadReplayByLocal,
     loadReplayByCloud,
+    clearCloudPlaybackState,
   };
 }
 

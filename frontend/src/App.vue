@@ -24,8 +24,8 @@
       <nav class="sidebar-nav">
         <button 
           class="nav-btn" 
-          :class="{ active: currentPage === 'library' }"
-          @click="navigate('/demolib')"
+          :class="{ active: currentPage === 'library' || (currentPage === 'player' && replayerSource === 'local') }"
+          @click="onNavigateToDemolib"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -34,30 +34,19 @@
             <span class="nav-text">Demo 本地库</span>
           </span>
         </button>
-        
-        <button 
-          class="nav-btn" 
-          :class="{ active: currentPage === 'player' }"
-          @click="goToPlayer"
-          :disabled="!hasSelectedDemo"
-          :title="sidebarCollapsed ? '2D 播放器' : ''"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">2D 播放器</span>
-          </span>
-        </button>
       </nav>
 
       <!-- 云存档（紧接 2D 播放器下边缘） -->
       <div class="cloud-archive-section">
         <div
           class="cloud-archive-header"
-          :class="{ 'is-collapsed': sidebarCollapsed, 'is-disabled': sidebarCollapsed && (!canAddToArchive || !currentUser) }"
-          :title="sidebarCollapsed ? (!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')) : undefined"
-          @click="sidebarCollapsed && currentUser && canAddToArchive && !uploadModalOpen && handleAddToArchive()"
+          :class="{
+            'is-collapsed': sidebarCollapsed,
+            'is-disabled': sidebarCollapsed && (!canAddToArchive || !currentUser) && replayerSource !== 'cloud',
+            'is-playing-cloud': sidebarCollapsed && replayerSource === 'cloud'
+          }"
+          :title="sidebarCollapsed && replayerSource !== 'cloud' ? (!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')) : undefined"
+          @click="sidebarCollapsed && replayerSource !== 'cloud' && currentUser && canAddToArchive && !uploadModalOpen && handleAddToArchive()"
         >
           <img src="/icons/cloud.svg" alt="" class="cloud-archive-icon" />
           <span v-show="!sidebarCollapsed" class="cloud-archive-title">云存档</span>
@@ -210,13 +199,19 @@
       <div class="sidebar-footer">
 
 
-        <button 
+        <button
           class="console-toggle-btn"
+          :class="{ 'is-logged-in': currentUser }"
           @click="showConsoleModal = true"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- 未登录：齿轮/设置风格；已登录：用户头像 -->
+          <svg v-if="!currentUser" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
             <line x1="12" y1="2" x2="12" y2="12"></line>
+          </svg>
+          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
             <span class="nav-text">{{ currentUser ? truncatedUsername : '系统 / 登录' }}</span>
@@ -503,6 +498,7 @@ const {
   loadReplayByLocal,
   loadReplayByCloud,
   deleteReplayById,
+  clearCloudPlaybackState,
   replay,
   currentRoundNumber,
   waitForInitialLoad,
@@ -835,6 +831,13 @@ function formatArchiveTime(ms: number): string {
 
 function goToArchiveItem(item: CloudArchiveItem) {
   navigate('/replayer', `source=cloud&archive_id=${encodeURIComponent(item.id)}`);
+}
+
+function onNavigateToDemolib() {
+  if (replayerSource.value === 'cloud') {
+    clearCloudPlaybackState();
+  }
+  navigate('/demolib');
 }
 
 function onArchiveDragEnd() {
@@ -1179,6 +1182,9 @@ const onUploadDemo = async (file: File) => {
 };
 
 const onExitReplay = () => {
+  if (replayerSource.value === 'cloud') {
+    clearCloudPlaybackState();
+  }
   navigate('/demolib');
 };
 
@@ -1229,7 +1235,6 @@ const showBetaWarning = () => {
 .sidebar-header {
   height: 72px;
   padding: var(--ds-space-lg) var(--ds-space-lg);
-  border-bottom: 1px solid var(--ds-border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1295,7 +1300,7 @@ const showBetaWarning = () => {
   height: 32px;
   padding: 0;
   background: var(--ds-surface-base);
-  border: 1px solid var(--ds-border-default);
+  border: none;
   border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
   cursor: pointer;
@@ -1308,7 +1313,6 @@ const showBetaWarning = () => {
 
 .collapse-btn:hover {
   background: var(--ds-surface-hover);
-  border-color: var(--ds-border-strong);
   color: var(--ds-text-primary);
 }
 
@@ -1318,18 +1322,19 @@ const showBetaWarning = () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--ds-space-lg) var(--ds-space-md);
+  padding: 0 var(--ds-space-md) var(--ds-space-lg) var(--ds-space-md);
   gap: var(--ds-space-sm);
 }
 
+/* Demo 本地库未选中时：白色调 */
 .nav-btn {
   width: 100%;
   min-height: 48px;
   padding: var(--ds-space-md) var(--ds-space-lg);
-  background: transparent;
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--ds-radius-md);
-  color: var(--ds-text-tertiary);
+  color: rgba(255, 255, 255, 0.9);
   font-size: var(--ds-text-base);
   font-weight: 600;
   cursor: pointer;
@@ -1352,6 +1357,9 @@ const showBetaWarning = () => {
 .nav-label {
   min-width: 0;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .nav-text {
@@ -1361,6 +1369,24 @@ const showBetaWarning = () => {
   line-height: 1.2;
 }
 
+.nav-source-tag {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+.nav-source-tag--local {
+  background: rgba(148, 163, 184, 0.25);
+  color: var(--ds-text-secondary);
+}
+.nav-source-tag--cloud {
+  background: rgba(34, 197, 94, 0.75);
+  color: #fff;
+}
+
 .collapsed .nav-label,
 .collapsed .nav-text {
   opacity: 0;
@@ -1368,20 +1394,33 @@ const showBetaWarning = () => {
   overflow: hidden;
 }
 
-.nav-btn:hover:not(:disabled) {
-  background: var(--ds-surface-base);
-  color: var(--ds-text-primary);
-  border-color: var(--ds-border-default);
+.nav-btn:hover:not(:disabled):not(.active) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  color: #fff;
+}
+
+.nav-btn:not(.active) svg {
+  stroke: currentColor;
 }
 
 .nav-btn.active {
-  background: var(--ds-surface-elevated);
+  background: rgba(78, 204, 163, 0.1);
   color: var(--ds-primary);
-  border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+  border-color: rgba(78, 204, 163, 0.3);
+  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.2);
 }
 
-.nav-btn.active svg {
+.nav-btn.active:hover:not(:disabled) {
+  background: rgba(78, 204, 163, 0.2);
+  border-color: rgba(78, 204, 163, 0.5);
+  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.2);
+  color: var(--ds-primary);
+}
+
+.nav-btn.active svg,
+.nav-btn.active:hover:not(:disabled) svg {
   stroke: var(--ds-primary);
 }
 
@@ -1427,21 +1466,40 @@ const showBetaWarning = () => {
   cursor: not-allowed;
 }
 
-.collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled) {
+/* 折叠且正在播放云存档：高亮显示，禁止点击（hover 仍有视觉效果） */
+.collapsed .cloud-archive-header.is-collapsed.is-playing-cloud {
+  background: rgba(78, 204, 163, 0.1);
+  border-color: rgba(78, 204, 163, 0.3);
+  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.2);
+  cursor: default;
+}
+
+.collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed.is-playing-cloud {
+  background: rgba(78, 204, 163, 0.2);
+  border-color: rgba(78, 204, 163, 0.5);
+  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.2);
+}
+
+.collapsed .cloud-archive-header.is-playing-cloud .cloud-archive-icon {
+  opacity: 1;
+  filter: brightness(0) saturate(100%) invert(43%) sepia(85%) saturate(7200%) hue-rotate(143deg) brightness(92%) contrast(89%);
+}
+
+.collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled):not(.is-playing-cloud) {
   background: var(--ds-surface-hover);
   border-color: var(--ds-border-strong);
 }
 
-.collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled) .cloud-archive-title {
+.collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled):not(.is-playing-cloud) .cloud-archive-title {
   color: var(--ds-text-primary);
 }
 
 /* 收起时云图标降低不透明度，避免纯白，与侧栏风格一致 */
-.collapsed .cloud-archive-header .cloud-archive-icon {
+.collapsed .cloud-archive-header:not(.is-playing-cloud) .cloud-archive-icon {
   opacity: 0.72;
 }
 
-.collapsed .cloud-archive-section:hover .cloud-archive-header .cloud-archive-icon {
+.collapsed .cloud-archive-section:hover .cloud-archive-header:not(.is-playing-cloud) .cloud-archive-icon {
   opacity: 0.88;
   transition: none;
 }
@@ -1713,10 +1771,28 @@ const showBetaWarning = () => {
 }
 
 .cloud-archive-item.is-current {
-  background: var(--ds-surface-elevated);
-  border-color: var(--ds-primary);
-  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.3), 0 2px 8px rgba(78, 204, 163, 0.15);
+  background: rgba(78, 204, 163, 0.1);
+  border-color: rgba(78, 204, 163, 0.3);
+  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.2);
   transform: none;
+}
+
+.cloud-archive-item.is-current .cloud-archive-item-title,
+.cloud-archive-item.is-current .cloud-archive-item-content {
+  color: var(--ds-primary);
+}
+
+/* active hover 与 BETA/console 一致：仅加强背景、边框、阴影，文字与图标保持主色 */
+.cloud-archive-item.is-current:hover {
+  background: rgba(78, 204, 163, 0.2);
+  border-color: rgba(78, 204, 163, 0.5);
+  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.2);
+}
+
+.cloud-archive-item.is-current:hover .cloud-archive-item-title,
+.cloud-archive-item.is-current:hover .cloud-archive-item-content,
+.cloud-archive-item.is-current:hover .cloud-archive-item-icon {
+  color: var(--ds-primary);
 }
 
 .cloud-archive-item:active {
@@ -1747,7 +1823,8 @@ const showBetaWarning = () => {
   transition: all var(--ds-transition-base);
 }
 
-.cloud-archive-item:hover .cloud-archive-item-icon {
+/* 仅非正在播放的 item hover 时 icon 变色、放大；正在播放的 item hover 时 icon 不变 */
+.cloud-archive-item:not(.is-current):hover .cloud-archive-item-icon {
   color: var(--ds-primary);
   transform: scale(1.1);
 }
@@ -1990,6 +2067,8 @@ const showBetaWarning = () => {
   flex-shrink: 0;
 }
 
+/* Console / 设置按钮：白色调 */
+/* Console / 设置按钮：蓝色调 */
 .console-toggle-btn {
   width: 100%;
   min-height: 48px;
@@ -2017,6 +2096,11 @@ const showBetaWarning = () => {
   background: rgba(74, 171, 247, 0.2);
   border-color: rgba(74, 171, 247, 0.5);
   box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
+  color: #4dabf7;
+}
+
+.console-toggle-btn svg {
+  stroke: currentColor;
 }
 
 /* === Main Content === */

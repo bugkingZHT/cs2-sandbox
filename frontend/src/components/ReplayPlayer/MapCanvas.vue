@@ -1029,12 +1029,8 @@ onBeforeUnmount(() => {
   transform: none;
 }
 
-.zoom-reset-group .zoom-btn.reset-btn {
-  background: rgba(59, 130, 246, 0.6);
-}
-
 .zoom-reset-group .zoom-btn.reset-btn:hover {
-  background: rgba(59, 130, 246, 0.8);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .reset-btn img {
@@ -1046,6 +1042,12 @@ onBeforeUnmount(() => {
   background: rgba(74, 171, 247, 0.5);
   border-color: rgba(74, 171, 247, 0.8);
   color: #4aabf7;
+}
+
+.zoom-btn.pure-mode-btn {
+  background: rgba(59, 130, 246, 0.5);
+  border-color: rgba(59, 130, 246, 0.7);
+  color: #93c5fd;
 }
 
 .pure-mode-btn.active {
