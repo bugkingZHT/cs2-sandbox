@@ -245,7 +245,7 @@ interface RenderContext {
   projectileLayer: Container;
   players: PlayerState[];
   currentRound: number; // For team color flipping in second half
-  worldToMap: (x: number, y: number) => { x: number; y: number };
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number };
   configs?: Record<number, ProjectileRenderConfig>;
   timeMs?: number;
   isTrackingEnabled?: boolean;
@@ -330,11 +330,12 @@ const drawCountdownRing = (
 // 计算像素半径
 const calculatePixelRadius = (
   gameRadius: number,
-  centerGamePos: { x: number; y: number },
-  worldToMap: (x: number, y: number) => { x: number; y: number },
+  centerGamePos: { x: number; y: number; z?: number },
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number },
 ): number => {
-  const center = worldToMap(centerGamePos.x, centerGamePos.y);
-  const edge = worldToMap(centerGamePos.x + gameRadius, centerGamePos.y);
+  const z = centerGamePos.z;
+  const center = worldToMap(centerGamePos.x, centerGamePos.y, z);
+  const edge = worldToMap(centerGamePos.x + gameRadius, centerGamePos.y, z);
   // 计算两点间距离作为像素半径
   return Math.sqrt(Math.pow(edge.x - center.x, 2) + Math.pow(edge.y - center.y, 2));
 };
@@ -374,16 +375,17 @@ const drawTrajectory = (
   
   // 先顺序连接所有 trajectory 检查点
   if (proj.trajectory.length > 0) {
-    const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y);
+    const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y, proj.trajectory[0].z);
     trajectoryG.moveTo(firstPoint.x, firstPoint.y);
     
     for (let i = 1; i < proj.trajectory.length; i++) {
-      const mapPoint = worldToMap(proj.trajectory[i].x, proj.trajectory[i].y);
+      const pt = proj.trajectory[i];
+      const mapPoint = worldToMap(pt.x, pt.y, pt.z);
       trajectoryG.lineTo(mapPoint.x, mapPoint.y);
     }
     
     // 最后连接到投掷物当前实际位置
-    const currentMapPos = worldToMap(proj.x, proj.y);
+    const currentMapPos = worldToMap(proj.x, proj.y, proj.z);
     trajectoryG.lineTo(currentMapPos.x, currentMapPos.y);
   }
 
@@ -392,7 +394,7 @@ const drawTrajectory = (
 
   // 绘制碰撞点（未来的碰撞点）
   for (const cp of proj.trajectory) {
-    const cpMapPos = worldToMap(cp.x, cp.y);
+    const cpMapPos = worldToMap(cp.x, cp.y, cp.z);
     trajectoryG.circle(cpMapPos.x, cpMapPos.y, trajectoryPointRadius).fill({ color: trajColor, alpha: 1.0 });
   }
 
@@ -401,15 +403,16 @@ const drawTrajectory = (
     const hitArea = new Graphics();
     
     if (proj.trajectory.length > 0) {
-      const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y);
+      const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y, proj.trajectory[0].z);
       hitArea.moveTo(firstPoint.x, firstPoint.y);
       
       for (let i = 1; i < proj.trajectory.length; i++) {
-        const mapPoint = worldToMap(proj.trajectory[i].x, proj.trajectory[i].y);
+        const pt = proj.trajectory[i];
+        const mapPoint = worldToMap(pt.x, pt.y, pt.z);
         hitArea.lineTo(mapPoint.x, mapPoint.y);
       }
       
-      const currentMapPos = worldToMap(proj.x, proj.y);
+      const currentMapPos = worldToMap(proj.x, proj.y, proj.z);
       hitArea.lineTo(currentMapPos.x, currentMapPos.y);
     }
     
@@ -462,7 +465,7 @@ const drawIcon = async (
     sprite.height = baseSize * finalScale;
     sprite.anchor.set(0.5);
 
-    const mapPos = worldToMap(proj.x, proj.y);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
     sprite.x = mapPos.x;
     sprite.y = mapPos.y;
 
@@ -513,7 +516,7 @@ const drawDroppedIcon = async (
   if (!assetPath) return;
 
   try {
-    const mapPos = worldToMap(eq.x, eq.y);
+    const mapPos = worldToMap(eq.x, eq.y, eq.z);
     const texture = textureCache[assetPath] || await Assets.load(assetPath);
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
 
@@ -570,8 +573,8 @@ const renderAreaEffect = async (
   const uiConfig = getUIConfig(typeKey);
 
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
-    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y }, worldToMap);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
+    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y, z: proj.z }, worldToMap);
 
     const explosionG = new Graphics();
     
@@ -607,8 +610,8 @@ const renderSmoke = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
   const logicConfig = getLogicConfig(typeId, ctx);
   
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
-    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y }, worldToMap);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
+    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y, z: proj.z }, worldToMap);
     const explosionG = new Graphics();
     
     // 计算烟雾的透明度系数（考虑被雷清除的情况）
@@ -646,7 +649,7 @@ const renderFlash = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
   const logicConfig = getLogicConfig(typeId, ctx);
   
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
     const explosionG = new Graphics();
     
     // 1. 瞬时扩大的闪烁效果（白光闪过）
@@ -658,7 +661,7 @@ const renderFlash = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
         const progress = elapsedTime / flashDuration;
         // 半径迅速扩大
         const currentRadius = logicConfig.explosionRadius * Math.pow(progress, 0.3);
-        const pixelRadius = calculatePixelRadius(currentRadius, { x: proj.x, y: proj.y }, worldToMap);
+        const pixelRadius = calculatePixelRadius(currentRadius, { x: proj.x, y: proj.y, z: proj.z }, worldToMap);
         // 透明度衰减
         const alpha = 0.7 * (1 - progress);
         
@@ -686,7 +689,7 @@ const renderDecoy = async (proj: ProjectileState, typeKey: string, ctx: RenderCo
   const uiConfig = getUIConfig(typeKey);
   
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
     const explosionG = new Graphics();
     
     // 诱饵弹表现为一个闪烁的小红点（模拟小地图上的敌人显示）
@@ -711,7 +714,7 @@ const renderHE = async (proj: ProjectileState, typeKey: string, ctx: RenderConte
   const logicConfig = getLogicConfig(typeId, ctx);
   
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
     const explosionG = new Graphics();
     
     // 确定颜色：根据阵营区分，并与火（0xFFA500）稍微区分
@@ -727,7 +730,7 @@ const renderHE = async (proj: ProjectileState, typeKey: string, ctx: RenderConte
         const progress = elapsedTime / flashDuration;
         // 半径迅速扩大
         const currentRadius = logicConfig.explosionRadius * Math.pow(progress, 0.4);
-        const pixelRadius = calculatePixelRadius(currentRadius, { x: proj.x, y: proj.y }, worldToMap);
+        const pixelRadius = calculatePixelRadius(currentRadius, { x: proj.x, y: proj.y, z: proj.z }, worldToMap);
         // 透明度迅速衰减
         const alpha = 0.8 * (1 - progress);
         
@@ -756,8 +759,8 @@ const renderFire = async (proj: ProjectileState, typeKey: string, ctx: RenderCon
   const logicConfig = getLogicConfig(typeId, ctx);
   
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
-    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y }, worldToMap);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
+    const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y, z: proj.z }, worldToMap);
     const explosionG = new Graphics();
     
     // 橙色实心小圆圈铺开 (#FFA500)
@@ -778,7 +781,7 @@ const renderDefault = async (proj: ProjectileState, typeKey: string, ctx: Render
   const uiConfig = getUIConfig(typeKey);
 
   if (proj.isExploded) {
-    const mapPos = worldToMap(proj.x, proj.y);
+    const mapPos = worldToMap(proj.x, proj.y, proj.z);
     const explosionG = new Graphics();
     let explosionColor = uiConfig.color;
 
@@ -808,8 +811,8 @@ export const drawProjectilesForFrame = async (options: {
   projectiles: Record<number, ProjectileState> | undefined;
   players: PlayerState[];
   projectileLayer: Container | null;
-  mapSprite: Sprite | null;
-  worldToMap: (x: number, y: number) => { x: number; y: number };
+  mapSprite: Sprite | Container | null;
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number };
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
   sortedProjs?: number[]; // Pre-sorted projectile entity IDs from engine
   droppedEquipment?: DroppedEquipment[];
@@ -942,10 +945,10 @@ export const drawProjectilesForFrame = async (options: {
 const drawDroppedC4 = async (
   bomb: BombFrame,
   projectileLayer: Container,
-  worldToMap: (x: number, y: number) => { x: number; y: number },
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number },
 ) => {
   try {
-    const mapPos = worldToMap(bomb.x, bomb.y);
+    const mapPos = worldToMap(bomb.x, bomb.y, bomb.z);
     const assetPath = '/utility/c4.svg';
     const texture = textureCache[assetPath] || await Assets.load(assetPath);
     if (!textureCache[assetPath]) textureCache[assetPath] = texture;
@@ -993,7 +996,7 @@ export const drawBombForFrame = async (options: {
   bomb: BombFrame | undefined;
   roundTime: RoundTimeInfo | undefined;
   projectileLayer: Container | null;
-  worldToMap: (x: number, y: number) => { x: number; y: number };
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number };
 }) => {
   const { bomb, roundTime, projectileLayer, worldToMap } = options;
   if (!bomb || !projectileLayer) return;
@@ -1010,7 +1013,7 @@ export const drawBombForFrame = async (options: {
   // 已安放、拆除中、已爆炸：红色图标 + 环形倒计时 / 爆炸范围
   if (!['planted', 'defusing', 'exploded'].includes(bomb.state)) return;
 
-  const mapPos = worldToMap(bomb.x, bomb.y);
+  const mapPos = worldToMap(bomb.x, bomb.y, bomb.z);
   const bombContainer = new Container();
   bombContainer.x = mapPos.x;
   bombContainer.y = mapPos.y;
@@ -1083,7 +1086,7 @@ export const drawBombForFrame = async (options: {
       
       // 爆炸伤害范围
       const gameExplosionRadius = 1200; 
-      const pixelRadius = calculatePixelRadius(gameExplosionRadius, { x: bomb.x, y: bomb.y }, worldToMap);
+      const pixelRadius = calculatePixelRadius(gameExplosionRadius, { x: bomb.x, y: bomb.y, z: bomb.z }, worldToMap);
       
       // 随时间衰减的透明度
       const fadeAlpha = 1 - (timeSinceExploded / EXPLOSION_SHOW_DURATION);

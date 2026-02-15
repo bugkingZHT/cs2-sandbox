@@ -57,7 +57,7 @@ interface RenderContext {
   currentRound: number; // For team color flipping in second half
   isPlaying: boolean;
   isDragging: boolean;
-  worldToMap: (x: number, y: number) => { x: number; y: number };
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number };
   onPlayerPointerOver?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerMove?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
@@ -384,7 +384,7 @@ export const drawPlayersForFrame = (options: {
   currentFrameIndex: number;
   isPlaying: boolean;
   isDragging: boolean;
-  worldToMap: (x: number, y: number) => { x: number; y: number };
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number };
   onPlayerPointerOver?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerMove?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
@@ -452,7 +452,7 @@ export const drawPlayersForFrame = (options: {
       };
       
       currentPlayers.add(player.id!);
-      const mapPos = worldToMap(player.x, player.y);
+      const mapPos = worldToMap(player.x, player.y, player.z);
 
       // Check if player sprite already exists
       let playerSprite = playerSpriteMap.get(player.id!);
@@ -487,7 +487,7 @@ export const drawPlayersForFrame = (options: {
       };
       
       currentPlayers.add(player.id!);
-      const mapPos = worldToMap(player.x, player.y);
+      const mapPos = worldToMap(player.x, player.y, player.z);
 
       let playerSprite = playerSpriteMap.get(player.id!);
 

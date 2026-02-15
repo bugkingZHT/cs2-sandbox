@@ -181,7 +181,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
-import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl, MAP_IMAGE_SIZE, MAP_SVG_IMAGE_SIZE, SVG_TEXTURE_RESOLUTION } from '@/config/map';
+import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl, getMapSvg2Url, getMapPng2Url, MAP_IMAGE_SIZE, MAP_SVG_IMAGE_SIZE, SVG_TEXTURE_RESOLUTION, isDualLayerMap } from '@/config/map';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { useMapConfig } from '@/composables/useMapConfig';
@@ -247,20 +247,42 @@ const currentMapConfig = computed(() => {
   return config;
 });
 
-/** 优先加载 map 下的 SVG（尺寸 MAP_SVG_IMAGE_SIZE），不存在则降级为 config.imageUrl (PNG，尺寸 MAP_IMAGE_SIZE）。 */
-async function loadMapTexture(): Promise<{ texture: Texture; isSvg: boolean }> {
-  const svgUrl = getMapSvgUrl(currentMapName.value);
-  const pngUrl = currentMapConfig.value.imageUrl;
-  try {
-    const texture = await Assets.load({
-      src: svgUrl,
-      data: { resolution: SVG_TEXTURE_RESOLUTION },
-    });
-    return { texture, isSvg: true };
-  } catch {
-    const texture = await Assets.load(pngUrl);
-    return { texture, isSvg: false };
+/** 优先加载 map 下的 SVG，不存在则降级为 PNG。双层地图时加载主图 + 辅图。 */
+async function loadMapTexture(): Promise<{ main: Texture; secondary?: Texture; isSvg: boolean }> {
+  const mapName = currentMapName.value;
+  const config = currentMapConfig.value;
+  const dualLayer = isDualLayerMap(config);
+
+  const loadMain = async (): Promise<{ texture: Texture; isSvg: boolean }> => {
+    const svgUrl = getMapSvgUrl(mapName);
+    const pngUrl = config.imageUrl;
+    try {
+      const texture = await Assets.load({ src: svgUrl, data: { resolution: SVG_TEXTURE_RESOLUTION } });
+      return { texture, isSvg: true };
+    } catch {
+      const texture = await Assets.load(pngUrl);
+      return { texture, isSvg: false };
+    }
+  };
+
+  const { texture: mainTexture, isSvg } = await loadMain();
+  let secondary: Texture | undefined;
+
+  if (dualLayer) {
+    const svg2Url = getMapSvg2Url(mapName);
+    const png2Url = getMapPng2Url(mapName);
+    try {
+      secondary = await Assets.load({ src: svg2Url, data: { resolution: SVG_TEXTURE_RESOLUTION } });
+    } catch {
+      try {
+        secondary = await Assets.load(png2Url);
+      } catch (e) {
+        console.warn('[MapCanvas] 辅图加载失败，降级为单层显示', e);
+      }
+    }
   }
+
+  return { main: mainTexture, secondary, isSvg };
 }
 
 function getMapDisplaySize(isSvg: boolean): number {
@@ -272,7 +294,9 @@ let app: Application | null = null;
 let worldContainer: Container | null = null;
 let playerLayer: Container | null = null;
 let projectileLayer: Container | null = null;
-let mapSprite: Sprite | null = null;
+let mapSprite: Sprite | Container | null = null;
+/** 单张地图的像素尺寸，用于 worldToMap 偏移计算（双层时每张图都是 mapSize） */
+let mapSize: number = 0;
 
 const state = reactive({
   dragging: false,
@@ -450,27 +474,34 @@ const onTooltipMouseLeave = () => {
   tooltipHideTimer = setTimeout(() => { hoverPlayer.value = null; }, 150);
 };
 
-const worldToMap = (x: number, y: number) => {
-  if (!mapSprite) return { x: 0, y: 0 };
-  
-  const { mapRange } = useMapConfig(currentMapName.value);
-  const X_MIN = mapRange.value.xMin;
-  const X_MAX = mapRange.value.xMax;
-  const Y_MIN = mapRange.value.yMin;
-  const Y_MAX = mapRange.value.yMax;
-  
-  const xRange = mapRange.value.xRange;
-  const yRange = mapRange.value.yRange;
-  
-  const mapWidth = mapSprite.width;
-  const mapHeight = mapSprite.height;
+/** 将游戏世界坐标 (x, y, z?) 转为地图画布坐标。z 用于双层地图分层（z > threshold 主图，否则辅图）。 */
+const worldToMap = (x: number, y: number, z?: number): { x: number; y: number } => {
+  if (!mapSprite || mapSize <= 0) return { x: 0, y: 0 };
 
-  const normalizedX = (x - (X_MIN + X_MAX) / 2) / xRange; 
+  const { mapRange, mapRange2, isDualLayer, zLayerThreshold, layerOffset } = useMapConfig(currentMapName.value);
+
+  const onMainLayer = z === undefined || z > zLayerThreshold.value;
+  const range = onMainLayer ? mapRange.value : mapRange2.value;
+
+  const X_MIN = range.xMin;
+  const X_MAX = range.xMax;
+  const Y_MIN = range.yMin;
+  const Y_MAX = range.yMax;
+  const xRange = range.xRange;
+  const yRange = range.yRange;
+
+  const normalizedX = (x - (X_MIN + X_MAX) / 2) / xRange;
   const normalizedY = (y - (Y_MIN + Y_MAX) / 2) / yRange;
-  
-  const pixelX = normalizedX * mapWidth;
-  const pixelY = -normalizedY * mapHeight;
-  
+
+  const pixelX = normalizedX * mapSize;
+  const pixelY = -normalizedY * mapSize;
+
+  if (isDualLayer.value) {
+    const offsetPx = layerOffset.value;
+    const offsetX = onMainLayer ? -mapSize / 2 : mapSize / 2 - offsetPx;
+    return { x: offsetX + pixelX, y: pixelY };
+  }
+
   return { x: pixelX, y: pixelY };
 };
 
@@ -492,14 +523,37 @@ const ensureApp = async () => {
   worldContainer = new Container();
   app.stage.addChild(worldContainer);
 
-  const { texture, isSvg } = await loadMapTexture();
-  const mapSize = getMapDisplaySize(isSvg);
-  mapSprite = new Sprite(texture);
-  mapSprite.anchor.set(0.5);
-  mapSprite.width = mapSize;
-  mapSprite.height = mapSize;
+  const { main, secondary, isSvg } = await loadMapTexture();
+  mapSize = getMapDisplaySize(isSvg);
 
-  mapSprite.position.set(0, 0);
+  if (secondary && isDualLayerMap(currentMapConfig.value)) {
+    const offsetPx = currentMapConfig.value.dualLayer?.offset ?? 0;
+    const mapContainer = new Container();
+    const mainSprite = new Sprite(main);
+    mainSprite.anchor.set(0.5);
+    mainSprite.width = mapSize;
+    mainSprite.height = mapSize;
+    mainSprite.position.set(-mapSize / 2, 0);
+    mapContainer.addChild(mainSprite);
+
+    const secondarySprite = new Sprite(secondary);
+    secondarySprite.anchor.set(0.5);
+    secondarySprite.width = mapSize;
+    secondarySprite.height = mapSize;
+    secondarySprite.position.set(mapSize / 2 - offsetPx, 0);
+    mapContainer.addChild(secondarySprite);
+
+    mapContainer.position.set(0, 0);
+    mapSprite = mapContainer;
+  } else {
+    const sprite = new Sprite(main);
+    sprite.anchor.set(0.5);
+    sprite.width = mapSize;
+    sprite.height = mapSize;
+    sprite.position.set(0, 0);
+    mapSprite = sprite;
+  }
+
   worldContainer.addChild(mapSprite);
 
   projectileLayer = new Container();
@@ -543,10 +597,13 @@ const setupResizeObserver = () => {
 const centerWorld = (forceFit = false) => {
   if (!app || !worldContainer || !mapSprite) return;
   const { width, height } = app.renderer.screen;
-  
+
   if (width === 0 || height === 0) return;
 
-  const fitScale = Math.min(width / mapSprite.width, height / mapSprite.height);
+  const bounds = mapSprite.getBounds();
+  const mapWidth = bounds.width;
+  const mapHeight = bounds.height;
+  const fitScale = Math.min(width / mapWidth, height / mapHeight);
   
   // 记录之前的缩放状态
   const wasAtDefault = Math.abs(state.scale - state.defaultScale) < 0.01;
@@ -817,21 +874,45 @@ watch(
   async (newMapName, oldMapName) => {
     if (newMapName !== oldMapName && app && worldContainer) {
       console.log('[MapCanvas] 地图切换:', oldMapName, '->', newMapName);
-      
+
       if (mapSprite) {
         worldContainer.removeChild(mapSprite);
       }
-      
-      const { texture, isSvg } = await loadMapTexture();
-      const mapSize = getMapDisplaySize(isSvg);
-      mapSprite = new Sprite(texture);
-      mapSprite.anchor.set(0.5);
-      mapSprite.width = mapSize;
-      mapSprite.height = mapSize;
-      mapSprite.position.set(0, 0);
+
+      const { main, secondary, isSvg } = await loadMapTexture();
+      mapSize = getMapDisplaySize(isSvg);
+      const config = MAP_CONFIGS[newMapName || DEFAULT_MAP] || MAP_CONFIGS[DEFAULT_MAP];
+
+      if (secondary && isDualLayerMap(config)) {
+        const offsetPx = config.dualLayer?.offset ?? 0;
+        const mapContainer = new Container();
+        const mainSprite = new Sprite(main);
+        mainSprite.anchor.set(0.5);
+        mainSprite.width = mapSize;
+        mainSprite.height = mapSize;
+        mainSprite.position.set(-mapSize / 2, 0);
+        mapContainer.addChild(mainSprite);
+
+        const secondarySprite = new Sprite(secondary);
+        secondarySprite.anchor.set(0.5);
+        secondarySprite.width = mapSize;
+        secondarySprite.height = mapSize;
+        secondarySprite.position.set(mapSize / 2 - offsetPx, 0);
+        mapContainer.addChild(secondarySprite);
+
+        mapContainer.position.set(0, 0);
+        mapSprite = mapContainer;
+      } else {
+        const sprite = new Sprite(main);
+        sprite.anchor.set(0.5);
+        sprite.width = mapSize;
+        sprite.height = mapSize;
+        sprite.position.set(0, 0);
+        mapSprite = sprite;
+      }
+
       worldContainer.addChildAt(mapSprite, 0);
-      
-      // 使用 requestAnimationFrame 延迟重绘，让地图先显示
+
       requestAnimationFrame(() => {
         centerWorld();
         drawPlayersForFrame();

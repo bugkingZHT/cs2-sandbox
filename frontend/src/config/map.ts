@@ -88,11 +88,36 @@ export interface MapConfig {
     start: number;
     end: number;
   };
+  /** 双层地图配置：主图左、辅图右，按 z 轴阈值分派实体 */
+  dualLayer?: {
+    zLayerThreshold: number; // z > threshold 显示主图，否则辅图
+    /** 主辅图重叠像素数，辅图向左偏移。0=完全并列，mapSize/2=一半重叠 */
+    offset?: number;
+  };
+  /** 辅图 x 范围，未配置时与主图 xRange 相同 */
+  xRange2?: { start: number; end: number };
+  /** 辅图 y 范围，未配置时与主图 yRange 相同 */
+  yRange2?: { start: number; end: number };
 }
 
 /** 根据地图名得到 SVG 底图 URL，若该路径不存在则应降级使用 config.imageUrl (PNG) */
 export function getMapSvgUrl(mapName: string): string {
   return `/map/${mapName}.svg`;
+}
+
+/** 根据地图名得到辅图 SVG URL（双层地图），命名规则 name_2.svg */
+export function getMapSvg2Url(mapName: string): string {
+  return `/map/${mapName}_2.svg`;
+}
+
+/** 根据地图名得到辅图 PNG 降级 URL */
+export function getMapPng2Url(mapName: string): string {
+  return `/backGroundMap/${mapName}_2.png`;
+}
+
+/** 判断是否为双层地图 */
+export function isDualLayerMap(config: MapConfig): boolean {
+  return !!(config.dualLayer && config.dualLayer.zLayerThreshold !== undefined);
 }
 
 /**
@@ -113,7 +138,7 @@ export const MAP_PARSING_SUPPORT: Record<string, boolean> = {
   'de_dust2': true,
   'de_inferno': true,
   'de_mirage': true,
-  'de_nuke': false,
+  'de_nuke': true,
   'de_overpass': false,
   'de_train': false,
   'de_vertigo': false,
@@ -357,7 +382,8 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
     yRange: {
       start: -4281,
       end: 2887
-    }
+    },
+    dualLayer: { zLayerThreshold: -480, offset: 1024 },
   },
   'de_overpass': {
     name: 'de_overpass',
