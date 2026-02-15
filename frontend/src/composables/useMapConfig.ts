@@ -38,7 +38,7 @@ export const useMapConfig = (mapName: string = DEFAULT_MAP) => {
     zLayerThreshold,
     layerOffset,
     mapName: currentMapConfig.name,
-    mapImageUrl: currentMapConfig.imageUrl,
+    mapUrl: currentMapConfig.mapUrl,
     mapWidth: currentMapConfig.width,
     mapHeight: currentMapConfig.height,
   };

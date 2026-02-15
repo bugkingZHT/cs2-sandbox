@@ -1,8 +1,7 @@
-/** PNG 底图默认像素尺寸，与 xRange/yRange 配合做比例坐标换算 */
-export const MAP_IMAGE_SIZE = 1024;
-
-/** SVG 底图默认像素尺寸，与 xRange/yRange 配合做比例坐标换算 */
-export const MAP_SVG_IMAGE_SIZE = 2048;
+/** 底图默认像素尺寸（SVG 纹理），与 xRange/yRange 配合做比例坐标换算 */
+export const MAP_IMAGE_SIZE = 2048;
+/** 逻辑地图尺寸（与 config width/height 一致）；SVG 为 2x 故 MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE，zoom 按逻辑尺寸计算 */
+export const LOGICAL_MAP_SIZE = 1024;
 
 /**
  * Canvas 地图上所有展示元素的尺寸配置（已按 1.5 倍放大，便于识别）
@@ -76,7 +75,8 @@ export const SVG_TEXTURE_RESOLUTION = 4;
 
 export interface MapConfig {
   name: string;
-  imageUrl: string;
+  /** 底图 SVG 路径 */
+  mapUrl: string;
   leftSideGroundMap?: string; // 左侧卡片背景图
   width: number;
   height: number;
@@ -93,6 +93,8 @@ export interface MapConfig {
     zLayerThreshold: number; // z > threshold 显示主图，否则辅图
     /** 主辅图重叠像素数，辅图向左偏移。0=完全并列，mapSize/2=一半重叠 */
     offset?: number;
+    /** 辅图 SVG 路径，未配置时默认为 ${mapName}_2.svg */
+    mapUrl2?: string;
   };
   /** 辅图 x 范围，未配置时与主图 xRange 相同 */
   xRange2?: { start: number; end: number };
@@ -100,19 +102,11 @@ export interface MapConfig {
   yRange2?: { start: number; end: number };
 }
 
-/** 根据地图名得到 SVG 底图 URL，若该路径不存在则应降级使用 config.imageUrl (PNG) */
-export function getMapSvgUrl(mapName: string): string {
-  return `/map/${mapName}.svg`;
-}
-
-/** 根据地图名得到辅图 SVG URL（双层地图），命名规则 name_2.svg */
-export function getMapSvg2Url(mapName: string): string {
-  return `/map/${mapName}_2.svg`;
-}
-
-/** 根据地图名得到辅图 PNG 降级 URL */
-export function getMapPng2Url(mapName: string): string {
-  return `/backGroundMap/${mapName}_2.png`;
+/** 获取辅图 URL（双层地图），优先用 config.dualLayer.mapUrl2，否则按 name_2.svg 推导 */
+export function getSecondaryMapUrl(config: MapConfig): string {
+  if (config.dualLayer?.mapUrl2) return config.dualLayer.mapUrl2;
+  const base = config.mapUrl.replace(/\.svg$/, '');
+  return `${base}_2.svg`;
 }
 
 /** 判断是否为双层地图 */
@@ -156,7 +150,7 @@ export const SUPPORTED_PARSING_MAP_NAMES = (
 export const MAP_CONFIGS: Record<string, MapConfig> = {
   'ar_baggage': {
     name: 'ar_baggage',
-    imageUrl: '/backGroundMap/ar_baggage.png',
+    mapUrl: '/map/ar_baggage.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -170,7 +164,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'ar_shoots': {
     name: 'ar_shoots',
-    imageUrl: '/backGroundMap/ar_shoots.png',
+    mapUrl: '/map/ar_shoots.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -184,7 +178,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'ar_shoots_night': {
     name: 'ar_shoots_night',
-    imageUrl: '/backGroundMap/ar_shoots_night.png',
+    mapUrl: '/map/ar_shoots_night.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -198,7 +192,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'cs_italy': {
     name: 'cs_italy',
-    imageUrl: '/backGroundMap/cs_italy.png',
+    mapUrl: '/map/cs_italy.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -212,7 +206,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'cs_office': {
     name: 'cs_office',
-    imageUrl: '/backGroundMap/cs_office.png',
+    mapUrl: '/map/cs_office.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -226,7 +220,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_ancient': {
     name: 'de_ancient',
-    imageUrl: '/backGroundMap/de_ancient.png',
+    mapUrl: '/map/de_ancient.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_ancient_left.png',
     width: 1024,
     height: 1024,
@@ -241,7 +235,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_ancient_night': {
     name: 'de_ancient_night',
-    imageUrl: '/backGroundMap/de_ancient_night.png',
+    mapUrl: '/map/de_ancient_night.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -255,7 +249,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_ancient_v1': {
     name: 'de_ancient_v1',
-    imageUrl: '/backGroundMap/de_ancient_v1.png',
+    mapUrl: '/map/de_ancient_v1.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -269,7 +263,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_ancient_v2': {
     name: 'de_ancient_v2',
-    imageUrl: '/backGroundMap/de_ancient_v2.png',
+    mapUrl: '/map/de_ancient_v2.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -283,7 +277,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_anubis': {
     name: 'de_anubis',
-    imageUrl: '/backGroundMap/de_anubis.png',
+    mapUrl: '/map/de_anubis.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_anubis_left.png',
     width: 1024,
     height: 1024,
@@ -298,7 +292,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_dust': {
     name: 'de_dust',
-    imageUrl: '/backGroundMap/de_dust.png',
+    mapUrl: '/map/de_dust.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -312,7 +306,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_dust2': {
     name: 'de_dust2',
-    imageUrl: '/backGroundMap/de_dust2.png',
+    mapUrl: '/map/de_dust2.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_dust2_left.png',
     width: 1024,
     height: 1024,
@@ -327,7 +321,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_inferno': {
     name: 'de_inferno',
-    imageUrl: '/backGroundMap/de_inferno.png',
+    mapUrl: '/map/de_inferno.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_inferno_left.png',
     width: 1024,
     height: 1024,
@@ -342,7 +336,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_inferno_s2': {
     name: 'de_inferno_s2',
-    imageUrl: '/backGroundMap/de_inferno_s2.png',
+    mapUrl: '/map/de_inferno_s2.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -356,7 +350,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_mirage': {
     name: 'de_mirage',
-    imageUrl: '/backGroundMap/de_mirage.png',
+    mapUrl: '/map/de_mirage.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_mirage_left.png',
     width: 1024,
     height: 1024,
@@ -371,7 +365,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_nuke': {
     name: 'de_nuke',
-    imageUrl: '/backGroundMap/de_nuke.png',
+    mapUrl: '/map/de_nuke.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_nuke_left.png',
     width: 1024,
     height: 1024,
@@ -387,7 +381,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_overpass': {
     name: 'de_overpass',
-    imageUrl: '/backGroundMap/de_overpass.png',
+    mapUrl: '/map/de_overpass.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_overpass_left.png',
     width: 1024,
     height: 1024,
@@ -402,7 +396,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_overpass_2v2': {
     name: 'de_overpass_2v2',
-    imageUrl: '/backGroundMap/de_overpass_2v2.png',
+    mapUrl: '/map/de_overpass_2v2.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -416,7 +410,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_train': {
     name: 'de_train',
-    imageUrl: '/backGroundMap/de_train.png',
+    mapUrl: '/map/de_train.svg',
     width: 1024,
     height: 1024,
     xRange: {
@@ -430,7 +424,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_vertigo': {
     name: 'de_vertigo',
-    imageUrl: '/backGroundMap/de_vertigo.png',
+    mapUrl: '/map/de_vertigo.svg',
     leftSideGroundMap: '/leftSideGroundMap/de_vertigo_left.png',
     width: 1024,
     height: 1024,
@@ -445,7 +439,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'workshop_preview': {
     name: 'workshop_preview',
-    imageUrl: '/backGroundMap/workshop_preview.png',
+    mapUrl: '/map/workshop_preview.svg',
     width: 1024,
     height: 1024,
     xRange: {

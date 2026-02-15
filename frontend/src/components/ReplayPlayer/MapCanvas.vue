@@ -181,7 +181,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
-import { MAP_CONFIGS, DEFAULT_MAP, getMapSvgUrl, getMapSvg2Url, getMapPng2Url, MAP_IMAGE_SIZE, MAP_SVG_IMAGE_SIZE, SVG_TEXTURE_RESOLUTION, isDualLayerMap } from '@/config/map';
+import { MAP_CONFIGS, DEFAULT_MAP, getSecondaryMapUrl, MAP_IMAGE_SIZE, LOGICAL_MAP_SIZE, SVG_TEXTURE_RESOLUTION, isDualLayerMap } from '@/config/map';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { useMapConfig } from '@/composables/useMapConfig';
@@ -247,46 +247,27 @@ const currentMapConfig = computed(() => {
   return config;
 });
 
-/** 优先加载 map 下的 SVG，不存在则降级为 PNG。双层地图时加载主图 + 辅图。 */
-async function loadMapTexture(): Promise<{ main: Texture; secondary?: Texture; isSvg: boolean }> {
-  const mapName = currentMapName.value;
+/** 加载地图 SVG 纹理。双层地图时加载主图 + 辅图。 */
+async function loadMapTexture(): Promise<{ main: Texture; secondary?: Texture }> {
   const config = currentMapConfig.value;
   const dualLayer = isDualLayerMap(config);
 
-  const loadMain = async (): Promise<{ texture: Texture; isSvg: boolean }> => {
-    const svgUrl = getMapSvgUrl(mapName);
-    const pngUrl = config.imageUrl;
-    try {
-      const texture = await Assets.load({ src: svgUrl, data: { resolution: SVG_TEXTURE_RESOLUTION } });
-      return { texture, isSvg: true };
-    } catch {
-      const texture = await Assets.load(pngUrl);
-      return { texture, isSvg: false };
-    }
-  };
+  const mainTexture = await Assets.load({
+    src: config.mapUrl,
+    data: { resolution: SVG_TEXTURE_RESOLUTION },
+  });
 
-  const { texture: mainTexture, isSvg } = await loadMain();
   let secondary: Texture | undefined;
-
   if (dualLayer) {
-    const svg2Url = getMapSvg2Url(mapName);
-    const png2Url = getMapPng2Url(mapName);
     try {
+      const svg2Url = getSecondaryMapUrl(config);
       secondary = await Assets.load({ src: svg2Url, data: { resolution: SVG_TEXTURE_RESOLUTION } });
-    } catch {
-      try {
-        secondary = await Assets.load(png2Url);
-      } catch (e) {
-        console.warn('[MapCanvas] 辅图加载失败，降级为单层显示', e);
-      }
+    } catch (e) {
+      console.warn('[MapCanvas] 辅图加载失败，降级为单层显示', e);
     }
   }
 
-  return { main: mainTexture, secondary, isSvg };
-}
-
-function getMapDisplaySize(isSvg: boolean): number {
-  return isSvg ? MAP_SVG_IMAGE_SIZE : MAP_IMAGE_SIZE;
+  return { main: mainTexture, secondary };
 }
 
 const host = ref<HTMLDivElement | null>(null);
@@ -297,6 +278,8 @@ let projectileLayer: Container | null = null;
 let mapSprite: Sprite | Container | null = null;
 /** 单张地图的像素尺寸，用于 worldToMap 偏移计算（双层时每张图都是 mapSize） */
 let mapSize: number = 0;
+/** 重置 zoom 时保存的缩放，用于“再点一次恢复”的开关效果 */
+let scaleBeforeFit: number | null = null;
 
 const state = reactive({
   dragging: false,
@@ -523,8 +506,8 @@ const ensureApp = async () => {
   worldContainer = new Container();
   app.stage.addChild(worldContainer);
 
-  const { main, secondary, isSvg } = await loadMapTexture();
-  mapSize = getMapDisplaySize(isSvg);
+  const { main, secondary } = await loadMapTexture();
+  mapSize = MAP_IMAGE_SIZE;
 
   if (secondary && isDualLayerMap(currentMapConfig.value)) {
     const offsetPx = currentMapConfig.value.dualLayer?.offset ?? 0;
@@ -575,7 +558,6 @@ const ensureApp = async () => {
 
   // 监听容器大小变化，实现自适应缩放
   setupResizeObserver();
-
   centerWorld(true);
 };
 
@@ -594,30 +576,63 @@ const setupResizeObserver = () => {
   resizeObserver.observe(host.value);
 };
 
-const centerWorld = (forceFit = false) => {
-  if (!app || !worldContainer || !mapSprite) return;
+/** SVG 纹理为 2x 逻辑尺寸（MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE），zoom 按逻辑尺寸换算 */
+const MAP_SCALE_FACTOR = LOGICAL_MAP_SIZE / MAP_IMAGE_SIZE;
+
+const DEFAULT_SCALE_EPSILON = 0.01;
+
+/** 计算当前地图的 fit 缩放与居中基准点（单层/双层一致），供 centerWorld 与 resetZoom 复用 */
+function getFitScaleAndCenter(): { fitScale: number; centerX: number; centerY: number } | null {
+  if (!app || !mapSprite) return null;
   const { width, height } = app.renderer.screen;
-
-  if (width === 0 || height === 0) return;
-
-  const bounds = mapSprite.getBounds();
+  if (width === 0 || height === 0) return null;
+  const dual = isDualLayerMap(currentMapConfig.value);
+  const bounds = mapSprite.getLocalBounds();
   const mapWidth = bounds.width;
   const mapHeight = bounds.height;
-  const fitScale = Math.min(width / mapWidth, height / mapHeight);
-  
-  // 记录之前的缩放状态
-  const wasAtDefault = Math.abs(state.scale - state.defaultScale) < 0.01;
-  
-  // 更新默认缩放比例（最小缩放比例）
-  state.defaultScale = fitScale;
-  
-  // 如果是强制适配，或者之前处于默认缩放状态，或者当前缩放小于新的最小缩放，则自动调整缩放
-  if (forceFit || wasAtDefault || state.scale < fitScale) {
-    state.scale = fitScale;
+  const fitScaleRaw = Math.min(width / mapWidth, height / mapHeight);
+  const fitScale = dual ? 2 * fitScaleRaw * MAP_SCALE_FACTOR : fitScaleRaw * MAP_SCALE_FACTOR;
+  const centerX = dual ? -mapSize / 2 : 0;
+  const centerY = 0;
+  return { fitScale, centerX, centerY };
+}
+
+/** 应用指定 scale 并居中（使用与 getFitScaleAndCenter 一致的 centerX/centerY） */
+function applyScaleAndCenter(scale: number, centerX: number, centerY: number) {
+  if (!app || !worldContainer) return;
+  const { width, height } = app.renderer.screen;
+  worldContainer.scale.set(scale);
+  worldContainer.position.set(width / 2 - centerX * scale, height / 2 - centerY * scale);
+}
+
+const centerWorld = (forceFit = false) => {
+  if (!app || !worldContainer || !mapSprite) return;
+  const data = getFitScaleAndCenter();
+  if (!data) return;
+
+  state.defaultScale = data.fitScale;
+  const wasAtDefault = Math.abs(state.scale - state.defaultScale) < DEFAULT_SCALE_EPSILON;
+  if (forceFit || wasAtDefault || state.scale < data.fitScale) {
+    state.scale = data.fitScale;
   }
-  
-  worldContainer.scale.set(state.scale);
-  worldContainer.position.set(width / 2, height / 2);
+  applyScaleAndCenter(state.scale, data.centerX, data.centerY);
+};
+
+const resetZoom = () => {
+  if (!app || !worldContainer || !mapSprite) return;
+  const data = getFitScaleAndCenter();
+  if (!data) return;
+  const atFit = Math.abs(state.scale - state.defaultScale) < DEFAULT_SCALE_EPSILON;
+  if (atFit && scaleBeforeFit != null) {
+    state.scale = scaleBeforeFit;
+    scaleBeforeFit = null;
+    applyScaleAndCenter(state.scale, data.centerX, data.centerY);
+  } else if (!atFit) {
+    scaleBeforeFit = state.scale;
+    state.defaultScale = data.fitScale;
+    state.scale = data.fitScale;
+    applyScaleAndCenter(state.scale, data.centerX, data.centerY);
+  }
 };
 
 const onPointerDown = (event: any) => {
@@ -701,7 +716,6 @@ const zoomBy = (delta: number) => {
 
 const zoomIn = () => zoomBy(0.1);
 const zoomOut = () => zoomBy(-0.1);
-const resetZoom = () => centerWorld(true);
 
 const clearProjectiles = () => {
   clearProjectilesLayer(projectileLayer);
@@ -879,8 +893,8 @@ watch(
         worldContainer.removeChild(mapSprite);
       }
 
-      const { main, secondary, isSvg } = await loadMapTexture();
-      mapSize = getMapDisplaySize(isSvg);
+      const { main, secondary } = await loadMapTexture();
+      mapSize = MAP_IMAGE_SIZE;
       const config = MAP_CONFIGS[newMapName || DEFAULT_MAP] || MAP_CONFIGS[DEFAULT_MAP];
 
       if (secondary && isDualLayerMap(config)) {
