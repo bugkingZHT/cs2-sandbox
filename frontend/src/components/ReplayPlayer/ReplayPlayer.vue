@@ -454,6 +454,7 @@
         :replay-meta="replay"
         :pure-mode="pureMode"
         :cloud-replay="replayerSource === 'cloud'"
+        :can-play="!!(frames?.length)"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -984,7 +985,22 @@ const togglePlay = () => {
   if (!hasFrames) {
     return;
   }
-  
+
+  // Defensive sync: ensure currentFrameIndex/currentPlaybackTimeMs are in sync with frames
+  // (fixes bug where play button doesn't work until timeline is clicked once after refresh)
+  const arr = frames.value ?? [];
+  const idx = currentFrameIndex.value;
+  const frame = arr[idx];
+  const expectedTimeMs = frame?.timeMs ?? 0;
+  const outOfBounds = idx < 0 || idx >= arr.length;
+  const timeMismatch = Math.abs(currentPlaybackTimeMs.value - expectedTimeMs) > 100;
+  if (outOfBounds || timeMismatch) {
+    const clampedIdx = Math.max(0, Math.min(arr.length - 1, idx));
+    currentFrameIndex.value = clampedIdx;
+    currentPlaybackTimeMs.value = arr[clampedIdx]?.timeMs ?? 0;
+    lastTimestamp = 0; // reset RAF timing for clean playback start
+  }
+
   // If we are in drawing mode, close it when playing
   if (isDrawingMode.value) {
     isDrawingMode.value = false;

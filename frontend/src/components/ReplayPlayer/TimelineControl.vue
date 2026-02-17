@@ -34,42 +34,32 @@
 
     <!-- 二、下方：时间轴进度条 -->
     <div class="playback-control-module">
-      <!-- 左侧控制区 -->
+      <!-- 左侧控制区：播放按钮 + 倍速 -->
       <div class="playback-info-box">
         <div class="controls-stack">
-          <button class="circle-play-btn" @click="$emit('toggle-play')">
-            <svg v-if="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="white">
+          <button
+            class="circle-play-btn"
+            :disabled="!canPlay"
+            @click="$emit('toggle-play')"
+          >
+            <svg v-if="isPlaying" class="play-icon-svg" viewBox="0 0 24 24" fill="white">
               <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
             </svg>
-            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="white">
+            <svg v-else class="play-icon-svg" viewBox="0 0 24 24" fill="white">
               <path d="M8 5V19L19 12L8 5Z"/>
             </svg>
           </button>
         </div>
-        <div class="status-meta">
-          <div class="time-display">
-            <!-- Show C4 icon when bomb is planted -->
-            <img 
-              v-if="currentRoundTime.phase === 'planted'" 
-              src="/utility/c4.svg" 
-              class="icon-c4" 
-              alt="C4"
-            />
-            <!-- Show clock icon for other phases -->
-            <svg 
-              v-else
-              class="icon-stopwatch" 
-              width="14" 
-              height="14" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              :stroke="roundTimeColor" 
-              stroke-width="2"
-            >
-              <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
-            </svg>
-            <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
-          </div>
+        <div class="speed-tabs">
+          <button
+            v-for="s in speedOptions"
+            :key="s"
+            class="speed-tab-btn"
+            :class="{ active: playbackSpeed === s }"
+            @click="emit('update-speed', s)"
+          >
+            {{ s }}x
+          </button>
         </div>
       </div>
 
@@ -144,17 +134,31 @@
         </div>
       </div>
 
-      <!-- 右侧倍速选项卡 -->
-      <div class="speed-tabs">
-        <button
-          v-for="s in speedOptions"
-          :key="s"
-          class="speed-tab-btn"
-          :class="{ active: playbackSpeed === s }"
-          @click="emit('update-speed', s)"
-        >
-          {{ s }}x
-        </button>
+      <!-- 右侧时间显示 -->
+      <div class="time-display-box">
+        <div class="time-display">
+          <!-- Show C4 icon when bomb is planted -->
+          <img 
+            v-if="currentRoundTime.phase === 'planted'" 
+            src="/utility/c4.svg" 
+            class="icon-c4" 
+            alt="C4"
+          />
+          <!-- Show clock icon for other phases -->
+          <svg 
+            v-else
+            class="icon-stopwatch" 
+            width="14" 
+            height="14" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            :stroke="roundTimeColor" 
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
+          </svg>
+          <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -188,7 +192,11 @@ const props = defineProps<{
   pureMode?: boolean;
   /** 云回放仅单回合，其他回合按钮禁用并置灰 */
   cloudReplay?: boolean;
+  /** 是否允许播放（有帧数据时 true，避免刷新后未同步状态时点击无效） */
+  canPlay?: boolean;
 }>();
+
+const canPlay = computed(() => props.canPlay ?? true);
 
 const emit = defineEmits<{
   (e: 'seek-seconds', value: number): void;
@@ -734,11 +742,11 @@ const speedOptions = [0.5, 1, 2] as const;
 }
 
 .playback-info-box {
-  width: 96px;
   height: 100%;
   background: var(--ds-bg-secondary);
   display: flex;
   align-items: center;
+  gap: var(--ds-space-sm);
   padding: 0 var(--ds-space-sm);
   border-radius: 2px;
   flex-shrink: 0;
@@ -747,16 +755,18 @@ const speedOptions = [0.5, 1, 2] as const;
 
 .controls-stack {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  height: 100%;
   position: relative;
   z-index: 10;
 }
 
 .circle-play-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+  aspect-ratio: 1;
+  height: 100%;
+  width: auto;
+  min-width: 0;
+  border-radius: 6px;
   background: var(--ds-bg-secondary);
   border: none;
   display: flex;
@@ -767,8 +777,18 @@ const speedOptions = [0.5, 1, 2] as const;
   flex-shrink: 0;
 }
 
-.circle-play-btn:hover {
+.circle-play-btn .play-icon-svg {
+  width: 55%;
+  height: 55%;
+}
+
+.circle-play-btn:hover:not(:disabled) {
   background: var(--ds-surface-hover);
+}
+
+.circle-play-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .status-meta {
@@ -817,11 +837,20 @@ const speedOptions = [0.5, 1, 2] as const;
   background: rgba(78, 204, 163, 0.15);
 }
 
+.time-display-box {
+  height: 100%;
+  background: var(--ds-bg-secondary);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--ds-space-sm);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 .time-display {
   display: flex;
   align-items: center;
   gap: var(--ds-space-xs);
-  margin-top: 2px;
 }
 
 .icon-c4 {
@@ -1135,11 +1164,6 @@ const speedOptions = [0.5, 1, 2] as const;
     padding: 0 var(--ds-space-xs);
   }
 
-  .circle-play-btn {
-    width: 22px;
-    height: 22px;
-  }
-
   .speed-tabs {
     height: 75%;
   }
@@ -1196,22 +1220,13 @@ const speedOptions = [0.5, 1, 2] as const;
   }
 
   .playback-control-module {
-    height: 30px;
+    height: 40px;
   }
 
   .playback-info-box {
-    width: 72px;
     height: 100%;
   }
 
-  .circle-play-btn {
-    width: 20px;
-    height: 20px;
-  }
-
-  .status-meta {
-    margin-left: var(--ds-space-xs);
-  }
 
   .speed-tabs {
     height: 70%;
