@@ -2,6 +2,19 @@
   <div class="viewer-layout">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
+      <!-- 左上角返回：回到 Demo 本地库 / 云存档 -->
+      <button
+        type="button"
+        class="replayer-back-btn"
+        :title="replayerSource === 'cloud' ? '返回战术笔记' : '返回 Demo 库'"
+        @click="emit('exit-replay')"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        <span class="replayer-back-label">{{ replayerSource === 'cloud' ? '返回战术笔记' : '返回 Demo 库' }}</span>
+      </button>
+
       <!-- Cover：按优先级只显示一种（route_loading / cloud_download / not_found / forbidden / no_data） -->
       <div
         v-if="coverType !== 'none'"
@@ -50,7 +63,7 @@
             <img src="/icons/unable.svg" alt="" class="empty-icon-img" />
           </div>
           <h3>回放无权限</h3>
-          <p>你没有权限访问此云存档回合</p>
+          <p>你没有权限访问此笔记回合</p>
         </div>
         <!-- 5. 暂无回放数据（兜底） -->
         <div v-else class="empty-state-content">
@@ -73,7 +86,10 @@
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
-          :replay-source="replayerSource"
+          :can-add-to-note="props.canAddToNote"
+          :show-save-to-note="replayerSource !== 'cloud'"
+          :note-uploading="props.noteUploading"
+          @save-current-round="emit('save-current-round')"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
@@ -479,8 +495,16 @@ import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/re
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
+const props = defineProps<{
+  /** 是否可保存当前回合到云存档（由 App 根据播放状态计算） */
+  canAddToNote?: boolean;
+  /** 云存档上传中 */
+  noteUploading?: boolean;
+}>();
+
 const emit = defineEmits<{
   (e: 'exit-replay'): void;
+  (e: 'save-current-round'): void;
 }>();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
@@ -1253,11 +1277,11 @@ const loadRoundData = async (roundNumber: number) => {
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
     
-    // 同步 URL：local 用 source=local&uuid&round；cloud 保持 source=cloud&archive_id
+    // 同步 URL：local 用 source=local&uuid&round；cloud 保持 source=cloud&note_id
     const q = getQuery();
     const pure = pureMode.value ? '&pure=1' : '';
-    const search = (q.source === 'cloud' && q.archive_id)
-      ? `source=cloud&archive_id=${encodeURIComponent(q.archive_id)}${pure}`
+    const search = (q.source === 'cloud' && q.note_id)
+      ? `source=cloud&note_id=${encodeURIComponent(q.note_id)}${pure}`
       : `source=local&uuid=${replay.value.uuid}&round=${roundNumber}${pure}`;
     replaceLocation('/replayer', search);
     
@@ -1358,6 +1382,45 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  position: relative;
+}
+
+/* 左上角返回按钮 */
+.replayer-back-btn {
+  position: absolute;
+  top: var(--ds-space-md);
+  left: var(--ds-space-md);
+  z-index: var(--ds-z-dropdown);
+  pointer-events: auto;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  backdrop-filter: blur(10px);
+}
+
+.replayer-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+
+.replayer-back-btn:active {
+  transform: translateY(0);
+}
+
+.replayer-back-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
 }
 
 /* === Player Panels (Bottom Corners) === */

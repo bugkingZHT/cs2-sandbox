@@ -135,15 +135,21 @@
         </button>
       </div>
       <div class="zoom-pure-column">
-        <div v-if="replaySource" class="replay-source-wrap">
-          <div
-            class="replay-source-indicator"
-            :class="replaySource === 'cloud' ? 'is-cloud' : 'is-local'"
+        <div v-if="!pureMode" class="save-to-note-wrap">
+          <button
+            type="button"
+            class="save-to-note-btn zoom-column-btn"
+            :title="canAddToNote ? '保存当前回合到笔记' : '当前回合可保存到笔记（需在播放器内选择回合）'"
+            :disabled="!canAddToNote || noteUploading"
+            @click="emit('save-current-round')"
           >
-            <img v-if="replaySource === 'cloud'" src="/icons/cloudsource.svg" width="20" height="20" alt="" />
-            <img v-else src="/icons/localsource.svg" width="20" height="20" alt="" />
-          </div>
-          <div class="replay-source-tooltip">{{ replaySource === 'cloud' ? '云存档' : '本地存档' }}</div>
+            <svg class="save-to-note-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="5" y1="6" x2="5" y2="6"/><line x1="10" y1="6" x2="19" y2="6"/>
+              <line x1="5" y1="12" x2="5" y2="12"/><line x1="10" y1="12" x2="19" y2="12"/>
+              <line x1="5" y1="18" x2="5" y2="18"/><line x1="10" y1="18" x2="19" y2="18"/>
+            </svg>
+            <span class="save-to-note-label">保存到笔记</span>
+          </button>
         </div>
         <div class="zoom-reset-group">
           <button class="zoom-btn zoom-in-btn" @click="zoomIn" title="放大">
@@ -216,13 +222,15 @@ const props = withDefaults(
     tabRecorderConverting?: boolean;
     tabRecorderConvertingProgress?: number;
     tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
-    /** 当前回放来源：用于在 zoom 区域上方显示本地/云存档图标 */
-    replaySource?: 'local' | 'cloud' | null;
+    canAddToNote?: boolean;
+    showSaveToNote?: boolean;
+    noteUploading?: boolean;
   }>(),
-  {}
+  { showSaveToNote: true }
 );
 
 const emit = defineEmits<{
+  (e: 'save-current-round'): void;
   (e: 'close-drawing'): void;
   (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
@@ -1038,58 +1046,48 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.replay-source-wrap {
-  position: relative;
+.save-to-note-wrap {
   flex-shrink: 0;
-}
-
-.replay-source-indicator {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 8px;
   display: flex;
   align-items: center;
+}
+
+.save-to-note-btn.zoom-column-btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.replay-source-indicator.is-local {
-  background: rgba(120, 120, 120, 0.75);
-  backdrop-filter: blur(8px);
+.save-to-note-btn.zoom-column-btn:hover:not(:disabled) {
+  background: rgba(78, 204, 163, 0.25);
+  border-color: var(--ds-primary);
 }
 
-.replay-source-indicator.is-cloud {
-  background: rgba(34, 197, 94, 0.5);
-  backdrop-filter: blur(8px);
+.save-to-note-btn.zoom-column-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.replay-source-indicator img {
-  display: block;
-  opacity: 0.95;
+.save-to-note-btn .save-to-note-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
 }
 
-.replay-source-tooltip {
-  position: absolute;
-  right: 100%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-right: 8px;
-  padding: 4px 8px;
-  font-size: 12px;
-  line-height: 1.3;
-  color: rgba(255, 255, 255, 0.95);
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 6px;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s, visibility 0.15s;
-}
-
-.replay-source-wrap:hover .replay-source-tooltip {
-  opacity: 1;
-  visibility: visible;
+.save-to-note-btn .save-to-note-label {
+  display: none;
 }
 
 /* + / - / [] 垂直连体按钮 */

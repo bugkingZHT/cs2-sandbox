@@ -1,7 +1,8 @@
-<<template>
+<template>
   <div class="demo-library-page">
-    <!-- Modern Header -->
-    <div class="library-header">
+    <!-- Header 浮于 app 最上方，Teleport 到 App.vue 的 #app-page-header -->
+    <Teleport to="#app-page-header">
+      <div class="library-header">
       <div class="header-content">
         <!-- Filter Controls -->
         <div class="filter-controls">
@@ -203,6 +204,7 @@
         </button>
       </div>
     </div>
+    </Teleport>
 
     <!-- Upload Demo Modal -->
     <div v-if="showUploadModal" class="upload-modal-overlay" @click="closeUploadModal">
@@ -1275,7 +1277,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--ds-bg-primary);
+  background: var(--ds-bg-primary-solid);
   overflow: hidden;
 }
 
@@ -1317,13 +1319,12 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 
 /* === Header Styles === */
 .library-header {
-  padding: 4px var(--ds-space-xl) var(--ds-space-lg) var(--ds-space-xl);
+  padding: 18px var(--ds-space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--ds-border-subtle);
   flex-shrink: 0;
-  background: var(--ds-bg-secondary);
+  background: linear-gradient(to bottom, var(--ds-bg-secondary) 0%, var(--ds-bg-primary-solid) 100%);
   min-height: 60px;
 }
 
@@ -1654,6 +1655,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   top: calc(100% + 4px);
   left: 0;
   right: 0;
+  max-width: 260px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);

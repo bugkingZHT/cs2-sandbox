@@ -31,163 +31,30 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
           <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">Demo 本地库</span>
+            <span class="nav-text">Demo 库</span>
+          </span>
+        </button>
+        <button
+          class="nav-btn"
+          :class="{ active: currentPage === 'notes' || (currentPage === 'player' && replayerSource === 'cloud') }"
+          @click="onNavigateToNotes"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="5" y1="6" x2="5" y2="6"/>
+            <line x1="10" y1="6" x2="19" y2="6"/>
+            <line x1="5" y1="12" x2="5" y2="12"/>
+            <line x1="10" y1="12" x2="19" y2="12"/>
+            <line x1="5" y1="18" x2="5" y2="18"/>
+            <line x1="10" y1="18" x2="19" y2="18"/>
+          </svg>
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">战术笔记</span>
           </span>
         </button>
       </nav>
 
-      <!-- 云存档（紧接 2D 播放器下边缘） -->
-      <div class="cloud-archive-section">
-        <div
-          class="cloud-archive-header"
-          :class="{
-            'is-collapsed': sidebarCollapsed,
-            'is-disabled': sidebarCollapsed && (!canAddToArchive || !currentUser) && replayerSource !== 'cloud',
-            'is-playing-cloud': sidebarCollapsed && replayerSource === 'cloud'
-          }"
-          :title="sidebarCollapsed && replayerSource !== 'cloud' ? (!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')) : undefined"
-          @click="sidebarCollapsed && replayerSource !== 'cloud' && currentUser && canAddToArchive && !uploadModalOpen && handleAddToArchive()"
-        >
-          <img src="/icons/cloud.svg" alt="" class="cloud-archive-icon" />
-          <span v-show="!sidebarCollapsed" class="cloud-archive-title">云存档</span>
-          <div v-show="!sidebarCollapsed && currentUser" class="cloud-archive-quota-wrap">
-            <div
-              class="cloud-archive-quota-fan"
-              :style="quotaFanStyle"
-            ></div>
-            <div class="cloud-archive-quota-tooltip">云存储用量 {{ quotaUsed }}/{{ quotaLimit }}</div>
-          </div>
-          <button
-            v-show="!sidebarCollapsed"
-            type="button"
-            class="cloud-archive-add-btn"
-            :title="!currentUser ? '请先登录' : (canAddToArchive ? '保存当前回合到云存档' : '请在播放器中选择回合')"
-            :disabled="!currentUser || !canAddToArchive || archiveUploading || uploadModalOpen"
-            @click="handleAddToArchive"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-        <div v-show="!sidebarCollapsed" class="cloud-archive-list-wrap ds-scrollbar">
-          <div v-if="!currentUser" class="cloud-archive-empty">请先登录</div>
-          <div v-else-if="archiveList.length === 0" class="cloud-archive-empty">暂无存档</div>
-          <div v-else class="cloud-archive-list">
-            <div
-              v-for="(item, index) in archiveList"
-              :key="item.id"
-              class="cloud-archive-item"
-              :class="{
-                'is-dragging': draggedArchiveIndex === index,
-                'is-current': replayerSource === 'cloud' && replayerArchiveId === item.id,
-                'is-drag-over-before': dragOverIndex === index && dragOverPosition === 'before',
-                'is-drag-over-after': dragOverIndex === index && dragOverPosition === 'after'
-              }"
-              draggable="true"
-              @dragstart="onArchiveDragStart($event, index)"
-              @dragover.prevent="onArchiveDragOver($event, index)"
-              @drop="onArchiveDrop(index)"
-              @dragend="onArchiveDragEnd"
-              @dragleave="onArchiveDragLeave"
-            >
-              <span class="cloud-archive-item-icon" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <polygon points="10 8 16 12 10 16 10 8"/>
-                </svg>
-              </span>
-              <div class="cloud-archive-item-content-wrapper">
-                <button
-                  v-if="renamingArchiveId !== item.id"
-                  type="button"
-                  class="cloud-archive-item-content"
-                  @click="goToArchiveItem(item)"
-                >
-                  <span class="cloud-archive-item-title">{{ item.title }}</span>
-                </button>
-                <input
-                  v-else
-                  :data-id="item.id"
-                  v-model="renamingTitle"
-                  type="text"
-                  class="cloud-archive-rename-input"
-                  @blur="saveRenameArchive"
-                  @keydown.enter="saveRenameArchive"
-                  @keydown.escape="cancelRenameArchive"
-                />
-              </div>
-              <div class="cloud-archive-item-actions">
-                <button
-                  :data-item-id="item.id"
-                  type="button"
-                  class="cloud-archive-menu-btn"
-                  title="更多操作"
-                  @click.stop="toggleArchiveMenu(item.id)"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="1"/>
-                    <circle cx="12" cy="5" r="1"/>
-                    <circle cx="12" cy="19" r="1"/>
-                  </svg>
-                </button>
-                <Teleport to="body">
-                  <div
-                    v-if="openArchiveMenuId === item.id"
-                    class="cloud-archive-dropdown"
-                    :style="dropdownPosition"
-                    @click.stop
-                  >
-                    <button
-                      type="button"
-                      class="cloud-archive-dropdown-item"
-                      @click="openShareModal(item)"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-                      </svg>
-                      分享
-                    </button>
-                    <button
-                      type="button"
-                      class="cloud-archive-dropdown-item"
-                      @click="startRenameArchive(item)"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                      </svg>
-                      重命名
-                    </button>
-                    <button
-                      type="button"
-                      class="cloud-archive-dropdown-item"
-                      @click="openArchiveMenuId = null; confirmDeleteArchiveId = item.id"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                      </svg>
-                      删除
-                    </button>
-                  </div>
-                </Teleport>
-              </div>
-            </div>
-            <!-- 拖拽目标位置指示器 -->
-            <div 
-              v-if="showDragIndicator && dragOverIndex !== null"
-              class="cloud-archive-drag-indicator"
-              :class="{
-                'indicator-before': dragOverPosition === 'before',
-                'indicator-after': dragOverPosition === 'after'
-              }"
-              :data-index="dragOverIndex"
-            ></div>
-          </div>
-        </div>
-      </div>
+      <!-- Spacer: 把下方 Beta / Console 顶到底部 -->
+      <div class="sidebar-spacer" aria-hidden="true"></div>
 
       <!-- Beta Button -->
       <div v-if="DEBUG_CONFIG.enableBetaButton" class="sidebar-beta-section">
@@ -229,26 +96,45 @@
       </div>
     </aside>
 
-    <main class="app-main" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <!-- Demo Library Page -->
-      <DemoLibrary
-        v-if="currentPage === 'library'"
-        :demo-list="replayList || []"
-        :current-demo-id="currentDemoId"
-        :replayer-source="replayerSource"
-        :loading="loading"
-        @select-demo="onSelectDemo"
-        @delete-demo="onDeleteDemo"
-        @upload-demo="onUploadDemo"
+    <!-- Library / Notes：header 浮于最上方（Teleport 目标），主内容在 app-main 内 -->
+    <template v-if="currentPage === 'library' || currentPage === 'notes'">
+      <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+        <header class="app-page-header" id="app-page-header"></header>
+        <main class="app-main">
+          <DemoLibrary
+            v-if="currentPage === 'library'"
+            :demo-list="replayList || []"
+            :current-demo-id="currentDemoId"
+            :replayer-source="replayerSource"
+            :loading="loading"
+            @select-demo="onSelectDemo"
+            @delete-demo="onDeleteDemo"
+            @upload-demo="onUploadDemo"
+          />
+          <NoteLibrary
+            v-if="currentPage === 'notes'"
+            :quota-used="quotaUsed"
+            :quota-limit="quotaLimit"
+            :replayer-source="replayerSource"
+            :replayer-note-id="replayerNoteId"
+            @share="openShareModal"
+            @edit="onRequestEditNote"
+            @delete="onRequestDeleteNote"
+            @go="goToNoteItem"
+            @reorder="(from, to) => reorderNoteItems(from, to)"
+          />
+        </main>
+      </div>
+    </template>
+
+    <!-- Player Page：cover 状态（含「正在加载回放…」）统一在 ReplayPlayer 内按优先级渲染，此处仅挂载 -->
+    <main v-else-if="currentPage === 'player'" class="app-main" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+      <ReplayPlayer
+        :can-add-to-note="canAddToNote"
+        :note-uploading="noteUploading"
+        @exit-replay="onExitReplay"
+        @save-current-round="handleAddToNote"
       />
-
-      <!-- Player Page：cover 状态（含「正在加载回放…」）统一在 ReplayPlayer 内按优先级渲染，此处仅挂载 -->
-      <template v-if="currentPage === 'player'">
-        <ReplayPlayer
-          @exit-replay="onExitReplay"
-        />
-      </template>
-
     </main>
 
     <!-- 解析进度弹窗（仅在上传 demo 后展示：先展示「等待解析器加载中」，再展示解析进度） -->
@@ -289,14 +175,14 @@
 
     <!-- 云存档提示（info/warning/error，样式见 styles/toast.css） -->
     <Transition name="toast-top">
-      <div v-if="archiveAddToast" :class="['ds-toast-top', 'ds-toast-' + archiveAddToastType]">
+      <div v-if="noteToast" :class="['ds-toast-top', 'ds-toast-' + noteToastType]">
         <span class="ds-toast-icon">
           <!-- info -->
-          <svg v-if="archiveAddToastType === 'info'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg v-if="noteToastType === 'info'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
           <!-- warning -->
-          <svg v-else-if="archiveAddToastType === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg v-else-if="noteToastType === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           <!-- error -->
@@ -304,12 +190,12 @@
             <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
           </svg>
         </span>
-        <span class="ds-toast-text">{{ archiveAddToastMessage }}</span>
+        <span class="ds-toast-text">{{ noteToastMessage }}</span>
       </div>
     </Transition>
 
     <!-- 云存档删除确认 -->
-    <div v-if="confirmDeleteArchiveId !== null" class="beta-modal-overlay" @click="confirmDeleteArchiveId = null; openArchiveMenuId = null">
+    <div v-if="confirmDeleteNoteId !== null" class="beta-modal-overlay" @click="confirmDeleteNoteId = null">
       <div class="beta-modal" @click.stop>
         <div class="modal-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -318,23 +204,23 @@
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
           </svg>
         </div>
-        <h3 class="modal-title">删除存档</h3>
-        <p class="modal-message">确定要删除此存档吗？</p>
+        <h3 class="modal-title">删除笔记</h3>
+        <p class="modal-message">确定要删除此笔记吗？</p>
         <div class="modal-actions">
-          <button type="button" class="ds-btn-secondary" @click="confirmDeleteArchiveId = null; openArchiveMenuId = null">取消</button>
-          <button type="button" class="ds-btn-primary" @click="confirmDeleteArchiveConfirm">删除</button>
+          <button type="button" class="ds-btn-secondary" @click="confirmDeleteNoteId = null">取消</button>
+          <button type="button" class="ds-btn-primary" @click="onConfirmDeleteNote">删除</button>
         </div>
       </div>
     </div>
 
     <!-- 云存档分享弹窗 -->
     <div
-      v-if="shareModalArchiveId !== null"
+      v-if="shareModalNoteId !== null"
       class="beta-modal-overlay"
-      @click="closeShareModal"
+      @click="onCloseShareModal"
     >
       <div class="beta-modal" @click.stop>
-        <button type="button" class="modal-close-btn" aria-label="关闭" @click="closeShareModal">
+        <button type="button" class="modal-close-btn" aria-label="关闭" @click="onCloseShareModal">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -345,7 +231,7 @@
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
         </div>
-        <h3 class="modal-title">分享存档</h3>
+        <h3 class="modal-title">分享笔记</h3>
         <div class="modal-form">
           <div class="form-group">
             <div class="form-radios">
@@ -361,7 +247,7 @@
           </div>
         </div>
         <div class="share-link-row" @click="copyShareLinkInShareModal">
-          <code class="share-link-url">{{ getShareUrlForArchiveId(shareModalArchiveId) }}</code>
+          <code class="share-link-url">{{ getShareUrlForNoteId(shareModalNoteId) }}</code>
           <span class="share-link-copy" :class="{ copied: shareModalCopyCopied }" title="复制链接">
             <svg v-if="!shareModalCopyCopied" class="share-link-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -378,8 +264,8 @@
     <!-- 云存储用量已达上限 -->
     <div v-if="showQuotaExceededModal" class="beta-modal-overlay" @click="showQuotaExceededModal = false">
       <div class="beta-modal" @click.stop>
-        <h3 class="modal-title">云存储用量已达上限</h3>
-        <p class="modal-message">云存储用量 {{ quotaUsed }}/{{ quotaLimit }}，无法继续上传。请升级或清理后再试。</p>
+        <h3 class="modal-title">战术笔记用量已达上限</h3>
+        <p class="modal-message">战术笔记用量 {{ quotaUsed }}/{{ quotaLimit }}，无法继续上传。请升级或清理后再试。</p>
         <div class="modal-actions">
           <button type="button" class="ds-btn-primary" @click="showQuotaExceededModal = false">关闭</button>
         </div>
@@ -392,13 +278,17 @@
       class="beta-modal-overlay"
       @click="uploadModalStep !== 'uploading' && closeUploadModal()"
     >
-      <div class="beta-modal" @click.stop>
+      <div class="beta-modal" :class="{ 'beta-modal--note-form': uploadModalStep === 'form' }" @click.stop>
         <!-- 表单 -->
         <template v-if="uploadModalStep === 'form'">
           <div class="modal-icon">
-            <img src="/icons/cloud.svg" alt="云存档" class="modal-icon-svg" />
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="modal-icon-svg">
+              <line x1="5" y1="6" x2="5" y2="6"/><line x1="10" y1="6" x2="19" y2="6"/>
+              <line x1="5" y1="12" x2="5" y2="12"/><line x1="10" y1="12" x2="19" y2="12"/>
+              <line x1="5" y1="18" x2="5" y2="18"/><line x1="10" y1="18" x2="19" y2="18"/>
+            </svg>
           </div>
-          <h3 class="modal-title">存档当前回合</h3>
+          <h3 class="modal-title">{{ editingNoteId ? '修改笔记' : '保存当前回合到笔记' }}</h3>
           <div class="modal-form">
             <div class="form-group">
               <input
@@ -406,8 +296,16 @@
                 type="text"
                 class="form-input"
                 maxlength="32"
-                placeholder="存档名称"
+                placeholder="笔记名称"
               />
+            </div>
+            <div class="form-group">
+              <textarea
+                v-model="uploadFormContent"
+                class="form-input form-textarea form-textarea--note"
+                rows="12"
+                placeholder="备注内容（可选）"
+              ></textarea>
             </div>
             <div class="form-group">
               <div class="form-radios">
@@ -424,7 +322,7 @@
           </div>
           <div class="modal-actions">
             <button type="button" class="ds-btn-secondary" @click="closeUploadModal">取消</button>
-            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">保存</button>
+            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">{{ editingNoteId ? '保存修改' : '保存' }}</button>
           </div>
         </template>
         <!-- 上传中 -->
@@ -453,7 +351,7 @@
             </svg>
           </div>
           <h3 class="modal-title">上传成功</h3>
-          <p class="modal-message success">已保存到云存档</p>
+          <p class="modal-message success">已保存到战术笔记</p>
           <div class="share-link-row" @click="copyShareLink">
             <code class="share-link-url">{{ getShareUrl() }}</code>
             <span class="share-link-copy" :class="{ copied: copyLinkCopied }" title="复制链接">
@@ -496,12 +394,11 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, de
 
 const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlayer/ReplayPlayer.vue'));
 const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
+const NoteLibrary = defineAsyncComponent(() => import('@/components/NoteLibrary/NoteLibrary.vue'));
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
 import { useReplayData } from '@/composables/useReplayData';
-import { useCloudArchive, type CloudArchiveItem } from '@/composables/useCloudArchive';
+import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composables/useNote';
 import { useAuth } from '@/composables/useAuth';
-import { getOPFSStorage } from '@/composables/opfs-storage';
-import { getMetaStorage } from '@/composables/indexdb-storage';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
 import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery } from '@/location';
@@ -524,16 +421,17 @@ const {
   waitForInitialLoad,
   replayRouteError,
   replayerSource,
-  replayerArchiveId,
+  replayerNoteId,
 } = useReplayData();
 
 const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
 
 useLocation();
 
-const currentPage = computed<'library' | 'player'>(() => {
+const currentPage = computed<'library' | 'player' | 'notes'>(() => {
   const p = pathRef.value;
   if (p === '/replayer') return 'player';
+  if (p === '/notes') return 'notes';
   return 'library'; // /demolib or /
 });
 
@@ -551,327 +449,103 @@ const hasSelectedDemo = computed(() => !!currentDemoId.value);
 const { currentUser, truncatedUsername, fetchAuthMe } = useAuth();
 
 const {
-  archiveList,
-  loadArchive,
-  addItem: addArchiveItem,
-  removeItem: removeArchiveItemById,
-  reorderItems: reorderArchiveItems,
+  noteList,
+  loadNotes,
+  addItem: addNoteItem,
+  removeItem: removeNoteItemById,
+  reorderItems: reorderNoteItems,
   setItems,
-  updateItem: updateArchiveItem,
-} = useCloudArchive();
+  updateItem: updateNoteItem,
+  quotaUsed,
+  quotaLimit,
+  isQuotaFull,
+  noteToast,
+  noteToastMessage,
+  noteToastType,
+  showNoteToast,
+  noteUploading,
+  uploadModalOpen,
+  uploadModalStep,
+  uploadFormTitle,
+  uploadFormContent,
+  uploadFormPermission,
+  uploadProgress,
+  uploadError,
+  createdNoteId,
+  copyLinkCopied,
+  openUploadModal,
+  openEditModal,
+  closeUploadModal,
+  retryUploadForm,
+  submitUploadFromModal,
+  getShareUrl,
+  copyShareLink,
+  confirmDeleteNoteId,
+  confirmDeleteNoteConfirm,
+  showQuotaExceededModal,
+  shareModalNoteId,
+  shareModalPermission,
+  shareModalCopyCopied,
+  getShareUrlForNoteId,
+  openShareModal: openShareModalFromNote,
+  closeShareModal,
+  saveShareModalPermission,
+  copyShareLinkInShareModal,
+  editingNoteId,
+} = useNote();
 
-const canAddToArchive = computed(
+const canAddToNote = computed(
   () =>
     currentPage.value === 'player' &&
+    replayerSource.value !== 'cloud' &&
     !!currentDemoId.value &&
     !!currentRoundNumber.value &&
     !!replay.value
 );
 
-const quotaUsed = computed(() => currentUser.value?.quota_used ?? 0);
-const quotaLimit = computed(() => currentUser.value?.quota_limit ?? 5);
-const quotaFanStyle = computed(() => {
-  const used = quotaUsed.value;
-  const limit = quotaLimit.value;
-  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-  return { background: `conic-gradient(var(--ds-primary) 0% ${pct}%, var(--ds-border-subtle) ${pct}% 100%)` };
-});
-const isQuotaFull = computed(() => quotaUsed.value >= quotaLimit.value);
+function openShareModal(item: CloudArchiveItem) {
+  openNoteMenuId.value = null;
+  openShareModalFromNote(item);
+}
 
-type ToastType = 'info' | 'warning' | 'error';
+function onRequestDeleteNote(item: CloudArchiveItem) {
+  confirmDeleteNoteId.value = item.id;
+  openNoteMenuId.value = null;
+}
 
-const archiveAddToast = ref(false);
-const archiveAddToastMessage = ref('已保存到云存档');
-const archiveAddToastType = ref<ToastType>('info');
-let archiveAddToastTimer: ReturnType<typeof setTimeout> | null = null;
-const archiveUploading = ref(false);
+function onRequestEditNote(item: CloudArchiveItem) {
+  openEditModal(item);
+}
 
-// 云存档上传弹窗
-type UploadModalStep = 'form' | 'uploading' | 'success' | 'error';
-const uploadModalOpen = ref(false);
-const uploadModalStep = ref<UploadModalStep>('form');
-const uploadFormTitle = ref('');
-const uploadFormPermission = ref<'private' | 'public'>('private');
-const uploadProgress = ref(0);
-const uploadError = ref('');
-const createdArchiveId = ref<string | null>(null);
-const copyLinkCopied = ref(false);
-let copyLinkCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+function onCloseShareModal() {
+  closeShareModal();
+  openNoteMenuId.value = null;
+}
 
-function openUploadModal() {
-  if (!replay.value || currentRoundNumber.value == null) return;
-  const r = replay.value;
+function onConfirmDeleteNote() {
+  confirmDeleteNoteConfirm();
+  openNoteMenuId.value = null;
+}
+
+async function handleAddToNote() {
+  if (!canAddToNote.value || !currentDemoId.value || !currentRoundNumber.value || !replay.value) return;
+  const uuid = currentDemoId.value;
   const round = currentRoundNumber.value;
-  
-  // Format date as MM.DD
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const dateStr = `${month}.${day}`;
-  
-  // Remove 'de_' prefix from map name if present, then uppercase
-  const rawName = r.mapName?.startsWith('de_') ? r.mapName.substring(3) : r.mapName;
-  const cleanMapName = rawName ? rawName.toUpperCase() : rawName;
-  
-  // Format the default title as "mapname-MM.DD-回合N"
-  const defaultTitle = cleanMapName ? `${cleanMapName} - ${dateStr} - 回合${round}` : `${dateStr} - 回合${round}`;
-  
-  uploadFormTitle.value = defaultTitle.slice(0, 32);
-  uploadFormPermission.value = 'private';
-  uploadModalStep.value = 'form';
-  uploadError.value = '';
-  createdArchiveId.value = null;
-  copyLinkCopied.value = false;
-  if (copyLinkCopiedTimer) {
-    clearTimeout(copyLinkCopiedTimer);
-    copyLinkCopiedTimer = null;
-  }
-  uploadModalOpen.value = true;
-}
+  const r = replay.value;
 
-function closeUploadModal() {
-  uploadModalOpen.value = false;
-  uploadModalStep.value = 'form';
-  uploadError.value = '';
-  createdArchiveId.value = null;
-  if (copyLinkCopiedTimer) {
-    clearTimeout(copyLinkCopiedTimer);
-    copyLinkCopiedTimer = null;
-  }
-}
-
-function retryUploadForm() {
-  uploadModalStep.value = 'form';
-  uploadError.value = '';
-}
-
-async function submitUploadFromModal() {
-  const title = uploadFormTitle.value.trim();
-  if (!title) {
-    showArchiveToast('请输入存档名称', 'warning');
-    return;
-  }
-  if (isQuotaFull.value) {
+  // 统一使用 modal，让新增时可填写 content（未登录则在 useNote 内走本地存档逻辑）
+  if (currentUser.value && isQuotaFull.value) {
     showQuotaExceededModal.value = true;
     return;
   }
-  if (!canAddToArchive.value || !currentDemoId.value || !currentRoundNumber.value || !replay.value) return;
-  const uuid = currentDemoId.value;
-  const round = currentRoundNumber.value;
-
-  const opfs = await getOPFSStorage();
-  const roundBytes = await opfs.loadRound(uuid, round);
-  if (!roundBytes || roundBytes.length === 0) {
-    uploadError.value = '请先加载该回合';
-    uploadModalStep.value = 'error';
-    return;
-  }
-
-  const form = new FormData();
-  form.append('file', new Blob([roundBytes as BlobPart], { type: 'application/octet-stream' }), 'round.pb');
-  form.append('title', title);
-  form.append('demo_uuid', uuid);
-  form.append('demo_round', String(round));
-  form.append('permission', uploadFormPermission.value);
-  const metaStorage = await getMetaStorage();
-  const fullMeta = await metaStorage.loadMeta(uuid);
-  if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
-
-  uploadModalStep.value = 'uploading';
-  archiveUploading.value = true;
-  uploadProgress.value = 0;
-  uploadError.value = '';
-  try {
-    const result = await new Promise<{ id: string }>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/archive/items');
-      xhr.withCredentials = true;
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          uploadProgress.value = Math.round((e.loaded / e.total) * 100);
-        }
-      });
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const j = JSON.parse(xhr.responseText);
-            const id = j?.data?.id;
-            if (id) resolve({ id });
-            else reject(new Error('Invalid response'));
-          } catch {
-            reject(new Error('Invalid response'));
-          }
-        } else {
-          try {
-            const j = JSON.parse(xhr.responseText || '{}');
-            if (xhr.status === 403 && (j?.error === 'cloud_archive_quota_exceeded' || j?.code === 'QUOTA_EXCEEDED')) {
-              reject({ status: 403, code: 'QUOTA_EXCEEDED', quota: j?.quota });
-            } else {
-              reject(new Error(j?.error || `HTTP ${xhr.status}`));
-            }
-          } catch {
-            reject(new Error(`HTTP ${xhr.status}`));
-          }
-        }
-      });
-      xhr.addEventListener('error', () => reject(new Error('Network error')));
-      xhr.send(form);
-    });
-    createdArchiveId.value = result.id;
-    await loadArchive();
-    uploadModalStep.value = 'success';
-    await fetchAuthMe();
-  } catch (err) {
-    const quotaErr = err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'QUOTA_EXCEEDED';
-    if (quotaErr) {
-      closeUploadModal();
-      showQuotaExceededModal.value = true;
-    } else {
-      uploadError.value = err instanceof Error ? err.message : '上传失败';
-      uploadModalStep.value = 'error';
-    }
-  } finally {
-    archiveUploading.value = false;
-    uploadProgress.value = 0;
-  }
+  openUploadModal({
+    replay: { mapName: r.mapName, teamCT: r.teamCT, teamT: r.teamT },
+    roundNumber: round,
+    demoId: uuid,
+  });
 }
 
-function getShareUrl(): string {
-  const id = createdArchiveId.value;
-  if (!id) return '';
-  return `${window.location.origin}/replayer?source=cloud&archive_id=${encodeURIComponent(id)}&pure=1`;
-}
-
-async function copyShareLink() {
-  const url = getShareUrl();
-  if (!url) return;
-  try {
-    await navigator.clipboard.writeText(url);
-    copyLinkCopied.value = true;
-    if (copyLinkCopiedTimer) clearTimeout(copyLinkCopiedTimer);
-    copyLinkCopiedTimer = setTimeout(() => {
-      copyLinkCopied.value = false;
-      copyLinkCopiedTimer = null;
-    }, 2000);
-  } catch {
-    showArchiveToast('复制失败', 'error');
-  }
-}
-
-function showArchiveToast(message: string, type: ToastType = 'info') {
-  if (archiveAddToastTimer) clearTimeout(archiveAddToastTimer);
-  archiveAddToastMessage.value = message;
-  archiveAddToastType.value = type;
-  archiveAddToast.value = true;
-  archiveAddToastTimer = setTimeout(() => {
-    archiveAddToast.value = false;
-    archiveAddToastTimer = null;
-  }, 2000);
-}
-
-async function handleAddToArchive() {
-  if (!canAddToArchive.value || !currentDemoId.value || !currentRoundNumber.value || !replay.value) return;
-  const uuid = currentDemoId.value;
-  const round = currentRoundNumber.value;
-  const isDuplicate = archiveList.value.some(
-    (i) => i.demo_uuid === uuid && i.demo_round === round
-  );
-  if (isDuplicate) {
-    showArchiveToast('该回合已在云存档中', 'warning');
-    return;
-  }
-  const r = replay.value;
-  const title = r.mapName ? `${r.mapName} · 第 ${round} 回合` : `回合 ${round}`;
-
-  if (currentUser.value) {
-    if (isQuotaFull.value) {
-      showQuotaExceededModal.value = true;
-      return;
-    }
-    openUploadModal();
-    return;
-  }
-
-  const item: CloudArchiveItem = {
-    id: crypto.randomUUID(),
-    title,
-    demo_uuid: uuid,
-    demo_round: round,
-    add_time: Date.now(),
-    mapName: r.mapName,
-    teamCT: r.teamCT,
-    teamT: r.teamT,
-  };
-  await addArchiveItem(item);
-  showArchiveToast('已保存到云存档', 'info');
-}
-
-const confirmDeleteArchiveId = ref<string | null>(null);
-
-const showQuotaExceededModal = ref(false);
-
-const shareModalArchiveId = ref<string | null>(null);
-const shareModalPermission = ref<'private' | 'public'>('private');
-const shareModalCopyCopied = ref(false);
-let shareModalCopyCopiedTimer: ReturnType<typeof setTimeout> | null = null;
-
-function getShareUrlForArchiveId(archiveId: string): string {
-  return `${window.location.origin}/replayer?source=cloud&archive_id=${encodeURIComponent(archiveId)}&pure=1`;
-}
-
-function openShareModal(item: CloudArchiveItem) {
-  openArchiveMenuId.value = null;
-  shareModalArchiveId.value = item.id;
-  shareModalPermission.value = (item.permission === 'public' ? 'public' : 'private');
-  shareModalCopyCopied.value = false;
-  if (shareModalCopyCopiedTimer) {
-    clearTimeout(shareModalCopyCopiedTimer);
-    shareModalCopyCopiedTimer = null;
-  }
-}
-
-function closeShareModal() {
-  shareModalArchiveId.value = null;
-  if (shareModalCopyCopiedTimer) {
-    clearTimeout(shareModalCopyCopiedTimer);
-    shareModalCopyCopiedTimer = null;
-  }
-  // Close dropdown when share modal is closed
-  openArchiveMenuId.value = null;
-}
-
-function saveShareModalPermission() {
-  if (shareModalArchiveId.value === null) return;
-  updateArchiveItem(shareModalArchiveId.value, { permission: shareModalPermission.value });
-  showArchiveToast('可见范围已修改', 'info');
-}
-
-async function copyShareLinkInShareModal() {
-  if (shareModalArchiveId.value === null) return;
-  const url = getShareUrlForArchiveId(shareModalArchiveId.value);
-  try {
-    await navigator.clipboard.writeText(url);
-    shareModalCopyCopied.value = true;
-    if (shareModalCopyCopiedTimer) clearTimeout(shareModalCopyCopiedTimer);
-    shareModalCopyCopiedTimer = setTimeout(() => {
-      shareModalCopyCopied.value = false;
-      shareModalCopyCopiedTimer = null;
-    }, 2000);
-  } catch {
-    showArchiveToast('复制失败', 'error');
-  }
-}
-
-function confirmDeleteArchiveConfirm() {
-  if (confirmDeleteArchiveId.value !== null) {
-    removeArchiveItemById(confirmDeleteArchiveId.value);
-    confirmDeleteArchiveId.value = null;
-  }
-  // Close any open dropdown when deletion is confirmed
-  openArchiveMenuId.value = null;
-}
-
-function formatArchiveTime(ms: number): string {
+function formatNoteTime(ms: number): string {
   const d = new Date(ms);
   const now = new Date();
   const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -881,8 +555,8 @@ function formatArchiveTime(ms: number): string {
   return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-function goToArchiveItem(item: CloudArchiveItem) {
-  navigate('/replayer', `source=cloud&archive_id=${encodeURIComponent(item.id)}`);
+function goToNoteItem(item: CloudArchiveItem) {
+  navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}`);
 }
 
 function onNavigateToDemolib() {
@@ -892,28 +566,35 @@ function onNavigateToDemolib() {
   navigate('/demolib');
 }
 
-function onArchiveDragEnd() {
-  draggedArchiveIndex.value = null;
+function onNavigateToNotes() {
+  if (replayerSource.value === 'cloud') {
+    clearCloudPlaybackState();
+  }
+  navigate('/notes');
+}
+
+function onNoteDragEnd() {
+  draggedNoteIndex.value = null;
   dragOverIndex.value = null;
   showDragIndicator.value = false;
   // 清理指示器样式
   clearDragIndicatorPosition();
 }
 
-function onArchiveDragLeave() {
+function onNoteDragLeave() {
   dragOverIndex.value = null;
   showDragIndicator.value = false;
   // 清理指示器样式
   clearDragIndicatorPosition();
 }
 
-function toggleArchiveMenu(id: string) {
-  if (openArchiveMenuId.value === id) {
-    openArchiveMenuId.value = null;
+function toggleNoteMenu(id: string) {
+  if (openNoteMenuId.value === id) {
+    openNoteMenuId.value = null;
     return;
   }
   
-  openArchiveMenuId.value = id;
+  openNoteMenuId.value = id;
   
   // 下一帧计算位置
   nextTick(() => {
@@ -928,10 +609,10 @@ function toggleArchiveMenu(id: string) {
   });
 }
 
-function startRenameArchive(item: CloudArchiveItem) {
-  renamingArchiveId.value = item.id;
+function startRenameNote(item: CloudArchiveItem) {
+  renamingNoteId.value = item.id;
   renamingTitle.value = item.title;
-  openArchiveMenuId.value = null;
+  openNoteMenuId.value = null;
   // 下次渲染后聚焦输入框
   nextTick(() => {
     const input = document.querySelector(`.cloud-archive-rename-input[data-id="${item.id}"]`) as HTMLInputElement;
@@ -942,31 +623,31 @@ function startRenameArchive(item: CloudArchiveItem) {
   });
 }
 
-async function saveRenameArchive() {
-  if (!renamingArchiveId.value) return;
+async function saveRenameNote() {
+  if (!renamingNoteId.value) return;
   const title = renamingTitle.value.trim();
   if (title === '') {
-    cancelRenameArchive();
+    cancelRenameNote();
     return;
   }
   if (currentUser.value) {
-    await updateArchiveItem(renamingArchiveId.value, { title });
+    await updateNoteItem(renamingNoteId.value, { title });
   } else {
-    const item = archiveList.value.find(i => i.id === renamingArchiveId.value);
+    const item = noteList.value.find(i => i.id === renamingNoteId.value);
     if (item) {
-      const index = archiveList.value.findIndex(i => i.id === renamingArchiveId.value);
+      const index = noteList.value.findIndex(i => i.id === renamingNoteId.value);
       if (index !== -1) {
-        const newItems = [...archiveList.value];
+        const newItems = [...noteList.value];
         newItems[index] = { ...item, title };
         await setItems(newItems);
       }
     }
   }
-  cancelRenameArchive();
+  cancelRenameNote();
 }
 
-function cancelRenameArchive() {
-  renamingArchiveId.value = null;
+function cancelRenameNote() {
+  renamingNoteId.value = null;
   renamingTitle.value = '';
 }
 
@@ -998,21 +679,21 @@ function clearDragIndicatorPosition() {
 
 // 点击其他地方关闭菜单
 function handleClickOutside() {
-  openArchiveMenuId.value = null;
-  cancelRenameArchive();
+  openNoteMenuId.value = null;
+  cancelRenameNote();
 }
 
 function handleSessionExpired() {
-  showArchiveToast('用户身份过期，需要重新登录', 'warning');
+  showNoteToast('用户身份过期，需要重新登录', 'warning');
 }
 
 declare global {
   interface WindowEventMap {
-    'app:toast': CustomEvent<{ message: string; type?: ToastType }>;
+    'app:toast': CustomEvent<{ message: string; type?: NoteToastType }>;
   }
 }
-function handleAppToast(e: CustomEvent<{ message: string; type?: ToastType }>) {
-  showArchiveToast(e.detail.message, e.detail.type ?? 'info');
+function handleAppToast(e: CustomEvent<{ message: string; type?: NoteToastType }>) {
+  showNoteToast(e.detail.message, e.detail.type ?? 'info');
 }
 
 // 监听全局点击事件、session 过期、全局 toast
@@ -1028,24 +709,24 @@ onBeforeUnmount(() => {
   window.removeEventListener('app:toast', handleAppToast as EventListener);
 });
 
-const draggedArchiveIndex = ref<number | null>(null);
+const draggedNoteIndex = ref<number | null>(null);
 const dragOverIndex = ref<number | null>(null);
 const dragOverPosition = ref<'before' | 'after'>('before');
 const showDragIndicator = ref(false);
-const openArchiveMenuId = ref<string | null>(null);
-const renamingArchiveId = ref<string | null>(null);
+const openNoteMenuId = ref<string | null>(null);
+const renamingNoteId = ref<string | null>(null);
 const renamingTitle = ref('');
 const dropdownPosition = ref({});
 
-function onArchiveDragStart(e: DragEvent, index: number) {
-  draggedArchiveIndex.value = index;
+function onNoteDragStart(e: DragEvent, index: number) {
+  draggedNoteIndex.value = index;
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
   }
 }
 
-function onArchiveDragOver(e: DragEvent, index: number) {
+function onNoteDragOver(e: DragEvent, index: number) {
   e.dataTransfer!.dropEffect = 'move';
   
   // 获取当前拖拽项的元素
@@ -1067,21 +748,21 @@ function onArchiveDragOver(e: DragEvent, index: number) {
   }
 }
 
-function onArchiveDrop(toIndex: number) {
-  const from = draggedArchiveIndex.value;
+function onNoteDrop(toIndex: number) {
+  const from = draggedNoteIndex.value;
   if (from === null || from === toIndex) return;
   
   // 根据拖拽位置调整目标索引
   let targetIndex = toIndex;
-  if (dragOverPosition.value === 'after' && toIndex < archiveList.value.length - 1) {
+  if (dragOverPosition.value === 'after' && toIndex < noteList.value.length - 1) {
     targetIndex = toIndex + 1;
   }
   
-  reorderArchiveItems(from, targetIndex);
-  onArchiveDragEnd();
+  reorderNoteItems(from, targetIndex);
+  onNoteDragEnd();
 }
 
-// 根据 URL source/uuid/round 或 archive_id 加载 replayer 数据
+// 根据 URL source/uuid/round 或 note_id 加载 replayer 数据
 async function ensureReplayerRouteData() {
   const path = pathRef.value || window.location.pathname;
   const search = searchRef.value ?? window.location.search;
@@ -1092,7 +773,7 @@ async function ensureReplayerRouteData() {
   const source = query.source ?? null;
   const uuid = query.uuid ?? null;
   const roundNum = parseInt(query.round || '', 10) || 1;
-  const archiveId = query.archive_id ?? null;
+  const noteId = query.note_id ?? null;
 
   if (path === '/replayer') {
     replayerPureMode.value = (query.pure === '1' || query.pure === 'true');
@@ -1100,7 +781,7 @@ async function ensureReplayerRouteData() {
     replayerPureMode.value = false;
   }
 
-  const isCloud = source === 'cloud' || (archiveId && source !== 'local');
+  const isCloud = source === 'cloud' || (noteId && source !== 'local');
   const isLocal = !isCloud && (source === 'local' || uuid);
 
   if (path !== '/replayer') {
@@ -1118,11 +799,11 @@ async function ensureReplayerRouteData() {
   }
 
   if (isCloud) {
-    if (!archiveId) {
+    if (!noteId) {
       replayerRouteLoading.value = false;
       return;
     }
-    const needLoad = !replay.value || replayerSource.value !== 'cloud' || replayerArchiveId.value !== archiveId;
+    const needLoad = !replay.value || replayerSource.value !== 'cloud' || replayerNoteId.value !== noteId;
     if (!needLoad) {
       replayerRouteLoading.value = false;
       currentDemoId.value = replay.value?.uuid ?? null;
@@ -1132,7 +813,7 @@ async function ensureReplayerRouteData() {
     currentDemoId.value = null;
     try {
       await waitForInitialLoad();
-      await loadReplayByCloud(archiveId);
+      await loadReplayByCloud(noteId);
       currentDemoId.value = replay.value?.uuid ?? null;
     } finally {
       replayerRouteLoading.value = false;
@@ -1175,7 +856,7 @@ onMounted(async () => {
   ensureReplayerRouteData();
   // 等 IndexedDB 初始化完成后再加载云存档，避免刷新后列表为空
   await waitForInitialLoad();
-  loadArchive();
+  loadNotes();
 });
 
 watch(
@@ -1185,7 +866,7 @@ watch(
 );
 
 watch(currentUser, (user) => {
-  if (user) loadArchive();
+  if (user) loadNotes();
 });
 
 watch(sidebarCollapsed, (val) => {
@@ -1234,8 +915,11 @@ const onUploadDemo = async (file: File) => {
 };
 
 const onExitReplay = () => {
-  if (replayerSource.value === 'cloud') {
+  const src = replayerSource.value;
+  if (src === 'cloud') {
     clearCloudPlaybackState();
+    navigate('/notes');
+    return;
   }
   navigate('/demolib');
 };
@@ -1264,7 +948,7 @@ const showBetaWarning = () => {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--ds-bg-primary);
+  background: var(--ds-bg-primary-solid);
   color: var(--ds-text-secondary);
 }
 
@@ -1292,6 +976,7 @@ const showBetaWarning = () => {
   justify-content: space-between;
   flex-shrink: 0;
   gap: var(--ds-space-md);
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .collapsed .sidebar-header {
@@ -1374,17 +1059,17 @@ const showBetaWarning = () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 var(--ds-space-md) var(--ds-space-lg) var(--ds-space-md);
-  gap: var(--ds-space-sm);
+  padding: var(--ds-space-lg) var(--ds-space-md) var(--ds-space-lg) var(--ds-space-md);
+  gap: var(--ds-space-md);
 }
 
-/* Demo 本地库未选中时：白色调 */
+/* Demo 本地库 / 云存档：未激活无 border，激活时有 border */
 .nav-btn {
   width: 100%;
   min-height: 48px;
   padding: var(--ds-space-md) var(--ds-space-lg);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--ds-radius-md);
   color: rgba(255, 255, 255, 0.9);
   font-size: var(--ds-text-base);
@@ -1402,8 +1087,15 @@ const showBetaWarning = () => {
   padding: var(--ds-space-md);
 }
 
-.nav-btn svg {
+.nav-btn svg,
+.nav-btn .nav-btn-icon {
   flex-shrink: 0;
+}
+
+.nav-btn .nav-btn-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .nav-label {
@@ -1447,9 +1139,7 @@ const showBetaWarning = () => {
 }
 
 .nav-btn:hover:not(:disabled):not(.active) {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
@@ -1714,6 +1404,12 @@ const showBetaWarning = () => {
   background: var(--ds-bg-primary);
   color: var(--ds-text-primary);
   box-sizing: border-box;
+}
+
+.form-textarea {
+  resize: vertical;
+  line-height: 1.4;
+  min-height: 92px;
 }
 
 .form-input::placeholder {
@@ -2131,6 +1827,12 @@ const showBetaWarning = () => {
 
 /* 拖拽指示器圆点已移除 */
 
+/* 占满中间空间，使 Beta / Console 固定在底部 */
+.sidebar-spacer {
+  flex: 1;
+  min-height: 0;
+}
+
 /* === Beta Button Section === */
 .sidebar-beta-section {
   padding: var(--ds-space-lg) var(--ds-space-md);
@@ -2142,7 +1844,7 @@ const showBetaWarning = () => {
   min-height: 48px;
   padding: var(--ds-space-md) var(--ds-space-lg);
   background: rgba(255, 193, 7, 0.1);
-  border: 1px solid rgba(255, 193, 7, 0.3);
+  border: none;
   border-radius: var(--ds-radius-md);
   color: #ffc107;
   font-size: var(--ds-text-base);
@@ -2162,7 +1864,6 @@ const showBetaWarning = () => {
 
 .beta-btn:hover {
   background: rgba(255, 193, 7, 0.2);
-  border-color: rgba(255, 193, 7, 0.5);
   box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
 }
 
@@ -2219,6 +1920,20 @@ const showBetaWarning = () => {
 }
 
 /* === Main Content === */
+.app-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-page-header {
+  width: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
 .app-main {
   flex: 1;
   display: flex;
@@ -2346,6 +2061,26 @@ const showBetaWarning = () => {
   animation: slideUp 0.3s ease;
   position: relative;
   backdrop-filter: blur(20px);
+}
+
+/* 战术笔记发布/编辑页：更大 modal，content 区域做大 */
+.beta-modal--note-form {
+  max-width: 560px;
+  width: 92vw;
+  text-align: left;
+}
+
+.beta-modal--note-form .modal-title {
+  text-align: center;
+}
+
+.beta-modal--note-form .modal-form {
+  margin-bottom: var(--ds-space-xl);
+}
+
+.beta-modal--note-form .form-textarea--note {
+  min-height: 220px;
+  resize: vertical;
 }
 
 .beta-modal .modal-icon {

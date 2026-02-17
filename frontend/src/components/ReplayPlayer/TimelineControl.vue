@@ -134,7 +134,7 @@
         </div>
       </div>
 
-      <!-- 右侧时间显示 -->
+      <!-- 右侧：时间显示 + 保存当前回合到云存档 -->
       <div class="time-display-box">
         <div class="time-display">
           <!-- Show C4 icon when bomb is planted -->
@@ -851,6 +851,47 @@ const speedOptions = [0.5, 1, 2] as const;
   display: flex;
   align-items: center;
   gap: var(--ds-space-xs);
+}
+
+.save-to-note-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.save-to-note-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 var(--ds-space-md);
+  background: rgba(78, 204, 163, 0.15);
+  border: 1px solid rgba(78, 204, 163, 0.4);
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+}
+
+.save-to-note-btn:hover:not(:disabled) {
+  background: rgba(78, 204, 163, 0.25);
+  border-color: var(--ds-primary);
+}
+
+.save-to-note-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-to-note-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.save-to-note-label {
+  white-space: nowrap;
 }
 
 .icon-c4 {

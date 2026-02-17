@@ -10,6 +10,7 @@
   /* === Modern Design System === */
   /* Background Colors */
   --ds-bg-primary: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  --ds-bg-primary-solid: #0c1220; /* 库页面主区域纯色背景，比 app 蓝更暗 */
   --ds-bg-secondary: #1a1a2e;
   --ds-bg-tertiary: #0f3460;
   --ds-bg-overlay: rgba(0, 0, 0, 0.5);

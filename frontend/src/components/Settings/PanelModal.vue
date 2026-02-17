@@ -518,7 +518,7 @@ import { useAuth } from '@/composables/useAuth';
 
 interface Props {
   showModal: boolean;
-  currentPage: 'library' | 'player';
+  currentPage: 'library' | 'player' | 'notes';
 }
 
 interface Emits {

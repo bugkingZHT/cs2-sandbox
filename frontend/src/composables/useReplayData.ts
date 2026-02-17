@@ -39,10 +39,10 @@ interface UseReplayResult {
   cloudDownloadProgress: ReturnType<typeof ref<{ active: boolean; progress: number; lengthComputable: boolean | null }>>;
   /** 当前 replayer 来源：'local' | 'cloud'，用于 loadRoundData 与 URL 同步 */
   replayerSource: ReturnType<typeof ref<'local' | 'cloud' | null>>;
-  /** 当前云存档 id（source=cloud 时），用于避免重复加载同一 archive */
-  replayerArchiveId: ReturnType<typeof ref<string | null>>;
+  /** 当前云笔记 id（source=cloud 时），用于避免重复加载同一 note */
+  replayerNoteId: ReturnType<typeof ref<string | null>>;
   loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
-  loadReplayByCloud: (archiveId: string) => Promise<void>;
+  loadReplayByCloud: (noteId: string) => Promise<void>;
   /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
   clearCloudPlaybackState: () => void;
 }
@@ -68,7 +68,7 @@ function createReplayData() {
   const replayRouteError = ref<'not_found' | 'forbidden' | null>(null);
   const cloudDownloadProgress = ref<{ active: boolean; progress: number; lengthComputable: boolean | null }>({ active: false, progress: 0, lengthComputable: null });
   const replayerSource = ref<'local' | 'cloud' | null>(null);
-  const replayerArchiveId = ref<string | null>(null);
+  const replayerNoteId = ref<string | null>(null);
 
   const abortController = new AbortController();
   let initialLoadPromise: Promise<void> | null = null;
@@ -201,7 +201,7 @@ function createReplayData() {
   // Fetch round file from cloud with progress; returns arraybuffer on 2xx, throws on error.
   const fetchRoundFileFromCloud = (demoUuid: string, demoRound: number): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
-      const url = `/api/archive/file?demo_uuid=${encodeURIComponent(demoUuid)}&demo_round=${demoRound}`;
+      const url = `/api/note/file?demo_uuid=${encodeURIComponent(demoUuid)}&demo_round=${demoRound}`;
       const xhr = new XMLHttpRequest();
       xhr.open('GET', url);
       xhr.withCredentials = true;
@@ -239,7 +239,7 @@ function createReplayData() {
   const loadReplayByLocal = async (uuid: string, roundNumber: number) => {
     replayRouteError.value = null;
     replayerSource.value = 'local';
-    replayerArchiveId.value = null;
+    replayerNoteId.value = null;
     try {
       const metaStorage = await getMetaStorage();
       const opfsStorage = await getOPFSStorage();
@@ -263,13 +263,13 @@ function createReplayData() {
   };
 
   /** 云录像：GET item 拿 meta，用返回的 demo_uuid/demo_round 查 OPFS；有则复用，无则从服务器拉取并写入 OPFS */
-  const loadReplayByCloud = async (archiveId: string) => {
+  const loadReplayByCloud = async (noteId: string) => {
     replayRouteError.value = null;
     replayerSource.value = 'cloud';
-    replayerArchiveId.value = archiveId;
+    replayerNoteId.value = noteId;
     try {
       const opfsStorage = await getOPFSStorage();
-      const res = await fetch(`/api/archive/items/${encodeURIComponent(archiveId)}`, { credentials: 'include' });
+      const res = await fetch(`/api/note/items/${encodeURIComponent(noteId)}`, { credentials: 'include' });
       if (res.status === 403) {
         replayRouteError.value = 'forbidden';
         return;
@@ -346,11 +346,11 @@ function createReplayData() {
   };
 
   /** 切换回合：仅 local 模式从 OPFS 加载；cloud 单回合不切换 */
-  /** 清理云存档播放状态：清空 source/archiveId/replay/frames，用于切到本地库时不再保留 cloud 后台播放 */
+  /** 清理云笔记播放状态：清空 source/noteId/replay/frames，用于切到本地库时不再保留 cloud 后台播放 */
   const clearCloudPlaybackState = () => {
     if (replayerSource.value !== 'cloud') return;
     replayerSource.value = null;
-    replayerArchiveId.value = null;
+    replayerNoteId.value = null;
     replayRouteError.value = null;
     cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
     replay.value = null;
@@ -719,7 +719,7 @@ function createReplayData() {
     replayRouteError,
     cloudDownloadProgress,
     replayerSource,
-    replayerArchiveId,
+    replayerNoteId,
     loadReplayByLocal,
     loadReplayByCloud,
     clearCloudPlaybackState,

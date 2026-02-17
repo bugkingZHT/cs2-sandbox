@@ -13,9 +13,9 @@ import (
 
 	"github.com/bugkingzht/cs-demobox/cmd/server/constants"
 	"github.com/bugkingzht/cs-demobox/cmd/server/utils"
-	"github.com/bugkingzht/cs-demobox/pkg/archive"
 	"github.com/bugkingzht/cs-demobox/pkg/auth"
 	"github.com/bugkingzht/cs-demobox/pkg/database"
+	"github.com/bugkingzht/cs-demobox/pkg/note"
 	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
 	"github.com/bugkingzht/cs-demobox/pkg/user"
@@ -25,6 +25,7 @@ import (
 var routeHTML = map[string]string{
 	"/":         "index.html",
 	"/demolib":  "demolib.html",
+	"/notes":    "index.html",
 	"/replayer": "replayer.html",
 }
 
@@ -92,13 +93,13 @@ func apiUnavailableHandler() http.HandlerFunc {
 	}
 }
 
-func archiveUnavailableHandler() http.HandlerFunc {
+func noteUnavailableHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
-			"error": "cloud archive unavailable (SNOWBO_STORAGE_ROOTPATH not configured)",
+			"error": "cloud note unavailable (SNOWBO_STORAGE_ROOTPATH not configured)",
 		})
 	}
 }
@@ -111,7 +112,7 @@ func openDBAndMigrate(dbCfg database.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 	log.Println("[DB] Connected")
-	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &archive.ArchiveItem{}, &archive.UserArchiveTree{}, &role.Role{}, &role.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &note.NoteItem{}, &note.UserNoteTree{}, &role.Role{}, &role.Subscription{}); err != nil {
 		log.Printf("[DB] Migrate failed: %v", err)
 	}
 	return db, nil
@@ -148,37 +149,37 @@ func seedDefaultUserIfEmpty(db *gorm.DB, userStore *user.Store, roleStore *role.
 	log.Println("[DB] Seed admin granted pro role")
 }
 
-func registerArchiveRoutes(mux *http.ServeMux, sessionStore *session.Store, archiveStore *archive.Store, roleStore *role.Store) {
+func registerNoteRoutes(mux *http.ServeMux, sessionStore *session.Store, noteStore *note.Store, roleStore *role.Store) {
 	storageRoot := utils.GetStorageRootPath()
 	if storageRoot == "" {
-		log.Printf("[Archive] %s not set; /api/archive/* will return 503", constants.EnvSnowboStorageRootPath)
-		archive503 := archiveUnavailableHandler()
-		mux.HandleFunc("/api/archive/tree", archive503)
-		mux.HandleFunc("/api/archive/item", archive503)
-		mux.HandleFunc("/api/archive/file", archive503)
-		mux.HandleFunc("/api/archive/items", archive503)
-		mux.HandleFunc("/api/archive/items/", archive503)
+		log.Printf("[Note] %s not set; /api/note/* will return 503", constants.EnvSnowboStorageRootPath)
+		note503 := noteUnavailableHandler()
+		mux.HandleFunc("/api/note/tree", note503)
+		mux.HandleFunc("/api/note/item", note503)
+		mux.HandleFunc("/api/note/file", note503)
+		mux.HandleFunc("/api/note/items", note503)
+		mux.HandleFunc("/api/note/items/", note503)
 		return
 	}
-	archiveStorage := archive.NewFileStorage(storageRoot)
-	archiveHandlers := &archive.Handlers{Store: archiveStore, Storage: archiveStorage, RoleStore: roleStore}
-	mux.HandleFunc("/api/archive/item", session.OptionalAuth(sessionStore, archiveHandlers.GetItemByDemo))
-	mux.HandleFunc("/api/archive/file", session.OptionalAuth(sessionStore, archiveHandlers.GetFileByDemo))
-	mux.HandleFunc("/api/archive/items/", session.OptionalAuth(sessionStore, archiveHandlers.ItemByID))
-	mux.HandleFunc("/api/archive/tree", session.RequireAuth(sessionStore, archiveHandlers.PutTree))
-	mux.HandleFunc("/api/archive/items", session.RequireAuth(sessionStore, archiveHandlers.ItemsIndex))
-	log.Printf("[Archive] %s set to %s", constants.EnvSnowboStorageRootPath, storageRoot)
+	noteStorage := note.NewFileStorage(storageRoot)
+	noteHandlers := &note.Handlers{Store: noteStore, Storage: noteStorage, RoleStore: roleStore}
+	mux.HandleFunc("/api/note/item", session.OptionalAuth(sessionStore, noteHandlers.GetItemByDemo))
+	mux.HandleFunc("/api/note/file", session.OptionalAuth(sessionStore, noteHandlers.GetFileByDemo))
+	mux.HandleFunc("/api/note/items/", session.OptionalAuth(sessionStore, noteHandlers.ItemByID))
+	mux.HandleFunc("/api/note/tree", session.RequireAuth(sessionStore, noteHandlers.PutTree))
+	mux.HandleFunc("/api/note/items", session.RequireAuth(sessionStore, noteHandlers.ItemsIndex))
+	log.Printf("[Note] %s set to %s", constants.EnvSnowboStorageRootPath, storageRoot)
 }
 
-func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, archiveStore *archive.Store) http.Handler {
+func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, noteStore *note.Store) http.Handler {
 	sessionStore := session.NewStore(db)
-	authHandlers := &auth.Handlers{User: userStore, Session: sessionStore, RoleStore: roleStore, ArchiveStore: archiveStore}
+	authHandlers := &auth.Handlers{User: userStore, Session: sessionStore, RoleStore: roleStore, NoteStore: noteStore}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/login", authHandlers.Login)
 	mux.HandleFunc("/api/auth/logout", authHandlers.Logout)
 	mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 	mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
-	registerArchiveRoutes(mux, sessionStore, archiveStore, roleStore)
+	registerNoteRoutes(mux, sessionStore, noteStore, roleStore)
 	return mux
 }
 
@@ -195,10 +196,10 @@ func setupAPIHandler(dbCfg database.Config) http.Handler {
 	}
 	userStore := user.NewStore(db)
 	roleStore := role.NewStore(db)
-	archiveStore := archive.NewStore(db)
+	noteStore := note.NewStore(db)
 	ensureDefaultRoles(roleStore)
 	seedDefaultUserIfEmpty(db, userStore, roleStore)
-	return newAPIMux(db, userStore, roleStore, archiveStore)
+	return newAPIMux(db, userStore, roleStore, noteStore)
 }
 
 func main() {
@@ -206,7 +207,7 @@ func main() {
 	root := http.Dir(staticDir)
 	static := staticHandler(root)
 
-	// API handler: auth + archive routes when DB is configured, else 503
+	// API handler: auth + note routes when DB is configured, else 503
 	apiHandler := setupAPIHandler(utils.GetDBConfig())
 
 	// 显式监听前端页面路径，每个路径返回独立 HTML（便于追踪）；/api 走 API
