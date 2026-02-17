@@ -6,7 +6,7 @@
 </mask>
 <g mask="url(#mask0_30_114)">
 <rect width="1024" height="1024" fill="url(#pattern0_30_114)"/>
-<rect width="1024" height="1024" fill="#202B3C" fill-opacity="0.8"/>
+<rect width="1024" height="1024" fill="#202B3C" fill-opacity="0.5"/>
 </g>
 <path d="M565 547V486H617.5V547H565Z" fill="#953434" fill-opacity="0.5" stroke="#DD4D4D" stroke-opacity="0.5"/>
 <circle cx="584" cy="512" r="9.5" fill="#A9A9A9" stroke="#969696"/>

@@ -2,10 +2,9 @@
   <div class="demo-library-page">
     <!-- Header 浮于 app 最上方，Teleport 到 App.vue 的 #app-page-header -->
     <Teleport to="#app-page-header">
-      <div class="library-header">
-      <div class="header-content">
-        <!-- Filter Controls -->
-        <div class="filter-controls">
+      <div class="demo-library-header">
+        <div class="header-content">
+          <div class="filter-controls">
           <div class="filter-group">
             <div class="filter-buttons">
               <button 
@@ -181,29 +180,26 @@
               </div>
             </div>
           </div>
+          </div>
+        </div>
+        <div class="library-actions">
+          <input
+            type="file"
+            ref="fileInputRef"
+            accept=".dem"
+            @change="onFileSelected"
+            style="display: none"
+          />
+          <button class="ds-btn ds-btn-primary" @click="openUploadModal" :disabled="parsing">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span>{{ parsing ? '解析中...' : '解析 DEMO' }}</span>
+          </button>
         </div>
       </div>
-      <div class="library-actions">
-        <input
-          type="file"
-          ref="fileInputRef"
-          accept=".dem"
-          @change="onFileSelected"
-          style="display: none"
-        />
-
-
-
-        <button class="ds-btn ds-btn-primary" @click="openUploadModal" :disabled="parsing">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <span>{{ parsing ? '解析中...' : '解析 DEMO' }}</span>
-        </button>
-      </div>
-    </div>
     </Teleport>
 
     <!-- Upload Demo Modal -->
@@ -296,186 +292,124 @@
       <p class="ds-empty-description">点击"上传"按钮开始解析 Demo</p>
     </div>
 
-    <!-- Demo Grid -->
-    <div v-else class="demo-grid-container ds-scrollbar">
-      <div class="demo-grid">
-        <div
-          v-for="demo in sortedDemoList"
-          :key="demo.id"
-          class="demo-card ds-card"
-          :class="{ 
-            'is-current': replayerSource === 'local' && demo.id === currentDemoId,
-            'loading': isLoadingDemo && selectedDemoId === demo.id,
-            'is-parsing': demo.status === 0,
-            'is-failed': demo.status === -1
-          }"
-          @click="selectDemo(demo)"
-        >
-          <!-- Card Background -->
-          <div class="card-background">
-            <img 
-              v-if="getMapLeftSideImage(demo.mapName)"
-              :src="getMapLeftSideImage(demo.mapName)" 
-              :alt="demo.mapName"
-              @error="onImageError"
+    <!-- Demo Bar List -->
+    <div v-else class="demo-bar-list ds-scrollbar">
+      <div
+        v-for="demo in sortedDemoList"
+        :key="demo.id"
+        class="demo-bar-card"
+        :class="{
+          'is-parsing': demo.status === 0,
+          'is-failed': demo.status === -1
+        }"
+      >
+        <!-- Card background: leftSide map image (left 1/3) + gradient overlay -->
+        <div class="demo-bar-card-bg" aria-hidden="true">
+          <div class="demo-bar-card-bg-placeholder"></div>
+          <div class="demo-bar-card-bg-img-wrap">
+            <img
+              v-if="getMapLeftSideImage(demo.mapName) && !barCardBgError[demo.id ?? '']"
+              :src="getMapLeftSideImage(demo.mapName)!"
+              alt=""
+              class="demo-bar-card-bg-img"
+              @error="(e) => onBarCardBgError(demo.id ?? '', e)"
             />
-            <div v-else class="placeholder-bg">
-              <span>{{ demo.mapName }}</span>
-            </div>
           </div>
-
-          <!-- Card Content Overlay -->
-          <div class="card-overlay">
-            <!-- Top: Map Name + Badge -->
-            <div class="card-top">
-              <div class="map-badge">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                  <circle cx="12" cy="10" r="3"/>
-                </svg>
-                <span>{{ demo.mapName || 'Unknown Map' }}</span>
-              </div>
-              
-              <div class="badge-group">
-                <!-- Player Win/Loss Badge (only when single player filter is active) -->
-                <div 
-                  v-if="filterPlayerNames.length === 1 && getPlayerWinLoss(demo, filterPlayerNames[0])"
-                  class="player-result-badge"
-                  :class="getPlayerWinLoss(demo, filterPlayerNames[0])"
-                >
-                  {{ 
-                    getPlayerWinLoss(demo, filterPlayerNames[0]) === 'win' ? '胜' : 
-                    getPlayerWinLoss(demo, filterPlayerNames[0]) === 'loss' ? '负' : '平'
-                  }}
-                </div>
-                
-                <!-- Current Playing Badge -->
-                <div v-if="replayerSource === 'local' && demo.id === currentDemoId" class="playing-badge">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                  <span>PLAYING</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Middle: Match Score -->
-            <div class="card-middle">
-              <div class="score-display">
-                <div class="team-section winner-section">
-                  <div class="team-label">{{ getWinnerTeam(demo) }}</div>
-                  <div class="team-score winner-score">{{ getWinnerScore(demo) }}</div>
-                </div>
-                
-                <div class="score-divider">
-                  <div class="divider-line"></div>
-                  <span class="vs-text">VS</span>
-                  <div class="divider-line"></div>
-                </div>
-                
-                <div class="team-section loser-section">
-                  <div class="team-score loser-score">{{ getLoserScore(demo) }}</div>
-                  <div class="team-label">{{ getLoserTeam(demo) }}</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Bottom: Meta Info -->
-            <div class="card-bottom">
-              <div class="meta-info">
-                <div v-if="demo.fileName" class="info-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-                    <polyline points="13 2 13 9 20 9"/>
-                  </svg>
-                  <span>{{ demo.fileName }}</span>
-                </div>
-                <div v-if="demo.uploadTime" class="info-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <span>{{ formatAbsoluteTime(demo.uploadTime) }}</span>
-                </div>
-              </div>
-              
-              <!-- Delete Button -->
-              <button 
-                class="card-delete-btn"
-                @click.stop="confirmDelete(demo)"
-                title="Delete this demo"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-              </button>
-            </div>
+          <div class="demo-bar-card-bg-mask"></div>
+        </div>
+        <!-- Content -->
+        <div class="demo-bar-card-inner">
+        <!-- Main row: Info + Delete -->
+        <div class="demo-bar-middle">
+          <div class="demo-bar-meta">
+            <span class="demo-bar-map">{{ demo.mapName || 'Unknown Map' }}</span>
+            <span class="demo-bar-score">
+              <template v-if="demo.status === 1">
+                <template v-if="scoreDisplayMap[demo.id ?? '']">
+                  <span
+                    :class="[
+                      'demo-bar-score-mine',
+                      scoreDisplayMap[demo.id ?? ''].myResult === 'win' && 'demo-bar-score-winner',
+                      scoreDisplayMap[demo.id ?? ''].myResult === 'loss' && 'demo-bar-score-loser',
+                      scoreDisplayMap[demo.id ?? ''].myResult === 'draw' && 'demo-bar-score-draw'
+                    ]"
+                  >{{ scoreDisplayMap[demo.id ?? ''].myTeam }} {{ scoreDisplayMap[demo.id ?? ''].myScore }}</span>
+                  <span class="demo-bar-score-divider"> : </span>
+                  <span
+                    :class="[
+                      'demo-bar-score-theirs',
+                      scoreDisplayMap[demo.id ?? ''].myResult === 'win' && 'demo-bar-score-loser',
+                      scoreDisplayMap[demo.id ?? ''].myResult === 'loss' && 'demo-bar-score-winner',
+                      scoreDisplayMap[demo.id ?? ''].myResult === 'draw' && 'demo-bar-score-draw'
+                    ]"
+                  >{{ scoreDisplayMap[demo.id ?? ''].theirScore }} {{ scoreDisplayMap[demo.id ?? ''].theirTeam }}</span>
+                </template>
+                <template v-else>
+                  <span class="demo-bar-score-winner">{{ getWinnerTeam(demo) }} {{ getWinnerScore(demo) }}</span>
+                  <span class="demo-bar-score-divider"> : </span>
+                  <span class="demo-bar-score-loser">{{ getLoserScore(demo) }} {{ getLoserTeam(demo) }}</span>
+                </template>
+              </template>
+            </span>
+            <span class="demo-bar-file">{{ demo.fileName || '—' }}</span>
+            <span class="demo-bar-time">{{ demo.uploadTime ? formatAbsoluteTime(demo.uploadTime) : '—' }}</span>
           </div>
-
-          <!-- Parsing Overlay (active parsing - blue) -->
-          <div v-if="demo.status === 0" class="parsing-overlay-card">
-            <div class="parsing-overlay-content">
-              <!-- File name at top -->
-              <div v-if="demo.fileName" class="parsing-file-name">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-                  <polyline points="13 2 13 9 20 9"/>
-                </svg>
-                <span>{{ demo.fileName }}</span>
-              </div>
-              
-              <!-- Progress in center -->
-              <div class="parsing-progress-container">
-                <div class="parsing-progress-label">解析中...</div>
-                <div class="parsing-progress-bar">
-                  <div class="parsing-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
-                </div>
-                <div class="parsing-progress-text">{{ demo.parsingProgress || 0 }}%</div>
-              </div>
-              
-              <!-- Status at bottom -->
-              <div class="parsing-status-tooltip">{{ demo.parsingStatus || 'Processing...' }}</div>
+          <!-- Parsing progress on bar -->
+          <div v-if="demo.status === 0" class="demo-bar-parsing">
+            <div class="demo-bar-parsing-bar">
+              <div class="demo-bar-parsing-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
             </div>
-            
-            <!-- Force Delete button for parsing state -->
-            <button 
-              class="delete-btn-parsing"
-              @click.stop="confirmForceDelete(demo)"
-              title="Force delete parsing demo"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-            </button>
+            <span class="demo-bar-parsing-text">{{ demo.parsingProgress || 0 }}%</span>
           </div>
-
-          <!-- Failed Overlay (error/timeout - red, show failure reason from meta) -->
-          <div v-else-if="demo.status === -1" class="failed-overlay-card">
-            <div class="failed-content">
-              <div class="failed-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="15" y1="9" x2="9" y2="15"/>
-                  <line x1="9" y1="9" x2="15" y2="15"/>
-                </svg>
-              </div>
-              <div class="failed-label">解析失败</div>
-              <div class="failed-message ds-scrollbar" :title="demo.parsingStatus || 'Parsing failed'">{{ demo.parsingStatus || 'Parsing failed' }}</div>
+        </div>
+        <!-- Right: Delete -->
+        <div class="demo-bar-right">
+          <button
+            type="button"
+            class="demo-bar-delete-btn"
+            title="Delete"
+            @click.stop="demo.status === 0 ? confirmForceDelete(demo) : confirmDelete(demo)"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+        <!-- Failed state message -->
+        <div v-if="demo.status === -1" class="demo-bar-failed-msg">{{ demo.parsingStatus || 'Parsing failed' }}</div>
+        </div>
+        <!-- Round selector row (same style as timeline round selection) -->
+        <div v-if="demo.status === 1 && (demo.totalRounds ?? 0) > 0" class="demo-bar-round-row">
+          <div class="demo-bar-round-nav">
+            <div class="demo-bar-round-buttons">
+              <template v-for="r in (demo.totalRounds ?? 0)" :key="r">
+                <div class="demo-bar-round-cell">
+                  <button
+                    type="button"
+                    class="demo-bar-round-btn"
+                    :title="'在新标签页播放回合 ' + r"
+                    @click.stop="openReplayerInNewTab(demo.uuid, r)"
+                  >
+                    <img
+                      v-if="getRoundResultIcon(r, demo.roundResults) && shouldIconBeFirst(r, demo.roundResults)"
+                      :src="getRoundResultIcon(r, demo.roundResults)!"
+                      class="demo-bar-round-icon"
+                      :alt="getRoundResult(r, demo.roundResults) || ''"
+                    />
+                    <span class="demo-bar-round-num">{{ r }}</span>
+                    <img
+                      v-if="getRoundResultIcon(r, demo.roundResults) && !shouldIconBeFirst(r, demo.roundResults)"
+                      :src="getRoundResultIcon(r, demo.roundResults)!"
+                      class="demo-bar-round-icon"
+                      :alt="getRoundResult(r, demo.roundResults) || ''"
+                    />
+                  </button>
+                  <div class="demo-bar-round-underline"></div>
+                </div>
+                <div v-if="r === 12" class="demo-bar-round-v-divider"></div>
+              </template>
             </div>
-            
-            <!-- Delete button for failed state -->
-            <button 
-              class="delete-btn-failed"
-              @click.stop="confirmDelete(demo)"
-              title="Delete failed demo"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-            </button>
           </div>
         </div>
       </div>
@@ -578,12 +512,10 @@ import type { ReplayData } from '@/types/replay';
 import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
+import { getRoundResult, getRoundResultIcon, shouldIconBeFirst } from '@/utils/roundResult';
 
 const props = defineProps<{
   demoList: ReplayData[];
-  currentDemoId: string | null;
-  /** 当前播放器来源：仅 source=local 时高亮 demolib 卡片 */
-  replayerSource?: 'local' | 'cloud' | null;
   loading?: boolean;
 }>();
 
@@ -617,6 +549,12 @@ const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(nul
 // Force delete modal state
 const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
+
+function openReplayerInNewTab(demoUuid: string, round: number) {
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  const url = `${window.location.origin}${base}/replayer?source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}`;
+  window.open(url, '_blank');
+}
 
 // Upload modal state (dashed drop zone)
 const showUploadModal = ref(false);
@@ -1169,6 +1107,11 @@ const getMapLeftSideImage = (mapName: string | undefined): string | undefined =>
   return config?.leftSideGroundMap;
 };
 
+const barCardBgError = ref<Record<string, boolean>>({});
+const onBarCardBgError = (demoId: string, _event: Event) => {
+  barCardBgError.value = { ...barCardBgError.value, [demoId]: true };
+};
+
 const onImageError = (event: Event) => {
   const img = event.target as HTMLImageElement;
   img.style.display = 'none';
@@ -1268,16 +1211,75 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   
   return null;
 };
+
+type ScoreDisplayWithFilter = {
+  myTeam: string;
+  myScore: number;
+  theirTeam: string;
+  theirScore: number;
+  myResult: 'win' | 'loss' | 'draw';
+};
+
+/** When player filter is on: return { myTeam, myScore, theirTeam, theirScore, myResult } for score display (my side first, colored by win/loss/draw). */
+const getScoreDisplayWithPlayerFilter = (demo: ReplayData): {
+  myTeam: string;
+  myScore: number;
+  theirTeam: string;
+  theirScore: number;
+  myResult: 'win' | 'loss' | 'draw';
+} | null => {
+  if (filterPlayerNames.value.length === 0 || !demo.serverPlayer?.length) return null;
+  const scoreCT = demo.scoreCT || 0;
+  const scoreT = demo.scoreT || 0;
+  const teamCT = demo.teamCT ?? '';
+  const teamT = demo.teamT ?? '';
+  for (const filterName of filterPlayerNames.value) {
+    const term = filterName.toLowerCase();
+    const player = demo.serverPlayer.find(p => p.name && p.name.toLowerCase().includes(term));
+    if (!player) continue;
+    const myResult = getPlayerWinLoss(demo, player.name);
+    if (myResult === null) continue;
+    const isCT = player.team === 3;
+    return {
+      myTeam: isCT ? teamCT : teamT,
+      myScore: isCT ? scoreCT : scoreT,
+      theirTeam: isCT ? teamT : teamCT,
+      theirScore: isCT ? scoreT : scoreCT,
+      myResult,
+    };
+  }
+  return null;
+};
+
+const scoreDisplayMap = computed(() => {
+  const map: Record<string, ScoreDisplayWithFilter> = {};
+  for (const demo of sortedDemoList.value) {
+    const r = getScoreDisplayWithPlayerFilter(demo);
+    if (r) map[demo.id ?? ''] = r;
+  }
+  return map;
+});
 </script>
 
 <style scoped>
+/* === GitHub dark theme === */
+.demo-library-page {
+  --gh-bg: #0d1117;
+  --gh-bg-secondary: #161b22;
+  --gh-bg-tertiary: #21262d;
+  --gh-border: #30363d;
+  --gh-card: #21262d;
+  --gh-text: #c9d1d9;
+  --gh-text-muted: #8b949e;
+}
+
 /* === Page Layout === */
 .demo-library-page {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--ds-bg-primary-solid);
+  background: var(--gh-bg);
   overflow: hidden;
 }
 
@@ -1306,25 +1308,28 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 .ds-empty-title {
   font-size: var(--ds-text-2xl);
   font-weight: 700;
-  color: var(--ds-text-primary);
+  color: var(--gh-text);
   margin: 0;
 }
 
 .ds-empty-description {
   font-size: var(--ds-text-base);
-  color: var(--ds-text-tertiary);
+  color: var(--gh-text-muted);
   margin: 0;
   text-align: center;
 }
 
 /* === Header Styles === */
-.library-header {
+.demo-library-header {
+  position: relative;
+  z-index: 100;
   padding: 18px var(--ds-space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
   background: linear-gradient(to bottom, var(--ds-bg-secondary) 0%, var(--ds-bg-primary-solid) 100%);
+  border-bottom: 1px solid var(--gh-border);
   min-height: 60px;
 }
 
@@ -1334,9 +1339,9 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   align-items: center;
   justify-content: space-between;
   padding: var(--ds-space-md) var(--ds-space-xl);
-  background: linear-gradient(135deg, rgba(78, 204, 163, 0.15) 0%, rgba(96, 165, 250, 0.15) 100%);
-  border-bottom: 1px solid rgba(78, 204, 163, 0.3);
-  border-top: 1px solid rgba(78, 204, 163, 0.2);
+  background: linear-gradient(135deg, rgba(var(--ds-primary-rgb), 0.12) 0%, rgba(var(--ds-primary-rgb), 0.06) 100%);
+  border-bottom: 1px solid var(--ds-border-default);
+  border-top: 1px solid var(--ds-border-subtle);
   backdrop-filter: blur(8px);
   flex-shrink: 0;
   animation: slideDown 0.3s ease;
@@ -1426,6 +1431,334 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   margin: 0;
 }
 
+/* === Demo Bar List (GitHub dark) === */
+.demo-bar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--ds-space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+}
+
+.demo-bar-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--gh-border);
+  border-radius: 10px;
+  color: var(--gh-text);
+  position: relative;
+  overflow: hidden;
+  background: var(--gh-bg-secondary);
+}
+
+.demo-bar-card-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.demo-bar-card-bg-placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--gh-bg-tertiary) 0%, var(--gh-bg-secondary) 100%);
+}
+
+.demo-bar-card-bg-img-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 33.333%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.demo-bar-card-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left center;
+  opacity: 0.5;
+  filter: brightness(0.8) saturate(0.95);
+}
+
+.demo-bar-card-bg-mask {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgba(13, 17, 23, 0.75) 0%,
+    rgba(13, 17, 23, 0.5) 28%,
+    rgba(13, 17, 23, 0.92) 35%,
+    rgba(13, 17, 23, 0.97) 100%
+  );
+}
+
+.demo-bar-card-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-md);
+  padding: var(--ds-space-md) var(--ds-space-lg);
+  flex-wrap: wrap;
+}
+
+.demo-bar-card-inner > .demo-bar-right {
+  order: 2;
+  flex-shrink: 0;
+  width: 40px;
+  min-width: 40px;
+}
+.demo-bar-card-inner > .demo-bar-middle {
+  order: 1;
+  flex: 1;
+  min-width: 0;
+}
+.demo-bar-card-inner > .demo-bar-failed-msg {
+  order: 3;
+}
+
+.demo-bar-card.is-parsing {
+  border-color: rgba(88, 166, 255, 0.4);
+}
+
+.demo-bar-card.is-failed {
+  border-color: rgba(248, 81, 73, 0.4);
+}
+
+.demo-bar-middle {
+  padding-right: var(--ds-space-sm);
+  overflow: hidden;
+}
+
+.demo-bar-meta {
+  display: grid;
+  grid-template-columns: minmax(80px, 120px) minmax(0, 1.6fr) minmax(0, 1fr) minmax(72px, 100px);
+  align-items: baseline;
+  gap: var(--ds-space-sm) var(--ds-space-lg);
+  font-size: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.demo-bar-map {
+  font-weight: 600;
+  color: var(--gh-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.demo-bar-score {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.demo-bar-score-winner {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.demo-bar-score-divider {
+  color: var(--gh-text-muted);
+  font-weight: 400;
+}
+
+.demo-bar-score-loser {
+  color: #f85149;
+  font-weight: 500;
+}
+
+.demo-bar-score-draw {
+  color: var(--gh-text-muted);
+  font-weight: 500;
+}
+
+.demo-bar-file {
+  color: var(--gh-text-muted);
+  font-size: 13px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.demo-bar-time {
+  color: var(--gh-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.demo-bar-parsing {
+  margin-top: var(--ds-space-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+}
+
+.demo-bar-parsing-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.demo-bar-parsing-fill {
+  height: 100%;
+  background: #58a6ff;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.demo-bar-parsing-text {
+  font-size: 12px;
+  color: var(--gh-text-muted);
+  min-width: 2.5em;
+}
+
+.demo-bar-right {
+  flex-shrink: 0;
+  min-width: 40px;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.demo-bar-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--gh-border);
+  border-radius: 6px;
+  color: var(--gh-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.demo-bar-delete-btn:hover {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.5);
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.demo-bar-failed-msg {
+  width: 100%;
+  margin-top: var(--ds-space-xs);
+  font-size: 12px;
+  color: #f85149;
+}
+
+/* Round selector row (same style as timeline round selection) */
+.demo-bar-round-row {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: var(--ds-space-sm) var(--ds-space-lg);
+  padding-top: 0;
+  border-top: 1px solid var(--gh-border);
+  background: rgba(13, 17, 23, 0.5);
+}
+
+.demo-bar-round-nav {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 2px;
+}
+
+.demo-bar-round-nav::-webkit-scrollbar {
+  height: 2px;
+}
+
+.demo-bar-round-nav::-webkit-scrollbar-thumb {
+  background: var(--gh-border);
+}
+
+.demo-bar-round-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.demo-bar-round-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.demo-bar-round-btn {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: none;
+  color: var(--gh-text);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.demo-bar-round-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.demo-bar-round-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
+
+.demo-bar-round-num {
+  font-size: 10px;
+  line-height: 1;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.demo-bar-round-underline {
+  width: 100%;
+  height: 2px;
+  background: var(--gh-border);
+}
+
+.demo-bar-round-v-divider {
+  width: 1px;
+  height: 24px;
+  border-left: 1px dashed var(--gh-border);
+  margin: 0 var(--ds-space-xs);
+  flex-shrink: 0;
+}
+
 /* === Filter Controls === */
 .filter-controls {
   display: flex;
@@ -1471,13 +1804,13 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 
 /* Selected state - green background */
 .filter-tags-input.has-selection {
-  background: rgba(78, 204, 163, 0.15);
-  border-color: rgba(78, 204, 163, 0.5);
+  background: rgba(var(--ds-primary-rgb), 0.15);
+  border-color: var(--ds-border-strong);
 }
 
 .filter-tags-input.has-selection:hover {
-  background: rgba(78, 204, 163, 0.2);
-  border-color: rgba(78, 204, 163, 0.6);
+  background: rgba(var(--ds-primary-rgb), 0.2);
+  border-color: var(--ds-border-strong);
 }
 
 /* Hide scrollbar but keep functionality */
@@ -1497,7 +1830,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 
 .filter-tags-input:focus-within {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.12);
 }
 
 /* Selection text display */
@@ -1544,8 +1877,8 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  background: rgba(78, 204, 163, 0.15);
-  border: 1px solid rgba(78, 204, 163, 0.3);
+  background: rgba(var(--ds-primary-rgb), 0.15);
+  border: 1px solid rgba(var(--ds-primary-rgb), 0.3);
   border-radius: var(--ds-radius-sm);
   color: var(--ds-primary);
   font-size: 12px;
@@ -1574,7 +1907,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 }
 
 .filter-tag-remove:hover {
-  background: rgba(78, 204, 163, 0.25);
+  background: rgba(var(--ds-primary-rgb), 0.25);
   color: var(--ds-text-primary);
 }
 
@@ -1643,7 +1976,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 .filter-input:focus {
   outline: none;
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.12);
 }
 
 .filter-input::placeholder {
@@ -1711,7 +2044,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 }
 
 .dropdown-checkbox svg {
-  stroke: white;
+  stroke: var(--ds-primary-text);
 }
 
 .filter-dropdown-item:last-child {
@@ -1724,7 +2057,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 }
 
 .filter-dropdown-item.selected {
-  background: rgba(78, 204, 163, 0.1);
+  background: rgba(var(--ds-primary-rgb), 0.1);
   color: var(--ds-primary);
   font-weight: 600;
 }
@@ -1800,8 +2133,8 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 
 .filter-btn.active {
   background: var(--ds-primary);
-  color: white;
-  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.3);
+  color: var(--ds-primary-text);
+  box-shadow: 0 2px 8px rgba(var(--ds-primary-rgb), 0.3);
 }
 
 .library-actions {
@@ -1814,6 +2147,24 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   padding: var(--ds-space-sm) var(--ds-space-lg);
   font-size: var(--ds-text-sm);
   height: 38px;
+}
+
+.library-actions .ds-btn-primary {
+  background: #238636;
+  color: #fff;
+  border-color: #238636;
+}
+
+.library-actions .ds-btn-primary:hover:not(:disabled) {
+  background: #2ea043;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+.library-actions .ds-btn-primary:active:not(:disabled) {
+  background: #26a641;
+  border-color: #26a641;
+  color: #fff;
 }
 
 .library-actions .ds-btn svg {
@@ -1958,7 +2309,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   background: linear-gradient(90deg, var(--ds-primary) 0%, var(--ds-secondary) 100%);
   transition: width 0.3s ease, background 0.3s ease;
   border-radius: var(--ds-radius-full);
-  box-shadow: 0 0 8px rgba(78, 204, 163, 0.3);
+  box-shadow: 0 0 8px rgba(var(--ds-primary-rgb), 0.3);
 }
 
 .quota-progress-fill.storage-warning {
@@ -2039,11 +2390,6 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   border-color: var(--ds-primary);
   transform: translateY(-6px);
   box-shadow: var(--ds-shadow-glow);
-}
-
-.demo-card.is-current {
-  border-color: var(--ds-success);
-  box-shadow: 0 0 32px rgba(16, 185, 129, 0.5);
 }
 
 .demo-card.loading {
@@ -2223,46 +2569,6 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-.playing-badge {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 8px;
-  background: rgba(16, 185, 129, 0.2);
-  border: 1px solid var(--ds-success);
-  border-radius: 6px;
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--ds-success);
-  letter-spacing: 0.5px;
-  animation: pulse-badge 2s ease-in-out infinite;
-  flex-shrink: 0;
-}
-
-.playing-badge svg {
-  animation: pulse-icon 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-badge {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
-  }
-  50% {
-    opacity: 0.9;
-    box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
-  }
-}
-
-@keyframes pulse-icon {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-}
-
 /* === Card Middle (Score Display) === */
 .card-middle {
   flex: 1;
@@ -2315,8 +2621,9 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   max-width: 100%;
 }
 
+/* 比分显示：唯一使用 GitHub 绿的位置 */
 .winner-section .team-label {
-  color: var(--ds-primary);
+  color: #3fb950;
 }
 
 .loser-section .team-label {
@@ -2332,8 +2639,8 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 }
 
 .winner-score {
-  color: var(--ds-primary);
-  text-shadow: 0 0 20px rgba(78, 204, 163, 0.4);
+  color: #3fb950;
+  text-shadow: 0 0 20px rgba(63, 185, 80, 0.4);
 }
 
 .loser-score {
@@ -2811,7 +3118,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 .upload-modal-header {
   text-align: center;
   padding: var(--ds-space-3xl) var(--ds-space-3xl) var(--ds-space-xl);
-  background: linear-gradient(180deg, rgba(78, 204, 163, 0.08) 0%, transparent 100%);
+  background: linear-gradient(180deg, rgba(var(--ds-primary-rgb), 0.08) 0%, transparent 100%);
   border-bottom: 1px solid var(--ds-border-subtle);
 }
 
@@ -2822,14 +3129,14 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   width: 64px;
   height: 64px;
   border-radius: var(--ds-radius-xl);
-  background: linear-gradient(135deg, rgba(78, 204, 163, 0.15) 0%, rgba(78, 204, 163, 0.05) 100%);
-  border: 1px solid rgba(78, 204, 163, 0.2);
+  background: linear-gradient(135deg, rgba(var(--ds-primary-rgb), 0.15) 0%, rgba(var(--ds-primary-rgb), 0.05) 100%);
+  border: 1px solid rgba(var(--ds-primary-rgb), 0.2);
   margin-bottom: var(--ds-space-lg);
 }
 
 .upload-icon {
   color: var(--ds-primary);
-  filter: drop-shadow(0 2px 8px rgba(78, 204, 163, 0.3));
+  filter: drop-shadow(0 2px 8px rgba(var(--ds-primary-rgb), 0.3));
 }
 
 .upload-modal-title {
@@ -2853,7 +3160,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   border-radius: var(--ds-radius-xl);
   padding: var(--ds-space-3xl);
   cursor: pointer;
-  background: rgba(78, 204, 163, 0.06);
+  background: rgba(var(--ds-primary-rgb), 0.06);
   position: relative;
   overflow: hidden;
   transition: all var(--ds-transition-base);
@@ -2863,7 +3170,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, rgba(78, 204, 163, 0.05) 0%, transparent 70%);
+  background: radial-gradient(circle at center, rgba(var(--ds-primary-rgb), 0.05) 0%, transparent 70%);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--ds-transition-base);
@@ -2871,9 +3178,9 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 
 .upload-drop-zone:hover {
   border-color: var(--ds-primary);
-  background: rgba(78, 204, 163, 0.12);
+  background: rgba(var(--ds-primary-rgb), 0.12);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(78, 204, 163, 0.15);
+  box-shadow: 0 8px 24px rgba(var(--ds-primary-rgb), 0.15);
 }
 
 .upload-drop-zone:hover::before {
@@ -2882,9 +3189,9 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
 
 .upload-drop-zone.is-dragover {
   border-color: var(--ds-primary);
-  background: linear-gradient(135deg, rgba(78, 204, 163, 0.15) 0%, rgba(78, 204, 163, 0.08) 100%);
+  background: linear-gradient(135deg, rgba(var(--ds-primary-rgb), 0.15) 0%, rgba(var(--ds-primary-rgb), 0.08) 100%);
   border-style: solid;
-  box-shadow: 0 0 0 4px rgba(78, 204, 163, 0.1), 0 8px 24px rgba(78, 204, 163, 0.2);
+  box-shadow: 0 0 0 4px rgba(var(--ds-primary-rgb), 0.1), 0 8px 24px rgba(var(--ds-primary-rgb), 0.2);
 }
 
 .upload-drop-zone.is-dragover::before {
@@ -2999,7 +3306,7 @@ const getPlayerWinLoss = (demo: ReplayData, playerName: string): 'win' | 'loss' 
   border-color: var(--ds-border-strong);
   color: var(--ds-text-primary);
   transform: rotate(90deg);
-  box-shadow: 0 4px 12px rgba(78, 204, 163, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--ds-primary-rgb), 0.2);
 }
 
 .upload-modal-close:focus {

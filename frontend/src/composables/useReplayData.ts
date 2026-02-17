@@ -45,6 +45,8 @@ interface UseReplayResult {
   loadReplayByCloud: (noteId: string) => Promise<void>;
   /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
   clearCloudPlaybackState: () => void;
+  /** 只读加载某 demo 某回合的帧数据，用于列表页预览 timeline，不写入全局 replay/frames */
+  getRoundFramesForPreview: (uuid: string, roundNumber: number) => Promise<{ frames: Frame[]; roundDurationMs: number } | null>;
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
@@ -196,6 +198,33 @@ function createReplayData() {
     requestIdleCallback(() => {
       bounds.value = estimateBounds(frames.value);
     }, { timeout: 100 });
+  };
+
+  /** 只读加载某 demo 某回合的帧数据，用于列表页预览 timeline，不写入全局 replay/frames */
+  const getRoundFramesForPreview = async (
+    uuid: string,
+    roundNumber: number
+  ): Promise<{ frames: Frame[]; roundDurationMs: number } | null> => {
+    try {
+      const metaStorage = await getMetaStorage();
+      const opfsStorage = await getOPFSStorage();
+      const rawMeta = await metaStorage.loadMeta(uuid);
+      if (!rawMeta) return null;
+      const meta = adaptMeta(rawMeta);
+      const roundBytes = await opfsStorage.loadRound(uuid, roundNumber);
+      if (!roundBytes) return null;
+      const round = adaptRound(await decodeReplayRound(roundBytes), meta.engineVersion);
+      const sortedFrames = round.frames.sort((a, b) => a.timeMs - b.timeMs);
+      const roundDurationMs =
+        sortedFrames.length >= 2
+          ? Math.max(0, sortedFrames[sortedFrames.length - 1].timeMs - sortedFrames[0].timeMs)
+          : sortedFrames.length === 1
+            ? 0
+            : 0;
+      return { frames: sortedFrames, roundDurationMs };
+    } catch {
+      return null;
+    }
   };
 
   // Fetch round file from cloud with progress; returns arraybuffer on 2xx, throws on error.
@@ -723,6 +752,7 @@ function createReplayData() {
     loadReplayByLocal,
     loadReplayByCloud,
     clearCloudPlaybackState,
+    getRoundFramesForPreview,
   };
 }
 

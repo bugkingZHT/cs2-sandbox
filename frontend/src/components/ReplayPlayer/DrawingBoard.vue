@@ -500,7 +500,7 @@ onBeforeUnmount(() => {
 
 .tool-btn.selected {
   background: var(--ds-primary);
-  color: #fff;
+  color: var(--ds-primary-text);
 }
 
 .save-btn {

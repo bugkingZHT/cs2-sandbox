@@ -10,17 +10,17 @@
               <button class="round-square-btn" :disabled="cloudReplay && r !== currentRound" @click="seekToRound(r)" :class="getFlexDirectionClass(r)">
                 <!-- Icon on top or bottom based on logic -->
                 <img 
-                  v-if="getRoundResultIcon(r) && shouldIconBeFirst(r)" 
-                  :src="getRoundResultIcon(r)!" 
-                  class="round-result-icon" 
-                  :alt="getRoundResult(r) || ''"
+v-if="getRoundResultIconLocal(r) && shouldIconBeFirstLocal(r)"
+                  :src="getRoundResultIconLocal(r)!"
+                  class="round-result-icon"
+                  :alt="getRoundResultLocal(r) || ''"
                 />
                 <span class="round-number">{{ r }}</span>
                 <img 
-                  v-if="getRoundResultIcon(r) && !shouldIconBeFirst(r)" 
-                  :src="getRoundResultIcon(r)!" 
-                  class="round-result-icon" 
-                  :alt="getRoundResult(r) || ''"
+v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
+                  :src="getRoundResultIconLocal(r)!"
+                  class="round-result-icon"
+                  :alt="getRoundResultLocal(r) || ''"
                 />
               </button>
               <div class="round-underline-static"></div>
@@ -171,6 +171,7 @@ import { MATCH_CONFIG, getDisplayTeam } from '@/config/game';
 import { DEBUG_CONFIG } from '@/config/debug';
 import type { RoundResultInfo, ReplayData } from '@/types/replay';
 import { showFrameData } from '@/composables/frameDataViewer';
+import { getRoundResult, getRoundResultIcon, getRoundEndIcon, getRoundEndClass, getRoundEndTitle, shouldIconBeFirst } from '@/utils/roundResult';
 
 const props = defineProps<{
   currentFrameIndex: number;
@@ -202,7 +203,6 @@ const emit = defineEmits<{
   (e: 'seek-seconds', value: number): void;
   (e: 'toggle-play'): void;
   (e: 'update-speed', value: number): void;
-  (e: 'exit-replay'): void;
   (e: 'dragging-change', value: boolean): void;
   (e: 'load-round', roundNumber: number): void;
 }>();
@@ -382,7 +382,7 @@ const bombEventMarkers = computed(() => {
       roundEndFound = true;
       // Get round result from roundResults
       const roundNumber = currentRound.value;
-      const roundResult = getRoundResult(roundNumber);
+      const roundResult = getRoundResultLocal(roundNumber);
       markers.push({ offset, event: 'roundend', result: roundResult || undefined });
     }
   });
@@ -425,82 +425,10 @@ const seekToRound = (round: number) => {
   emit('load-round', round);
 };
 
-// Get round result for a specific round number
-const getRoundResult = (roundNumber: number) => {
-  if (!props.roundResults || props.roundResults.length === 0) {
-    return null;
-  }
-  const result = props.roundResults.find(rr => rr.round === roundNumber);
-  return result?.result || null;
-};
-
-// Get icon path for round result
-const getRoundResultIcon = (roundNumber: number): string | null => {
-  const result = getRoundResult(roundNumber);
-  if (!result) return null;
-  
-  const iconMap: Record<string, string> = {
-    'ct_win': '/icons/ct_win.svg',
-    't_win': '/icons/t_win.svg',
-    'bomb_defused': '/icons/bomb_defused.svg',
-    'bomb_exploded': '/icons/bomb_exploded.svg'
-  };
-  
-  const iconPath = iconMap[result] || null;
-  return iconPath;
-};
-
-// Get icon path for round end marker based on result
-const getRoundEndIcon = (result: string): string => {
-  const iconMap: Record<string, string> = {
-    'ct_win': '/icons/ct_win.svg',
-    't_win': '/icons/t_win.svg',
-    'bomb_defused': '/icons/bomb_defused.svg',
-    'bomb_exploded': '/icons/bomb_exploded.svg'
-  };
-  return iconMap[result] || '/icons/ct_win.svg';
-};
-
-// Get CSS class for round end marker based on result
-const getRoundEndClass = (result: string): string => {
-  if (result === 'ct_win' || result === 'bomb_defused') {
-    return 'ct-win';
-  } else if (result === 't_win' || result === 'bomb_exploded') {
-    return 't-win';
-  }
-  return '';
-};
-
-// Get title for round end marker
-const getRoundEndTitle = (result: string): string => {
-  const titleMap: Record<string, string> = {
-    'ct_win': 'CT Win',
-    't_win': 'T Win',
-    'bomb_defused': 'Bomb Defused',
-    'bomb_exploded': 'Bomb Exploded'
-  };
-  return titleMap[result] || 'Round End';
-};
-
-// Determine if icon should be positioned first (above number) based on round and result
-const shouldIconBeFirst = (roundNumber: number): boolean => {
-  const result = getRoundResult(roundNumber);
-  if (!result) return false;
-  
-  const isFirstHalf = roundNumber <= 12;
-  const isTWin = result === 't_win' || result === 'bomb_exploded';
-  const isCTWin = result === 'ct_win' || result === 'bomb_defused';
-  
-  // First half (rounds 1-12):
-  // T win or bomb exploded: number on top, icon on bottom (icon is NOT first)
-  // CT win or bomb defused: number on bottom, icon on top (icon IS first)
-  if (isFirstHalf) {
-    return isTWin; // T wins -> icon first (top)
-  } else {
-    // Second half (rounds 13+): reverse the logic
-    return isCTWin; // CT wins -> icon first (top)
-  }
-};
+// Use shared util with props
+const getRoundResultLocal = (roundNumber: number) => getRoundResult(roundNumber, props.roundResults);
+const getRoundResultIconLocal = (roundNumber: number) => getRoundResultIcon(roundNumber, props.roundResults);
+const shouldIconBeFirstLocal = (roundNumber: number) => shouldIconBeFirst(roundNumber, props.roundResults);
 
 // Get flex direction class for button layout
 const getFlexDirectionClass = (roundNumber: number): string => {
@@ -834,7 +762,7 @@ const speedOptions = [0.5, 1, 2] as const;
 
 .speed-tab-btn.active {
   color: var(--ds-primary);
-  background: rgba(78, 204, 163, 0.15);
+  background: rgba(var(--ds-primary-rgb), 0.12);
 }
 
 .time-display-box {
@@ -865,8 +793,8 @@ const speedOptions = [0.5, 1, 2] as const;
   gap: 6px;
   height: 32px;
   padding: 0 var(--ds-space-md);
-  background: rgba(78, 204, 163, 0.15);
-  border: 1px solid rgba(78, 204, 163, 0.4);
+  background: rgba(var(--ds-primary-rgb), 0.12);
+  border: 1px solid var(--ds-border-strong);
   border-radius: var(--ds-radius-sm);
   color: var(--ds-primary);
   font-size: 12px;
@@ -876,7 +804,7 @@ const speedOptions = [0.5, 1, 2] as const;
 }
 
 .save-to-note-btn:hover:not(:disabled) {
-  background: rgba(78, 204, 163, 0.25);
+  background: rgba(var(--ds-primary-rgb), 0.2);
   border-color: var(--ds-primary);
 }
 
@@ -939,9 +867,9 @@ const speedOptions = [0.5, 1, 2] as const;
   left: 0;
   height: 100%;
   background: linear-gradient(90deg, 
-    rgba(78, 204, 163, 0.3) 0%, 
-    rgba(78, 204, 163, 0.4) 50%, 
-    rgba(78, 204, 163, 0.3) 100%);
+    rgba(var(--ds-primary-rgb), 0.25) 0%, 
+    rgba(var(--ds-primary-rgb), 0.35) 50%, 
+    rgba(var(--ds-primary-rgb), 0.25) 100%);
   border-right: 2px solid var(--ds-primary);
 }
 

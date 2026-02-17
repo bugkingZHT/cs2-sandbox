@@ -96,8 +96,8 @@ export async function showOPFSStorageDetails() {
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      color: #e0e0e0;
+      background: #0d1117;
+      color: #e6edf3;
       padding: 40px 20px;
       line-height: 1.6;
     }
@@ -125,7 +125,7 @@ export async function showOPFSStorageDetails() {
       font-size: 20px;
       margin-bottom: 15px;
       color: #ffffff;
-      border-bottom: 2px solid #0f3460;
+      border-bottom: 2px solid #30363d;
       padding-bottom: 8px;
     }
     
@@ -192,7 +192,7 @@ export async function showOPFSStorageDetails() {
     }
     
     .total-count {
-      color: #4ecca3;
+      color: #e6edf3;
       margin-bottom: 20px;
       font-weight: 500;
     }
@@ -209,7 +209,7 @@ export async function showOPFSStorageDetails() {
       padding: 15px;
       background: rgba(0, 0, 0, 0.2);
       border-radius: 8px;
-      border-left: 3px solid #4ecca3;
+      border-left: 3px solid #484f58;
     }
     
     .replay-uuid {
@@ -248,7 +248,7 @@ export async function showOPFSStorageDetails() {
       margin: 8px 0;
       padding: 8px 12px;
       background: rgba(0, 0, 0, 0.4);
-      color: #4ecca3;
+      color: #e6edf3;
     }
   </style>
 </head>

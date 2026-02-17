@@ -46,9 +46,16 @@
   color: #ffffff;
 }
 
-/* 类型：info（如保存成功） */
+/* 类型：info（如保存成功）：白底用黑字 */
 .ds-toast-top.ds-toast-info {
-  background: var(--ds-primary, #4ecca3);
+  background: var(--ds-primary);
+  color: var(--ds-primary-text);
+}
+.ds-toast-top.ds-toast-info .ds-toast-icon svg {
+  stroke: var(--ds-primary-text);
+}
+.ds-toast-top.ds-toast-info .ds-toast-text {
+  color: var(--ds-primary-text);
 }
 
 /* 类型：warning（如已存在） */

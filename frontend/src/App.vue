@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <!-- Collapsible Sidebar（纯净模式下播放器页不展示） -->
-    <aside v-show="!(currentPage === 'player' && replayerPureMode)" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <aside v-show="currentPage !== 'player'" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- Sidebar Header -->
       <div class="sidebar-header">
         <div class="app-branding" v-show="!sidebarCollapsed">
@@ -104,8 +104,6 @@
           <DemoLibrary
             v-if="currentPage === 'library'"
             :demo-list="replayList || []"
-            :current-demo-id="currentDemoId"
-            :replayer-source="replayerSource"
             :loading="loading"
             @select-demo="onSelectDemo"
             @delete-demo="onDeleteDemo"
@@ -132,7 +130,6 @@
       <ReplayPlayer
         :can-add-to-note="canAddToNote"
         :note-uploading="noteUploading"
-        @exit-replay="onExitReplay"
         @save-current-round="handleAddToNote"
       />
     </main>
@@ -556,7 +553,9 @@ function formatNoteTime(ms: number): string {
 }
 
 function goToNoteItem(item: CloudArchiveItem) {
-  navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}`);
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  const url = `${window.location.origin}${base}/replayer?source=cloud&note_id=${encodeURIComponent(item.id)}`;
+  window.open(url, '_blank');
 }
 
 function onNavigateToDemolib() {
@@ -877,11 +876,13 @@ const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value;
 };
 
+const DEFAULT_PAGE_TITLE = 'Snowbo | 雪豹';
 watch(currentPage, (newPage) => {
   if (newPage !== 'player') {
     replayerPureMode.value = false;
   }
-});
+  document.title = newPage === 'player' ? 'Demo 回放 - Snowbo' : DEFAULT_PAGE_TITLE;
+}, { immediate: true });
 
 const goToPlayer = () => {
   if (hasSelectedDemo.value) {
@@ -895,9 +896,9 @@ const onLogoError = (event: Event) => {
   img.style.display = 'none';
 };
 
-const onSelectDemo = (demoId: string) => {
-  currentDemoId.value = demoId;
-  navigate('/replayer', `source=local&uuid=${demoId}&round=1`);
+/** Demolib 仅通过回合行播放按钮打开 replayer，不再通过卡片点击跳转 */
+const onSelectDemo = (_demoId: string) => {
+  /* no-op */
 };
 
 const onDeleteDemo = async (demoId: string) => {
@@ -912,16 +913,6 @@ const onDeleteDemo = async (demoId: string) => {
 const onUploadDemo = async (file: File) => {
   await parseDemo(file);
   // No auto-navigation after upload, user must click card to view
-};
-
-const onExitReplay = () => {
-  const src = replayerSource.value;
-  if (src === 'cloud') {
-    clearCloudPlaybackState();
-    navigate('/notes');
-    return;
-  }
-  navigate('/demolib');
 };
 
 // Console modal handlers
@@ -1127,8 +1118,8 @@ const showBetaWarning = () => {
   color: var(--ds-text-secondary);
 }
 .nav-source-tag--cloud {
-  background: rgba(34, 197, 94, 0.75);
-  color: #fff;
+  background: var(--ds-surface-elevated);
+  color: var(--ds-text-primary);
 }
 
 .collapsed .nav-label,
@@ -1148,16 +1139,16 @@ const showBetaWarning = () => {
 }
 
 .nav-btn.active {
-  background: rgba(78, 204, 163, 0.1);
+  background: rgba(var(--ds-primary-rgb), 0.12);
   color: var(--ds-primary);
-  border-color: rgba(78, 204, 163, 0.3);
-  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.2);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 0 0 1px var(--ds-border-default);
 }
 
 .nav-btn.active:hover:not(:disabled) {
-  background: rgba(78, 204, 163, 0.2);
-  border-color: rgba(78, 204, 163, 0.5);
-  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.2);
+  background: rgba(var(--ds-primary-rgb), 0.18);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   color: var(--ds-primary);
 }
 
@@ -1210,21 +1201,21 @@ const showBetaWarning = () => {
 
 /* 折叠且正在播放云存档：高亮显示，禁止点击（hover 仍有视觉效果） */
 .collapsed .cloud-archive-header.is-collapsed.is-playing-cloud {
-  background: rgba(78, 204, 163, 0.1);
-  border-color: rgba(78, 204, 163, 0.3);
-  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.2);
+  background: rgba(var(--ds-primary-rgb), 0.12);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 0 0 1px var(--ds-border-default);
   cursor: default;
 }
 
 .collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed.is-playing-cloud {
-  background: rgba(78, 204, 163, 0.2);
-  border-color: rgba(78, 204, 163, 0.5);
-  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.2);
+  background: rgba(var(--ds-primary-rgb), 0.18);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .collapsed .cloud-archive-header.is-playing-cloud .cloud-archive-icon {
   opacity: 1;
-  filter: brightness(0) saturate(100%) invert(43%) sepia(85%) saturate(7200%) hue-rotate(143deg) brightness(92%) contrast(89%);
+  filter: brightness(0) invert(1);
 }
 
 .collapsed .cloud-archive-section:hover .cloud-archive-header.is-collapsed:not(.is-disabled):not(.is-playing-cloud) {
@@ -1582,9 +1573,9 @@ const showBetaWarning = () => {
 }
 
 .cloud-archive-item.is-current {
-  background: rgba(78, 204, 163, 0.1);
-  border-color: rgba(78, 204, 163, 0.3);
-  box-shadow: 0 0 0 1px rgba(78, 204, 163, 0.2);
+  background: rgba(var(--ds-primary-rgb), 0.12);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 0 0 1px var(--ds-border-default);
   transform: none;
 }
 
@@ -1595,9 +1586,9 @@ const showBetaWarning = () => {
 
 /* active hover 与 BETA/console 一致：仅加强背景、边框、阴影，文字与图标保持主色 */
 .cloud-archive-item.is-current:hover {
-  background: rgba(78, 204, 163, 0.2);
-  border-color: rgba(78, 204, 163, 0.5);
-  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.2);
+  background: rgba(var(--ds-primary-rgb), 0.18);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .cloud-archive-item.is-current:hover .cloud-archive-item-title,
@@ -1679,12 +1670,12 @@ const showBetaWarning = () => {
   font-size: var(--ds-text-sm);
   font-family: var(--ds-font-sans);
   outline: none;
-  box-shadow: 0 0 0 2px rgba(78, 204, 163, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--ds-primary-rgb), 0.25);
 }
 
 .cloud-archive-rename-input:focus {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 2px rgba(78, 204, 163, 0.3);
+  box-shadow: 0 0 0 2px rgba(var(--ds-primary-rgb), 0.35);
 }
 
 /* 悬停时的亮竖条已移除 */
@@ -2091,7 +2082,7 @@ const showBetaWarning = () => {
   color: var(--ds-primary);
   width: 64px;
   height: 64px;
-  background: rgba(78, 204, 163, 0.1);
+  background: rgba(var(--ds-primary-rgb), 0.12);
   border-radius: var(--ds-radius-full);
   margin-left: auto;
   margin-right: auto;
@@ -2105,12 +2096,12 @@ const showBetaWarning = () => {
 }
 
 .beta-modal .modal-icon.success {
-  color: var(--ds-success, #10b981);
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--ds-success);
+  background: rgba(63, 185, 80, 0.15);
 }
 
 .beta-modal .modal-icon.success .modal-icon-svg {
-  filter: brightness(0) saturate(100%) invert(43%) sepia(85%) saturate(7200%) hue-rotate(143deg) brightness(92%) contrast(89%);
+  filter: brightness(0) saturate(100%) invert(58%) sepia(42%) saturate(1200%) hue-rotate(95deg) brightness(95%) contrast(89%);
 }
 
 .beta-modal .modal-icon.error {
@@ -2180,7 +2171,7 @@ const showBetaWarning = () => {
   background: var(--ds-primary);
   border: 1px solid var(--ds-primary);
   border-radius: var(--ds-radius-md);
-  color: white;
+  color: var(--ds-primary-text);
   font-size: var(--ds-text-sm);
   font-weight: 600;
   cursor: pointer;
@@ -2202,13 +2193,13 @@ const showBetaWarning = () => {
 .ds-btn-primary:hover {
   background: var(--ds-primary-hover);
   border-color: var(--ds-primary-hover);
-  box-shadow: 0 2px 8px rgba(78, 204, 163, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   transform: translateY(-2px);
 }
 
 .ds-btn-primary.ds-btn-small:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(78, 204, 163, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 /* === Debug Modal === */

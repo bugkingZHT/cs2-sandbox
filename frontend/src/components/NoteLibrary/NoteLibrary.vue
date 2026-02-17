@@ -145,8 +145,8 @@
             </div>
 
             <!-- Body: 全文 content -->
-            <div class="card-body">
-              <div v-if="item.content" class="card-content">{{ item.content }}</div>
+            <div v-if="item.content" class="card-body">
+              <div class="card-content">{{ item.content }}</div>
             </div>
 
             <!-- Actions: 左下跳转 + 右侧分享、「...」 -->
@@ -158,7 +158,7 @@
                 <span>播放</span>
               </button>
               <div class="card-actions-right">
-                <button type="button" class="card-action-btn" title="分享" @click.stop="openShare(item)">
+                <button type="button" class="card-action-btn card-share-btn" title="分享" @click.stop="openShare(item)">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                     <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -228,8 +228,8 @@
                 </div>
               </div>
             </div>
-            <div class="card-body">
-              <div v-if="item.content" class="card-content">{{ item.content }}</div>
+            <div v-if="item.content" class="card-body">
+              <div class="card-content">{{ item.content }}</div>
             </div>
             <div class="card-actions" @click.stop>
               <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
@@ -239,7 +239,7 @@
                 <span>播放</span>
               </button>
               <div class="card-actions-right">
-                <button type="button" class="card-action-btn" title="分享" @click.stop="openShare(item)">
+                <button type="button" class="card-action-btn card-share-btn" title="分享" @click.stop="openShare(item)">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                     <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -329,7 +329,6 @@ const showMapDropdown = ref(false);
 const openMenuNoteId = ref<string | null>(null);
 /** 更多菜单的 fixed 定位（Teleport 到 body 时使用） */
 const moreMenuPosition = ref({ top: 0, left: 0 });
-const MORE_MENU_MIN_WIDTH = 120;
 
 const filteredMapOptions = computed(() => {
   const mapCounts = new Map<string, number>();
@@ -474,7 +473,7 @@ function toggleMenu(noteId: string, e?: Event) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     moreMenuPosition.value = {
       top: rect.bottom + 4,
-      left: Math.max(8, rect.right - MORE_MENU_MIN_WIDTH),
+      left: Math.max(8, rect.left),
     };
   }
   openMenuNoteId.value = noteId;
@@ -583,13 +582,13 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .filter-tags-input.has-selection {
-  background: rgba(78, 204, 163, 0.15);
-  border-color: rgba(78, 204, 163, 0.5);
+  background: rgba(var(--ds-primary-rgb), 0.15);
+  border-color: var(--ds-border-strong);
 }
 
 .filter-tags-input.has-selection:hover {
-  background: rgba(78, 204, 163, 0.2);
-  border-color: rgba(78, 204, 163, 0.6);
+  background: rgba(var(--ds-primary-rgb), 0.2);
+  border-color: var(--ds-border-strong);
 }
 
 .filter-tags-input:hover {
@@ -598,7 +597,7 @@ function confirmDelete(item: CloudArchiveItem) {
 
 .filter-tags-input:focus-within {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.12);
 }
 
 .filter-selection-text {
@@ -682,7 +681,7 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .filter-dropdown-item.selected {
-  background: rgba(78, 204, 163, 0.1);
+  background: rgba(var(--ds-primary-rgb), 0.1);
   color: var(--ds-primary);
   font-weight: 600;
 }
@@ -709,7 +708,7 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .dropdown-checkbox svg {
-  stroke: white;
+  stroke: var(--ds-primary-text);
 }
 
 .dropdown-item-name {
@@ -875,11 +874,6 @@ function confirmDelete(item: CloudArchiveItem) {
   border: 2px solid var(--ds-border-subtle);
 }
 
-.note-card:hover {
-  border-color: var(--ds-primary);
-  box-shadow: var(--ds-shadow-glow);
-}
-
 .note-card.is-current {
   box-shadow: 0 0 32px rgba(16, 185, 129, 0.5);
 }
@@ -906,14 +900,10 @@ function confirmDelete(item: CloudArchiveItem) {
   transition: transform var(--ds-transition-base);
 }
 
-.note-card:hover .card-background img {
-  transform: scale(1.05);
-}
-
 .card-hero-cover {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.70);
   z-index: 1;
   pointer-events: none;
 }
@@ -939,7 +929,7 @@ function confirmDelete(item: CloudArchiveItem) {
 
 /* 宽度不足时 title 占满第一行、meta 换行到下方，避免标题在左侧被裁掉 */
 .card-hero-title {
-  font-size: var(--ds-text-base);
+  font-size: var(--ds-text-lg);
   font-weight: 600;
   color: #fff;
   line-height: 1.3;
@@ -1030,9 +1020,9 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .card-content {
-  font-size: var(--ds-text-sm);
+  font-size: var(--ds-text-base);
   color: var(--ds-text-secondary);
-  line-height: 1.5;
+  line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   flex: 1;
@@ -1083,16 +1073,22 @@ function confirmDelete(item: CloudArchiveItem) {
   gap: 8px;
 }
 
-.card-go-btn {
-  background: var(--ds-primary);
-  border-color: var(--ds-primary);
-  color: var(--ds-primary-text);
+.card-action-btn.card-go-btn:hover {
+  background: #238636;
+  border-color: #238636;
+  color: #fff;
 }
 
-.card-go-btn:hover {
-  background: var(--ds-primary-hover);
-  border-color: var(--ds-primary-hover);
-  color: var(--ds-primary-text);
+.card-action-btn.card-share-btn:hover {
+  background: #f0c14b;
+  border-color: #f0c14b;
+  color: #0d1117;
+}
+
+.card-action-btn.card-more-btn:hover {
+  background: #fff;
+  border-color: #fff;
+  color: #0d1117;
 }
 
 .card-action-btn {
@@ -1132,7 +1128,9 @@ function confirmDelete(item: CloudArchiveItem) {
   right: 0;
   top: calc(100% + 4px);
   left: auto;
-  min-width: 120px;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);

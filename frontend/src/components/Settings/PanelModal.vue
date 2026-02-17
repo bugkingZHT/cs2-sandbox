@@ -1295,7 +1295,7 @@ const handleCleanStorageLeak = async () => {
 
 .form-input:focus {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.2);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.25);
   background: var(--ds-surface-hover);
 }
 
@@ -2051,7 +2051,7 @@ const handleCleanStorageLeak = async () => {
 
 .ds-input-inline:focus {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.2);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.25);
   background: var(--ds-surface-hover);
 }
 
@@ -2069,7 +2069,7 @@ const handleCleanStorageLeak = async () => {
 
 .ds-input:focus {
   border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(78, 204, 163, 0.2);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.25);
   background: var(--ds-surface-hover);
 }
 

@@ -34,8 +34,8 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      color: #e0e0e0;
+      background: #0d1117;
+      color: #e6edf3;
       padding: 40px 20px;
       line-height: 1.6;
       min-height: 100vh;
@@ -50,12 +50,12 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
       text-align: center;
       margin-bottom: 40px;
       padding-bottom: 20px;
-      border-bottom: 2px solid rgba(78, 204, 163, 0.3);
+      border-bottom: 2px solid #30363d;
     }
     
     .header h1 {
       font-size: 36px;
-      color: #4ecca3;
+      color: #e6edf3;
       margin-bottom: 8px;
       font-weight: 700;
     }
@@ -76,10 +76,10 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
     
     .btn {
       padding: 10px 20px;
-      background: rgba(78, 204, 163, 0.15);
-      border: 1px solid rgba(78, 204, 163, 0.4);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid #30363d;
       border-radius: 6px;
-      color: #4ecca3;
+      color: #e6edf3;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
@@ -114,7 +114,7 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
     
     .stat-card:hover {
       background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(78, 204, 163, 0.3);
+      border-color: #30363d;
       transform: translateY(-4px);
     }
     
@@ -129,7 +129,7 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
     .stat-value {
       font-size: 28px;
       font-weight: 700;
-      color: #4ecca3;
+      color: #e6edf3;
       font-variant-numeric: tabular-nums;
     }
     
@@ -147,7 +147,7 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
       align-items: center;
       margin-bottom: 15px;
       padding-bottom: 10px;
-      border-bottom: 2px solid rgba(78, 204, 163, 0.2);
+      border-bottom: 2px solid #30363d;
     }
     
     .data-header h3 {
@@ -196,8 +196,8 @@ export function showFrameData(currentFrame: any, currentFrameIndex: number, repl
       position: fixed;
       top: 20px;
       right: 20px;
-      background: rgba(78, 204, 163, 0.95);
-      color: #1a1a2e;
+      background: #e6edf3;
+      color: #0d1117;
       padding: 12px 24px;
       border-radius: 8px;
       font-weight: 600;

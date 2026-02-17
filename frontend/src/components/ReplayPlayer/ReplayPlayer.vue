@@ -2,20 +2,28 @@
   <div class="viewer-layout">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
-      <!-- 左上角返回：回到 Demo 本地库 / 云存档 -->
-      <button
-        type="button"
-        class="replayer-back-btn"
-        :title="replayerSource === 'cloud' ? '返回战术笔记' : '返回 Demo 库'"
-        @click="emit('exit-replay')"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-        <span class="replayer-back-label">{{ replayerSource === 'cloud' ? '返回战术笔记' : '返回 Demo 库' }}</span>
-      </button>
+      <!-- 有地图时：左下角小眼睛（pure 模式不显示） -->
+      <div v-if="coverType === 'none' && !pureMode" class="replayer-left-actions at-bottom">
+        <button
+          v-if="!pureMode"
+          type="button"
+          class="overlay-eye-btn"
+          :class="{ 'is-hidden': !showOverlayPanels }"
+          :title="showOverlayPanels ? '隐藏玩家卡与击杀' : '显示玩家卡与击杀'"
+          @click="showOverlayPanels = !showOverlayPanels"
+        >
+          <svg v-if="showOverlayPanels" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg v-else class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
 
-      <!-- Cover：按优先级只显示一种（route_loading / cloud_download / not_found / forbidden / no_data） -->
+      <!-- Cover：按优先级只显示一种，返回按钮在内容下方 -->
       <div
         v-if="coverType !== 'none'"
         class="empty-state"
@@ -121,25 +129,6 @@
           @close="handleGrenadeAnalyzeClose"
           @seek="handleGrenadeSeek"
         />
-
-        <!-- 左上角小眼睛：点击隐藏/显示左侧玩家卡与右侧击杀 -->
-        <button
-          v-if="!pureMode"
-          type="button"
-          class="overlay-eye-btn"
-          :class="{ 'is-hidden': !showOverlayPanels }"
-          :title="showOverlayPanels ? '隐藏玩家卡与击杀' : '显示玩家卡与击杀'"
-          @click="showOverlayPanels = !showOverlayPanels"
-        >
-          <svg v-if="showOverlayPanels" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          <svg v-else class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-            <line x1="1" y1="1" x2="23" y2="23"/>
-          </svg>
-        </button>
 
         <!-- 击杀回传 (Kill Feed) -->
         <div v-if="!pureMode && showOverlayPanels" class="kill-feed-container">
@@ -474,7 +463,6 @@
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
-        @exit-replay="emit('exit-replay')"
         @dragging-change="isDraggingTimeline = $event"
         @load-round="loadRoundData"
       />
@@ -503,7 +491,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'exit-replay'): void;
   (e: 'save-current-round'): void;
 }>();
 
@@ -1385,42 +1372,22 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* 左上角返回按钮 */
-.replayer-back-btn {
+/* 左下角：返回 + 小眼睛（有 cover 时整块在左上，有地图时在左下） */
+.replayer-left-actions {
   position: absolute;
   top: var(--ds-space-md);
   left: var(--ds-space-md);
   z-index: var(--ds-z-dropdown);
   pointer-events: auto;
-
-  display: inline-flex;
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  backdrop-filter: blur(10px);
+  gap: 8px;
+  transition: top 0.2s ease, bottom 0.2s ease;
 }
-
-.replayer-back-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.22);
-  transform: translateY(-1px);
-}
-
-.replayer-back-btn:active {
-  transform: translateY(0);
-}
-
-.replayer-back-label {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
+.replayer-left-actions.at-bottom {
+  top: auto;
+  bottom: var(--ds-space-xl);
 }
 
 /* === Player Panels (Bottom Corners) === */
@@ -1740,12 +1707,9 @@ onBeforeUnmount(() => {
   transition: all var(--ds-transition-base);
 }
 
-/* === 左上角小眼睛：隐藏/显示玩家卡与击杀 === */
+/* === 小眼睛：隐藏/显示玩家卡与击杀（在返回按钮右侧） === */
 .overlay-eye-btn {
-  position: absolute;
-  bottom: var(--ds-space-xl);
-  left: var(--ds-space-md);
-  z-index: calc(var(--ds-z-dropdown) + 1);
+  flex-shrink: 0;
   width: 32px;
   height: 32px;
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -1875,6 +1839,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   width: 100%;
   height: 100%;
+  background: #000000;
 }
 
 /* === Timeline === */
@@ -2131,7 +2096,7 @@ onBeforeUnmount(() => {
     font-size: 16px;
   }
 
-  .overlay-eye-btn {
+  .replayer-left-actions.at-bottom {
     bottom: 8px;
     left: 6px;
   }

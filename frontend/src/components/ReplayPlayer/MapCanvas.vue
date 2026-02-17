@@ -1072,7 +1072,7 @@ onBeforeUnmount(() => {
 }
 
 .save-to-note-btn.zoom-column-btn:hover:not(:disabled) {
-  background: rgba(78, 204, 163, 0.25);
+  background: rgba(var(--ds-primary-rgb), 0.2);
   border-color: var(--ds-primary);
 }
 
@@ -1274,6 +1274,7 @@ onBeforeUnmount(() => {
   height: 100%;
   min-width: 0;
   min-height: 0;
+  background: #000000;
 }
 
 .player-tooltip {
