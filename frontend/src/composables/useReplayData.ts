@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
 import ParserWorker from '@/workers/wasm-parser.worker?worker';
 import { getOPFSStorage, cleanupOrphanedReplayStorage } from './opfs-storage';
@@ -11,7 +11,6 @@ import {
   PARSING_ROUND_LIMIT_KEY,
   PARSE_FRAME_RATIO_KEY,
 } from '@/config/debug';
-import { ParsingMonitor } from './parsingMonitor';
 import { adaptMeta, adaptRound, checkCompatibility } from './replayDataAdapter';
 
 interface UseReplayResult {
@@ -75,8 +74,27 @@ function createReplayData() {
   const abortController = new AbortController();
   let initialLoadPromise: Promise<void> | null = null;
 
-  // ParsingMonitor instance
-  let parsingMonitor: ParsingMonitor | null = null;
+  // beforeunload: 解析过程中监听页面关闭/刷新，避免用户误操作导致解析中断
+  let beforeUnloadHandler: ((e: BeforeUnloadEvent) => string | undefined) | null = null;
+  const setupBeforeUnload = () => {
+    if (beforeUnloadHandler) return;
+    beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', beforeUnloadHandler);
+  };
+  const removeBeforeUnload = () => {
+    if (beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', beforeUnloadHandler);
+      beforeUnloadHandler = null;
+    }
+  };
+  watch(parsing, (isParsing) => {
+    if (isParsing) setupBeforeUnload();
+    else removeBeforeUnload();
+  }, { immediate: true });
 
   // Load all replay metadata for list display
   const loadAllReplays = async () => {
@@ -84,51 +102,30 @@ function createReplayData() {
     const metaStorage = await getMetaStorage();
 
     // Step 1: 从 IndexedDB 加载所有 meta
-    const metas = await metaStorage.loadAllMetas();
+    let metas = await metaStorage.loadAllMetas();
     console.log('[LoadAllReplays] 从 IndexedDB 加载的 meta 数量:', metas.length);
-    
+
     // Step 2 & 3: 清理 OPFS 泄露（无 meta 的目录），超过 maxSurgeDemoNum 时按时间从旧到新清理至该数以内
     const maxSurge = Math.max(0, parseInt(localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY) ?? String(MAX_SURGE_DEMO_NUM_DEFAULT), 10)) || MAX_SURGE_DEMO_NUM_DEFAULT;
     await cleanupOrphanedReplayStorage(maxSurge);
 
-    // Step 4: 直接映射 meta 到 replayList（无需 cache 合并）
+    // Step 4: 将刷新后遗留的 status=0（未完成解析）标记为「解析中断」
+    for (const m of metas) {
+      if (m.status === 0) {
+        await metaStorage.updateMetaStatus(m.uuid, -1, undefined, '解析中断（页面已刷新，任务已终止）');
+      }
+    }
+    metas = await metaStorage.loadAllMetas();
+
+    // Step 5: 直接映射 meta 到 replayList（无需 cache 合并）
     replayList.value = metas.map(meta => ({
       ...meta,
       id: meta.uuid,
       frames: [],
       timestamp: meta.uploadTime,
     }));
-    
+
     console.log('[LoadAllReplays] 最终 replay list 大小:', replayList.value.length);
-    
-    // Start or restart ParsingMonitor
-    startParsingMonitor();
-  };
-  
-  // Start parsing monitor
-  const startParsingMonitor = () => {
-    // Stop existing monitor if any
-    if (parsingMonitor) {
-      parsingMonitor.stop();
-    }
-    
-    // Create and start new monitor
-    parsingMonitor = new ParsingMonitor({
-      replayList,
-      onReload: loadAllReplays,
-    });
-    
-    parsingMonitor.start();
-    console.log('[useReplayData] ParsingMonitor started');
-  };
-  
-  // Stop parsing monitor
-  const stopParsingMonitor = () => {
-    if (parsingMonitor) {
-      parsingMonitor.stop();
-      parsingMonitor = null;
-      console.log('[useReplayData] ParsingMonitor stopped');
-    }
   };
 
   // Load replay meta and first round from OPFS
@@ -548,16 +545,15 @@ function createReplayData() {
             console.log('[ParseDemo] ✅ Meta saved (status=-1, unsupported map or error)');
             return;
           }
+          // status=0: 保存 meta 供刷新后「解析中断」展示；不关闭 cover，不 loadAllReplays
           parsed.status = 0;
           parsed.parsingProgress = 0;
           parsed.parsingStatus = 'Starting round parsing...';
           parsed.lastTickTime = Date.now();
           meta = parsed;
           await metaStorage.saveMeta(parsed);
-          await loadAllReplays();
-          parsing.value = false;
-          parsingProgress.value = 0;
-          console.log('[ParseDemo] ✅ Meta saved (single copy in worker), parsing in progress');
+          updateParsingProgress(0, 'Starting round parsing...');
+          console.log('[ParseDemo] ✅ Meta saved (blocking parse in progress)');
           return;
         }
         if (e.data.type === 'PROGRESS') {
@@ -567,6 +563,7 @@ function createReplayData() {
           if (workerUuid !== meta.uuid) return;
           const progress = Math.min(95, (parsedTicks / estimatedTotalTicks) * 95);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
+          updateParsingProgress(Math.floor(progress), status);
           await metaStorage.updateMetaStatus(meta.uuid, 0, Math.floor(progress), status, Date.now());
           console.log(`[ParseDemo] [${meta.uuid}] Tick progress: ${parsedTicks.toLocaleString()} ticks (${Math.floor(progress)}%)`);
         } else if (e.data.type === 'ROUND_COMPLETE') {
@@ -615,12 +612,13 @@ function createReplayData() {
             }
             
             await loadAllReplays();
-            console.log(`[ParseDemo] Background parsing complete for ${file.name}`);
+            console.log(`[ParseDemo] Parsing complete for ${file.name}`);
           } catch (e: any) {
             console.error('[ParseDemo] Finalization failed:', e);
             await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Finalization error: ${e.message}`);
           } finally {
-            // Cleanup worker and tick timeout checker
+            parsing.value = false;
+            parsingProgress.value = 0;
             if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
             worker.terminate();
           }
@@ -633,8 +631,9 @@ function createReplayData() {
             await loadAllReplays();
           } else {
             error.value = `解析失败: ${errorMessage}`;
-            parsing.value = false;
           }
+          parsing.value = false;
+          parsingProgress.value = 0;
           if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
           worker.terminate();
         }
@@ -648,8 +647,9 @@ function createReplayData() {
           await loadAllReplays();
         } else {
           error.value = `解析失败: ${errMsg}`;
-          parsing.value = false;
         }
+        parsing.value = false;
+        parsingProgress.value = 0;
         if (tickTimeoutHandle) clearInterval(tickTimeoutHandle);
         worker.terminate();
       };
@@ -682,8 +682,6 @@ function createReplayData() {
       );
       demoBytes = null;
       console.log('[ParseDemo] 🗑️ Transferred file buffer to worker (single copy in worker only)');
-
-      statusMsg.value = `后台解析中: ${file.name}`;
     } catch (e: any) {
       error.value = `解析失败: ${e.message || String(e)}`;
       demoBytes = null;
@@ -724,7 +722,7 @@ function createReplayData() {
 
   onUnmounted(() => {
     abortController.abort();
-    stopParsingMonitor();
+    removeBeforeUnload();
   });
 
   return {

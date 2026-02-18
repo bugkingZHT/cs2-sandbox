@@ -138,12 +138,15 @@
       </main>
     </div>
 
-    <!-- 解析进度弹窗（仅在上传 demo 后展示：先展示「等待解析器加载中」，再展示解析进度） -->
+    <!-- 解析进度弹窗（阻塞：先「等待解析器加载中」，再「解析中..」+ 进度条，解析完成后关闭） -->
     <div v-if="parsing" class="parsing-overlay">
       <div class="parsing-modal">
-        <h3>{{ parsingProgress === 0 ? '等待解析器加载中' : '正在提取 Demo 元数据' }}</h3>
+        <h3>{{ parsingProgress === 0 ? '等待解析器加载中' : '解析中..' }}</h3>
         <div class="spinner-container">
           <div class="spinner"></div>
+        </div>
+        <div class="parsing-progress-bar-wrap">
+          <div class="parsing-progress-bar-fill" :style="{ width: parsingProgress + '%' }"></div>
         </div>
         <p class="parsing-status">{{ parsingStatus }}</p>
       </div>
@@ -1998,6 +2001,22 @@ const showBetaWarning = () => {
   justify-content: center;
   align-items: center;
   margin: var(--ds-space-2xl) 0;
+}
+
+.parsing-progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--ds-border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0 0 var(--ds-space-lg) 0;
+}
+
+.parsing-progress-bar-fill {
+  height: 100%;
+  background: var(--ds-primary);
+  border-radius: 4px;
+  transition: width 0.2s ease;
 }
 
 .spinner {

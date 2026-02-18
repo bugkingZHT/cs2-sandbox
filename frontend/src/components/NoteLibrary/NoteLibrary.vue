@@ -2,13 +2,11 @@
   <div class="note-library-page">
     <Teleport to="#app-page-header">
       <div class="note-library-header">
-      <div class="header-content">
-        <div class="filter-controls">
-          <div class="filter-group">
-            <h1 class="page-title">战术笔记</h1>
-          </div>
-          <!-- 按地图筛选 -->
-          <div class="filter-group">
+        <div class="note-library-header-inner">
+          <div class="header-content">
+            <div class="filter-controls">
+              <!-- 按地图筛选 -->
+              <div class="filter-group">
             <div class="filter-dropdown-wrapper">
               <div
                 class="filter-tags-input"
@@ -57,25 +55,27 @@
               </div>
             </div>
           </div>
+          </div>
+          </div>
+          <div class="library-actions">
+            <!-- 云存储用量：图标 + 进度条 + 文案 -->
+            <div v-if="currentUser" class="quota-block">
+              <div class="quota-row">
+                <img src="/icons/quota.svg" alt="" class="quota-icon" />
+                <span class="quota-label">云存储用量</span>
+                <span class="quota-text">{{ quotaUsed }} / {{ quotaLimit }}</span>
+              </div>
+              <div class="quota-track">
+                <div
+                  class="quota-bar"
+                  :style="{ width: quotaPercent + '%' }"
+                  :class="{ 'is-full': quotaLimit > 0 && quotaUsed >= quotaLimit }"
+                ></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="library-actions">
-        <!-- 用量：进度条 + 文案 -->
-        <div v-if="currentUser" class="quota-block">
-          <div class="quota-row">
-            <span class="quota-label">用量</span>
-            <span class="quota-text">{{ quotaUsed }} / {{ quotaLimit }}</span>
-          </div>
-          <div class="quota-track">
-            <div
-              class="quota-bar"
-              :style="{ width: quotaPercent + '%' }"
-              :class="{ 'is-full': quotaLimit > 0 && quotaUsed >= quotaLimit }"
-            ></div>
-          </div>
-        </div>
-      </div>
-    </div>
     </Teleport>
 
     <div class="note-library-body ds-scrollbar">
@@ -95,174 +95,88 @@
         <p>当前筛选下无笔记</p>
         <p class="hint">尝试更换或清除地图筛选</p>
       </div>
-      <div v-else class="note-grid-container">
-        <div class="note-grid">
-          <div class="note-column">
-            <div
-              v-for="item in leftColumnItems"
-              :key="item.id"
-              class="note-card ds-card"
-              :class="{ 'is-current': replayerSource === 'cloud' && replayerNoteId === item.id }"
-            >
-            <!-- Hero: 固定高度背景图 + 底部渐变 + 标题 -->
-            <div class="card-hero">
-              <div class="card-background">
-                <img
-                  v-if="getMapLeftSideImage(item.mapName)"
-                  :src="getMapLeftSideImage(item.mapName)"
-                  :alt="item.mapName || ''"
-                  @error="onImageError"
-                />
-                <div v-else class="placeholder-bg">
-                  <span>{{ item.mapName || 'Unknown' }}</span>
-                </div>
+      <div v-else class="note-list-container">
+        <div
+          v-for="item in filteredNoteList"
+          :key="item.id"
+          class="note-card cs2-tactics-card ds-card"
+          :class="{ 'is-current': replayerSource === 'cloud' && replayerNoteId === item.id }"
+        >
+          <!-- Hero: 固定高度背景图 + 底部渐变 + 标题 -->
+          <div class="card-hero">
+            <div class="card-background">
+              <img
+                v-if="getMapLeftSideImage(item.mapName)"
+                :src="getMapLeftSideImage(item.mapName)"
+                :alt="item.mapName || ''"
+                @error="onImageError"
+              />
+              <div v-else class="placeholder-bg">
+                <span>{{ item.mapName || 'Unknown' }}</span>
               </div>
-              <div class="card-hero-cover"></div>
-              <div class="card-hero-overlay">
-                <div class="card-hero-row">
-                  <div class="card-hero-title">{{ item.title }}</div>
-                  <div class="card-hero-meta">
-                    
-                    <span v-if="item.mapName" class="card-hero-map">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                      </svg>
-                      {{ item.mapName }}
-                    </span>
-                    <span v-if="item.teamCT && item.teamT" class="card-hero-match">{{ item.teamCT }} vs {{ item.teamT }}</span>
-                  </div>
-                </div>
-                <div class="card-hero-badges">
-                  <span v-if="replayerSource === 'cloud' && replayerNoteId === item.id" class="playing-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
+            </div>
+            <div class="card-hero-cover"></div>
+            <div class="card-hero-overlay">
+              <div class="card-hero-row">
+                <div class="card-hero-title">{{ item.title }}</div>
+                <div class="card-hero-meta">
+                  <span v-if="item.mapName" class="card-hero-map">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
                     </svg>
-                    <span>PLAYING</span>
+                    {{ item.mapName }}
                   </span>
+                  <span v-if="item.teamCT && item.teamT" class="card-hero-match">{{ item.teamCT }} vs {{ item.teamT }}</span>
                 </div>
               </div>
-            </div>
-
-            <!-- Body: 全文 content -->
-            <div v-if="item.content" class="card-body">
-              <div class="card-content">{{ item.content }}</div>
-            </div>
-
-            <!-- Actions: 左下跳转 + 右侧分享、「...」 -->
-            <div class="card-actions" @click.stop>
-              <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-                <span>播放</span>
-              </button>
-              <div class="card-actions-right">
-                <button type="button" class="card-action-btn card-share-btn" title="分享" @click.stop="openShare(item)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              <div class="card-hero-badges">
+                <span v-if="replayerSource === 'cloud' && replayerNoteId === item.id" class="playing-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
                   </svg>
-                  <span>分享</span>
-                </button>
-                <div class="card-more-wrap">
-                  <button
-                    type="button"
-                    class="card-action-btn card-more-btn"
-                    title="更多"
-                    aria-haspopup="true"
-                    :aria-expanded="openMenuNoteId === item.id"
-                    @click.stop="toggleMenu(item.id, $event)"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
-                    </svg>
-                  </button>
-                </div>
+                  <span>PLAYING</span>
+                </span>
               </div>
             </div>
           </div>
+
+          <!-- Body: 全文 content（阅读友好宽度） -->
+          <div v-if="item.content" class="card-body">
+            <div class="card-content">{{ item.content }}</div>
           </div>
-          <div class="note-column">
-            <div
-              v-for="item in rightColumnItems"
-              :key="item.id"
-              class="note-card ds-card"
-              :class="{ 'is-current': replayerSource === 'cloud' && replayerNoteId === item.id }"
-            >
-            <div class="card-hero">
-              <div class="card-background">
-                <img
-                  v-if="getMapLeftSideImage(item.mapName)"
-                  :src="getMapLeftSideImage(item.mapName)"
-                  :alt="item.mapName || ''"
-                  @error="onImageError"
-                />
-                <div v-else class="placeholder-bg">
-                  <span>{{ item.mapName || 'Unknown' }}</span>
-                </div>
-              </div>
-              <div class="card-hero-cover"></div>
-              <div class="card-hero-overlay">
-                <div class="card-hero-row">
-                  <div class="card-hero-title">{{ item.title }}</div>
-                  <div class="card-hero-meta">
-                    
-                    <span v-if="item.mapName" class="card-hero-map">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                      </svg>
-                      {{ item.mapName }}
-                    </span>
-                    <span v-if="item.teamCT && item.teamT" class="card-hero-match">{{ item.teamCT }} vs {{ item.teamT }}</span>
-                  </div>
-                </div>
-                <div class="card-hero-badges">
-                  <span v-if="replayerSource === 'cloud' && replayerNoteId === item.id" class="playing-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    <span>PLAYING</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div v-if="item.content" class="card-body">
-              <div class="card-content">{{ item.content }}</div>
-            </div>
-            <div class="card-actions" @click.stop>
-              <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
+
+          <!-- Actions: 左下跳转 + 右侧分享、「...」 -->
+          <div class="card-actions" @click.stop>
+            <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>播放</span>
+            </button>
+            <div class="card-actions-right">
+              <button type="button" class="card-action-btn card-share-btn" title="分享" @click.stop="openShare(item)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                 </svg>
-                <span>播放</span>
+                <span>分享</span>
               </button>
-              <div class="card-actions-right">
-                <button type="button" class="card-action-btn card-share-btn" title="分享" @click.stop="openShare(item)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              <div class="card-more-wrap">
+                <button
+                  type="button"
+                  class="card-action-btn card-more-btn"
+                  title="更多"
+                  aria-haspopup="true"
+                  :aria-expanded="openMenuNoteId === item.id"
+                  @click.stop="toggleMenu(item.id, $event)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
                   </svg>
-                  <span>分享</span>
                 </button>
-                <div class="card-more-wrap">
-                  <button
-                    type="button"
-                    class="card-action-btn card-more-btn"
-                    title="更多"
-                    aria-haspopup="true"
-                    :aria-expanded="openMenuNoteId === item.id"
-                    @click.stop="toggleMenu(item.id, $event)"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
-                    </svg>
-                  </button>
-                </div>
               </div>
             </div>
-          </div>
           </div>
         </div>
       </div>
@@ -385,45 +299,6 @@ const filteredNoteList = computed(() => {
   return list.sort((a, b) => b.add_time - a.add_time);
 });
 
-/** 左列：索引 0, 2, 4...；右列：索引 1, 3, 5...，两列独立向上对齐 */
-/** 逐个放置 item：每次选择左右两侧中「当前总高度更小」的一侧放入，相等时放左侧 */
-const balancedColumns = computed(() => {
-  const list = filteredNoteList.value;
-  if (list.length === 0) return { left: [] as CloudArchiveItem[], right: [] as CloudArchiveItem[] };
-  const getEstimatedHeight = (item: CloudArchiveItem) => {
-    const base = 140 + 48 + 44; /* hero + card-body + card-actions 近似高度 */
-    const content = item.content || '';
-    if (!content.trim()) return base;
-    const charsPerLine = 32; /* 单行约字符数（与 card-content 宽度、字号一致） */
-    const lineHeightPx = 20;
-    const lines = content.split(/\r?\n/);
-    const visualLines = lines.reduce(
-      (acc, line) => acc + Math.max(1, Math.ceil(line.length / charsPerLine)),
-      0
-    );
-    const contentHeight = visualLines * lineHeightPx;
-    return base + contentHeight;
-  };
-  let leftHeight = 0;
-  let rightHeight = 0;
-  const leftItems: CloudArchiveItem[] = [];
-  const rightItems: CloudArchiveItem[] = [];
-  for (const item of list) {
-    const h = getEstimatedHeight(item);
-    const placeOnLeft = leftHeight <= rightHeight;
-    if (placeOnLeft) {
-      leftItems.push(item);
-      leftHeight += h;
-    } else {
-      rightItems.push(item);
-      rightHeight += h;
-    }
-  }
-  return { left: leftItems, right: rightItems };
-});
-const leftColumnItems = computed(() => balancedColumns.value.left);
-const rightColumnItems = computed(() => balancedColumns.value.right);
-
 /** 当前打开「更多」菜单的笔记项（用于 Teleport 下拉） */
 const openMenuNote = computed(() => {
   const id = openMenuNoteId.value;
@@ -525,13 +400,39 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .note-library-header {
-  padding: 18px var(--ds-space-xl);
+  padding: 18px 0 0 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   background: linear-gradient(to bottom, var(--ds-bg-secondary) 0%, var(--ds-bg-primary-solid) 100%);
   min-height: 60px;
+}
+
+/* 与 note-library-body 内卡片同宽 */
+.note-library-header-inner {
+  width: 95%;
+  max-width: 85ch;
+  min-width: 320px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .note-library-header-inner {
+    width: 90%;
+    max-width: 80ch;
+  }
+}
+
+@media (min-width: 1200px) {
+  .note-library-header-inner {
+    width: 85%;
+    max-width: 85ch;
+  }
 }
 
 .header-content {
@@ -550,13 +451,6 @@ function confirmDelete(item: CloudArchiveItem) {
   display: flex;
   align-items: center;
   gap: var(--ds-space-md);
-}
-
-.page-title {
-  margin: 0;
-  font-size: var(--ds-text-xl);
-  font-weight: 700;
-  color: var(--ds-text-primary);
 }
 
 /* 地图筛选下拉（与 DemoLibrary 一致） */
@@ -741,10 +635,17 @@ function confirmDelete(item: CloudArchiveItem) {
 
 .quota-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--ds-space-sm);
   margin-bottom: 4px;
+}
+
+.quota-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.9;
 }
 
 .quota-label {
@@ -783,7 +684,7 @@ function confirmDelete(item: CloudArchiveItem) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--ds-space-lg) var(--ds-space-xl);
+  padding: 0;
   position: relative;
 }
 
@@ -831,34 +732,39 @@ function confirmDelete(item: CloudArchiveItem) {
   opacity: 0.8;
 }
 
-/* Grid - 左右两列独立，按列拆分、向上对齐，不按行分割 */
-.note-grid-container {
+/* 单列列表容器，卡片间距 12px */
+.note-list-container {
   overflow-y: auto;
-  padding: 0;
-}
-
-.note-grid {
-  display: flex;
-  gap: var(--ds-space-sm);
-  padding: 0 var(--ds-space-md);
-  align-items: flex-start;
-}
-
-.note-column {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-sm);
-  min-width: 0;
+  align-items: center;
+  gap: 12px;
 }
 
-@media (max-width: 768px) {
-  .note-grid {
-    flex-direction: column;
+/* === CS2 战术笔记 Card：文本阅读友好，略宽 + 间距由容器 gap 控制 === */
+.note-card.cs2-tactics-card {
+  width: 95%;
+  max-width: 85ch;
+  min-width: 320px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .note-card.cs2-tactics-card {
+    width: 90%;
+    max-width: 80ch;
   }
 }
 
-/* === Note Card：无固定高度，hero + body + actions，参考 demolib 卡片白边 === */
+@media (min-width: 1200px) {
+  .note-card.cs2-tactics-card {
+    width: 85%;
+    max-width: 85ch;
+  }
+}
+
+/* === Note Card：无固定高度，hero + body + actions === */
 .note-card {
   position: relative;
   display: flex;
@@ -899,8 +805,8 @@ function confirmDelete(item: CloudArchiveItem) {
   z-index: 1;
   background: linear-gradient(
     to bottom,
-    rgba(22, 27, 34, 0.75) 0%,
-    rgba(22, 27, 34, 0.90) 100%,
+    rgba(22, 27, 34, 0.65) 0%,
+    rgba(22, 27, 34, 0.05) 100%,
   );
   pointer-events: none;
 }
@@ -924,8 +830,8 @@ function confirmDelete(item: CloudArchiveItem) {
   height: 100%;
   object-fit: cover;
   transition: transform var(--ds-transition-base);
-  opacity: 0.5;
-  filter: brightness(0.8) saturate(0.95);
+  opacity: 0.8;
+  filter: brightness(0.85) saturate(0.95);
 }
 
 .card-hero-cover {
@@ -963,6 +869,7 @@ function confirmDelete(item: CloudArchiveItem) {
   line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1 1 100%;
@@ -1036,10 +943,10 @@ function confirmDelete(item: CloudArchiveItem) {
   50% { transform: scale(1.2); }
 }
 
-/* === Card Body：全文 content，使用标准色 === */
+/* === Card Body：全文 content，阅读友好（1.5rem 内边距、1.6 行高） === */
 .card-body {
   flex: 1;
-  padding: var(--ds-space-xl);
+  padding: 1.5rem;
   background: var(--ds-bg-secondary);
   display: flex;
   flex-direction: column;
@@ -1050,7 +957,7 @@ function confirmDelete(item: CloudArchiveItem) {
 .card-content {
   font-size: var(--ds-text-base);
   color: var(--ds-text-secondary);
-  line-height: 1.7;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   flex: 1;

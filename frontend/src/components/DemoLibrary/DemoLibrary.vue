@@ -264,15 +264,15 @@
       </div>
     </div>
 
-    <!-- Parsing Info Banner (Dismissible) -->
-    <div v-if="hasParsingDemos && !isDismissed" class="parsing-info-banner">
+    <!-- Parsing Info Banner：仅在全局阻塞解析时显示，与 Cover 语义一致 -->
+    <div v-if="parsing && !isDismissed" class="parsing-info-banner">
       <div class="banner-content">
         <svg class="banner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="16" x2="12" y2="12"/>
           <line x1="12" y1="8" x2="12.01" y2="8"/>
         </svg>
-        <span class="banner-text">解析过程中可将该页面置于后台，但不要刷新或关闭</span>
+        <span class="banner-text">解析过程中请勿关闭或刷新页面</span>
       </div>
       <button class="banner-close" @click="dismissBanner" title="关闭提示">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -367,26 +367,11 @@
             <span class="demo-bar-parsing-text">{{ demo.parsingProgress || 0 }}%</span>
           </div>
         </div>
-        <!-- Right: Delete -->
-        <div class="demo-bar-right">
-          <button
-            type="button"
-            class="demo-bar-delete-btn"
-            title="Delete"
-            @click.stop="demo.status === 0 ? confirmForceDelete(demo) : confirmDelete(demo)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-          </button>
         </div>
-        <!-- Failed state message -->
-        <div v-if="demo.status === -1" class="demo-bar-failed-msg">{{ demo.parsingStatus || 'Parsing failed' }}</div>
-        </div>
-        <!-- Round selector row (same style as timeline round selection) -->
-        <div v-if="demo.status === 1 && (demo.totalRounds ?? 0) > 0" class="demo-bar-round-row">
-          <div class="demo-bar-round-nav">
+        <!-- Footer row: round selector / error message (left) + delete (right) -->
+        <div class="demo-bar-footer-row">
+          <div class="demo-bar-footer-left">
+          <div v-if="demo.status === 1 && (demo.totalRounds ?? 0) > 0" class="demo-bar-round-nav">
             <div class="demo-bar-round-buttons">
               <template v-for="r in (demo.totalRounds ?? 0)" :key="r">
                 <div class="demo-bar-round-cell">
@@ -417,6 +402,21 @@
                 <div v-if="r === 12" class="demo-bar-round-v-divider"></div>
               </template>
             </div>
+          </div>
+          <div v-else-if="demo.status === -1" class="demo-bar-failed-msg">{{ demo.parsingStatus || 'Parsing failed' }}</div>
+          </div>
+          <div class="demo-bar-footer-right">
+            <button
+              type="button"
+              class="demo-bar-delete-btn"
+              title="Delete"
+              @click.stop="demo.status === 0 ? confirmForceDelete(demo) : confirmDelete(demo)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -859,13 +859,11 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 };
 
-// Check if any demos are currently parsing (parsingMonitor controls this)
-const hasParsingDemos = computed(() => {
-  return props.demoList.some(demo => demo.status === 0);
-});
+// Defensive: list may briefly show status=0 before loadAllReplays marks them interrupted
+const hasParsingDemos = computed(() => props.demoList.some(demo => demo.status === 0));
 
-// Reset dismiss state when parsing starts
-watch(hasParsingDemos, (newVal) => {
+// Reset dismiss state when blocking parse starts
+watch(parsing, (newVal) => {
   if (newVal) {
     isDismissed.value = false;
   }
@@ -1319,7 +1317,7 @@ const scoreDisplayMap = computed(() => {
 .demo-library-header {
   position: relative;
   z-index: 100;
-  padding: 18px var(--ds-space-xl);
+  padding: 18px var(--ds-space-xl) 0 var(--ds-space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1431,10 +1429,10 @@ const scoreDisplayMap = computed(() => {
 .demo-bar-list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--ds-space-md);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-sm);
+  gap: var(--ds-space-md);
 }
 
 .demo-bar-card {
@@ -1516,24 +1514,15 @@ const scoreDisplayMap = computed(() => {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--ds-space-md);
-  padding: var(--ds-space-md) var(--ds-space-lg);
+  gap: var(--ds-space-lg);
+  padding: var(--ds-space-lg) var(--ds-space-xl);
   flex-wrap: wrap;
 }
 
-.demo-bar-card-inner > .demo-bar-right {
-  order: 2;
-  flex-shrink: 0;
-  width: 40px;
-  min-width: 40px;
-}
 .demo-bar-card-inner > .demo-bar-middle {
   order: 1;
   flex: 1;
   min-width: 0;
-}
-.demo-bar-card-inner > .demo-bar-failed-msg {
-  order: 3;
 }
 
 .demo-bar-middle {
@@ -1541,39 +1530,43 @@ const scoreDisplayMap = computed(() => {
   overflow: hidden;
 }
 
+/* 主信息区：地图 | 比分(加宽) | 文件名 | 时间 */
 .demo-bar-meta {
   display: grid;
-  grid-template-columns: minmax(80px, 120px) minmax(200px, 220px) minmax(0, 1fr) minmax(72px, 100px);
-  align-items: baseline;
-  gap: var(--ds-space-sm) var(--ds-space-lg);
-  font-size: 14px;
+  grid-template-columns: minmax(88px, 140px) minmax(280px, 380px) minmax(0, 1fr) minmax(80px, 110px);
+  align-items: center;
+  gap: var(--ds-space-md) var(--ds-space-xl);
+  font-size: 15px;
   width: 100%;
   min-width: 0;
+  line-height: 1.4;
 }
 
 .demo-bar-map {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1rem;
   color: var(--gh-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.01em;
 }
 
-/* 比分：扁平高雅字体、字号加大、以冒号 : 为基准上下卡片对齐 */
+/* 比分区：充分加宽，字号与字重突出 */
 .demo-bar-score {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: baseline;
-  gap: 0 6px;
-  line-height: 1.2;
+  gap: 0 10px;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   min-width: 0;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  font-family: var(--ds-font-sans), system-ui, -apple-system, sans-serif;
-  letter-spacing: 0.02em;
+  font-family: var(--ds-font-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: 0.03em;
 }
 
 .demo-bar-score-mine,
@@ -1600,7 +1593,7 @@ const scoreDisplayMap = computed(() => {
 .demo-bar-score-winner,
 .demo-bar-score-loser,
 .demo-bar-score-draw {
-  line-height: 1.2;
+  line-height: 1.3;
   display: inline-flex;
   align-items: baseline;
   font-size: inherit;
@@ -1612,41 +1605,46 @@ const scoreDisplayMap = computed(() => {
 .demo-bar-score-divider {
   flex-shrink: 0;
   color: var(--gh-text-muted);
-  font-weight: 400;
-  line-height: 1.2;
-  font-size: inherit;
+  font-weight: 500;
+  font-size: 0.95em;
+  line-height: 1.3;
   font-family: inherit;
 }
 
 .demo-bar-score-winner {
   color: #3fb950;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .demo-bar-score-loser {
   color: #f85149;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .demo-bar-score-draw {
   color: var(--gh-text-muted);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .demo-bar-file {
   color: var(--gh-text-muted);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.01em;
 }
 
 .demo-bar-time {
   color: var(--gh-text-muted);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: right;
+  letter-spacing: 0.02em;
 }
 
 .demo-bar-parsing {
@@ -1677,15 +1675,6 @@ const scoreDisplayMap = computed(() => {
   min-width: 2.5em;
 }
 
-.demo-bar-right {
-  flex-shrink: 0;
-  min-width: 40px;
-  width: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .demo-bar-delete-btn {
   display: flex;
   align-items: center;
@@ -1707,21 +1696,36 @@ const scoreDisplayMap = computed(() => {
   background: rgba(248, 81, 73, 0.1);
 }
 
-.demo-bar-failed-msg {
-  width: 100%;
-  margin-top: var(--ds-space-xs);
-  font-size: 12px;
-  color: #f85149;
-}
-
-/* Round selector row (same style as timeline round selection) */
-.demo-bar-round-row {
+/* Footer row: round selector / error message (left) + delete (right) */
+.demo-bar-footer-row {
   position: relative;
   z-index: 1;
   width: 100%;
   padding: var(--ds-space-sm) var(--ds-space-lg);
   border-top: 1px solid var(--gh-border);
   background: var(--gh-bg-secondary);
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-md);
+}
+
+.demo-bar-footer-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.demo-bar-footer-right {
+  flex-shrink: 0;
+}
+
+.demo-bar-footer-row .demo-bar-failed-msg {
+  font-size: 12px;
+  color: #f85149;
+  margin: 0;
 }
 
 .demo-bar-round-nav {
