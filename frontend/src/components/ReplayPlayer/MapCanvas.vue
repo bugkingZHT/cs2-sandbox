@@ -91,6 +91,7 @@
     <!-- Zoom Controls (Bottom) -->
     <div class="map-zoom-controls">
       <button
+        v-if="!pureMode"
         class="zoom-btn brush-btn"
         :class="{ 'active': isDrawingMode || false }"
         @click="emit('toggle-drawing')"
@@ -98,7 +99,7 @@
       >
         <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
       </button>
-      <div v-if="tabRecorderPending || tabRecorderConverting" class="tab-recorder-actions">
+      <div v-if="!pureMode && (tabRecorderPending || tabRecorderConverting)" class="tab-recorder-actions">
         <button
           v-if="tabRecorderConverting"
           class="tab-recorder-btn download-btn converting"
@@ -123,7 +124,7 @@
           ×
         </button>
       </div>
-      <div v-if="tabRecorderSupported" class="tab-record-wrapper">
+      <div v-if="!pureMode && tabRecorderSupported" class="tab-record-wrapper">
         <button
           class="zoom-btn tab-record-btn"
           :class="{ 'recording': tabRecorderRecording, 'converting': tabRecorderConverting }"

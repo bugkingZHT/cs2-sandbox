@@ -1,7 +1,7 @@
 <template>
   <div class="timeline-widget-container">
-    <!-- 一、上方：回合选择进度条 -->
-    <div v-if="!pureMode" class="round-selection-module">
+    <!-- 一、上方：回合选择进度条（已移至左侧面板，此处隐藏） -->
+    <div v-if="!pureMode && !hideRoundSelector" class="round-selection-module">
       <!-- 核心进度条主体 -->
       <div class="round-nav-wrapper">
         <div class="round-buttons-grid">
@@ -195,6 +195,8 @@ const props = defineProps<{
   cloudReplay?: boolean;
   /** 是否允许播放（有帧数据时 true，避免刷新后未同步状态时点击无效） */
   canPlay?: boolean;
+  /** 隐藏回合选择器（已移至左侧面板展示） */
+  hideRoundSelector?: boolean;
 }>();
 
 const canPlay = computed(() => props.canPlay ?? true);

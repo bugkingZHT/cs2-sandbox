@@ -1,7 +1,7 @@
 <template>
   <div class="app">
-    <!-- Collapsible Sidebar（纯净模式下播放器页不展示） -->
-    <aside v-show="currentPage !== 'player'" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <!-- Collapsible Sidebar（replayer 纯净模式下隐藏） -->
+    <aside v-show="currentPage !== 'player' || !replayerPureMode" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- Sidebar Header -->
       <div class="sidebar-header">
         <div class="app-branding" v-show="!sidebarCollapsed">
@@ -125,14 +125,18 @@
       </div>
     </template>
 
-    <!-- Player Page：cover 状态（含「正在加载回放…」）统一在 ReplayPlayer 内按优先级渲染，此处仅挂载 -->
-    <main v-else-if="currentPage === 'player'" class="app-main" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <ReplayPlayer
-        :can-add-to-note="canAddToNote"
-        :note-uploading="noteUploading"
-        @save-current-round="handleAddToNote"
-      />
-    </main>
+    <!-- Player Page：与库页同布局，侧边栏 + 主区 -->
+    <div v-else-if="currentPage === 'player'" class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+      <header class="app-page-header" id="app-page-header"></header>
+      <main class="app-main">
+        <ReplayPlayer
+          :can-add-to-note="canAddToNote"
+          :note-uploading="noteUploading"
+          :cloud-note="cloudNoteForReplayer"
+          @save-current-round="handleAddToNote"
+        />
+      </main>
+    </div>
 
     <!-- 解析进度弹窗（仅在上传 demo 后展示：先展示「等待解析器加载中」，再展示解析进度） -->
     <div v-if="parsing" class="parsing-overlay">
@@ -500,6 +504,14 @@ const canAddToNote = computed(
     !!replay.value
 );
 
+/** 当前播放的云笔记（source=cloud 时用于 ReplayPlayer 左侧「笔记」tab） */
+const cloudNoteForReplayer = computed(() => {
+  const id = replayerNoteId.value;
+  if (!id) return null;
+  const item = noteList.value.find((n) => n.id === id);
+  return item ? { title: item.title, content: item.content ?? '' } : null;
+});
+
 function openShareModal(item: CloudArchiveItem) {
   openNoteMenuId.value = null;
   openShareModalFromNote(item);
@@ -553,9 +565,7 @@ function formatNoteTime(ms: number): string {
 }
 
 function goToNoteItem(item: CloudArchiveItem) {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  const url = `${window.location.origin}${base}/replayer?source=cloud&note_id=${encodeURIComponent(item.id)}`;
-  window.open(url, '_blank');
+  navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}`);
 }
 
 function onNavigateToDemolib() {

@@ -145,8 +145,44 @@
           </TransitionGroup>
         </div>
 
-        <!-- Player Cards Panel (Top Left) -->
+        <!-- Left Panel: Tab (玩家 / 回合) + Player Cards or Round Selector -->
         <div v-if="!pureMode && showOverlayPanels" class="players-panel top-left">
+          <div class="left-panel-header">
+            <button
+              type="button"
+              class="left-panel-back-btn"
+              title="返回"
+              @click="goBack"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+              <span>返回</span>
+            </button>
+            <div class="left-panel-tabs">
+              <button
+                type="button"
+                class="left-panel-tab"
+                :class="{ active: leftPanelTab === 'players' }"
+                @click="leftPanelTab = 'players'"
+              >玩家</button>
+              <button
+                v-if="replayerSource !== 'cloud'"
+                type="button"
+                class="left-panel-tab"
+                :class="{ active: leftPanelTab === 'rounds' }"
+                @click="leftPanelTab = 'rounds'"
+              >回合</button>
+              <button
+                v-if="replayerSource === 'cloud'"
+                type="button"
+                class="left-panel-tab"
+                :class="{ active: leftPanelTab === 'note' }"
+                @click="leftPanelTab = 'note'"
+              >笔记</button>
+            </div>
+          </div>
+          <div v-show="leftPanelTab === 'players'" class="left-panel-content left-panel-players">
           <!-- First Half (1-12): T Team on top, Second Half (13+): CT Team on top -->
           
           <!-- First Team (T for rounds 1-12, CT for rounds 13+) -->
@@ -433,11 +469,51 @@
               </div>
             </div>
           </div>
+          </div>
+          <!-- Round selector (vertical, same position as player cards) - local only -->
+          <div v-show="leftPanelTab === 'rounds'" class="left-panel-content left-panel-rounds">
+            <div class="round-selector-vertical">
+              <template v-for="r in (replay?.totalRounds || 0)" :key="r">
+                <button
+                  type="button"
+                  class="round-selector-row-btn"
+                  :class="{ active: currentRound === r }"
+                  :disabled="replayerSource === 'cloud' && r !== currentRound"
+                  @click="loadRoundData(r)"
+                >
+                  <img
+                    v-if="getRoundResultIcon(r, replay?.roundResults) && shouldIconBeFirst(r, replay?.roundResults)"
+                    :src="getRoundResultIcon(r, replay?.roundResults)!"
+                    class="round-selector-icon"
+                    :alt="getRoundResult(r, replay?.roundResults) || ''"
+                  />
+                  <span class="round-selector-num">{{ r }}</span>
+                  <img
+                    v-if="getRoundResultIcon(r, replay?.roundResults) && !shouldIconBeFirst(r, replay?.roundResults)"
+                    :src="getRoundResultIcon(r, replay?.roundResults)!"
+                    class="round-selector-icon"
+                    :alt="getRoundResult(r, replay?.roundResults) || ''"
+                  />
+                </button>
+                <div v-if="r === 12" class="round-selector-h-divider"></div>
+              </template>
+            </div>
+          </div>
+          <!-- Note tab (cloud only): title + content -->
+          <div v-show="leftPanelTab === 'note'" class="left-panel-content left-panel-note">
+            <template v-if="props.cloudNote">
+              <h3 class="left-panel-note-title">{{ props.cloudNote.title }}</h3>
+              <div class="left-panel-note-content">{{ props.cloudNote.content || '—' }}</div>
+            </template>
+            <template v-else>
+              <p class="left-panel-note-empty">暂无笔记内容</p>
+            </template>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="timeline-panel" :class="{ 'timeline-panel--pure': pureMode }">
+    <section class="timeline-panel">
       <!-- 道具解析模式下遮罩 timeline，禁止点击主时间轴 -->
       <div v-if="isGrenadeAnalyzeMode" class="timeline-block-mask" aria-hidden="true"></div>
       <TimelineControl
@@ -460,6 +536,7 @@
         :pure-mode="pureMode"
         :cloud-replay="replayerSource === 'cloud'"
         :can-play="!!(frames?.length)"
+        :hide-round-selector="true"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -482,12 +559,15 @@ import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
+import { getRoundResult, getRoundResultIcon, shouldIconBeFirst } from '@/utils/roundResult';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
 const props = defineProps<{
   /** 是否可保存当前回合到云存档（由 App 根据播放状态计算） */
   canAddToNote?: boolean;
   /** 云存档上传中 */
   noteUploading?: boolean;
+  /** 当前云笔记（source=cloud 时用于左侧「笔记」tab 展示 title + content） */
+  cloudNote?: { title: string; content?: string } | null;
 }>();
 
 const emit = defineEmits<{
@@ -498,6 +578,15 @@ const emit = defineEmits<{
 const pureMode = ref(false);
 // 左上角小眼睛：非纯净模式下可单独隐藏左侧玩家卡 + 右侧击杀
 const showOverlayPanels = ref(true);
+// 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
+const leftPanelTab = ref<'players' | 'rounds' | 'note'>('players');
+function goBack() {
+  setTimeout(() => {
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    const path = replayerSource.value === 'cloud' ? '/notes' : '/demolib';
+    window.location.href = `${base}${path}`;
+  }, 0);
+}
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
 if (replayerPureMode) {
@@ -520,6 +609,12 @@ onMounted(() => {
 });
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource } = useReplayData();
+
+// source 切换时：cloud 下若当前是「回合」则切到「玩家」；local 下若当前是「笔记」则切到「玩家」
+watch(replayerSource, (source) => {
+  if (source === 'cloud' && leftPanelTab.value === 'rounds') leftPanelTab.value = 'players';
+  if (source !== 'cloud' && leftPanelTab.value === 'note') leftPanelTab.value = 'players';
+});
 
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
 type CoverType = 'route_loading' | 'cloud_download' | 'not_found' | 'forbidden' | 'no_data' | 'none';
@@ -1405,6 +1500,174 @@ onBeforeUnmount(() => {
   gap: 0;
 }
 
+.left-panel-header {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.left-panel-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--ds-radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.left-panel-back-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.left-panel-back-btn svg {
+  flex-shrink: 0;
+}
+
+.left-panel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--ds-radius-sm);
+  flex-shrink: 0;
+}
+
+.left-panel-tab {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.left-panel-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.left-panel-tab.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.left-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  pointer-events: auto;
+}
+
+.left-panel-rounds {
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+.left-panel-note {
+  overflow-y: auto;
+  max-height: 70vh;
+  max-width: 50vw;
+  padding: var(--ds-space-sm) 0;
+}
+
+.left-panel-note-title {
+  margin: 0 0 var(--ds-space-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gh-text);
+  line-height: 1.4;
+}
+
+.left-panel-note-content {
+  font-size: 13px;
+  color: var(--gh-text-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.left-panel-note-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--gh-text-muted);
+}
+
+.round-selector-vertical {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+}
+
+.round-selector-row-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 200px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.70);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--ds-radius-sm);
+  color: #f5f5f0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: auto;
+}
+
+.round-selector-row-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.round-selector-row-btn.active {
+  background: rgba(var(--ds-primary-rgb, 88 166 255), 0.4);
+  border-color: var(--ds-primary);
+}
+
+.round-selector-row-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.round-selector-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.round-selector-num {
+  flex-shrink: 0;
+  min-width: 1.5em;
+}
+
+.round-selector-h-divider {
+  height: 1px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.3);
+  margin: 4px 0;
+}
+
 .team-cards-container {
   display: flex;
   flex-direction: column;
@@ -1842,19 +2105,14 @@ onBeforeUnmount(() => {
   background: #000000;
 }
 
-/* === Timeline === */
+/* === Timeline（无回合选择器，固定紧凑高度） === */
 .timeline-panel {
   position: relative;
-  height: 100px;
+  height: 50px;
   flex-shrink: 0;
-  padding: var(--ds-space-md);
+  padding: 4px var(--ds-space-sm);
   border-top: 2px solid var(--ds-border-accent);
   background: var(--ds-bg-secondary);
-}
-
-.timeline-panel.timeline-panel--pure {
-  height: 50px;
-  padding: 4px var(--ds-space-sm);
 }
 
 /* 道具解析模式下仅遮罩 timeline，禁止点击 */
@@ -2121,11 +2379,6 @@ onBeforeUnmount(() => {
 
 @media (max-height: 768px) {
   .timeline-panel {
-    height: 82px;
-    padding: 6px var(--ds-space-sm);
-  }
-
-  .timeline-panel.timeline-panel--pure {
     height: 41px;
     padding: 3px var(--ds-space-xs);
   }

@@ -388,8 +388,8 @@
                   <button
                     type="button"
                     class="demo-bar-round-btn"
-                    :title="'在新标签页播放回合 ' + r"
-                    @click.stop="openReplayerInNewTab(demo.uuid, r)"
+                    :title="'播放回合 ' + r"
+                    @click.stop="openReplayer(demo.uuid, r)"
                   >
                     <img
                       v-if="getRoundResultIcon(r, demo.roundResults) && shouldIconBeFirst(r, demo.roundResults)"
@@ -513,6 +513,7 @@ import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst } from '@/utils/roundResult';
+import { navigate } from '@/location';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -550,10 +551,8 @@ const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(nul
 const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
 
-function openReplayerInNewTab(demoUuid: string, round: number) {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  const url = `${window.location.origin}${base}/replayer?source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}`;
-  window.open(url, '_blank');
+function openReplayer(demoUuid: string, round: number) {
+  navigate('/replayer', `source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}`);
 }
 
 // Upload modal state (dashed drop zone)
@@ -1477,6 +1476,20 @@ const scoreDisplayMap = computed(() => {
   overflow: hidden;
 }
 
+/* 右侧渐变隐入卡片背景色，避免图片硬边 */
+.demo-bar-card-bg-img-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    transparent 35%,
+    var(--gh-bg-secondary) 100%
+  );
+  pointer-events: none;
+}
+
 .demo-bar-card-bg-img {
   position: absolute;
   inset: 0;
@@ -1540,7 +1553,7 @@ const scoreDisplayMap = computed(() => {
 
 .demo-bar-meta {
   display: grid;
-  grid-template-columns: minmax(80px, 120px) minmax(0, 1.6fr) minmax(0, 1fr) minmax(72px, 100px);
+  grid-template-columns: minmax(80px, 120px) minmax(200px, 220px) minmax(0, 1fr) minmax(72px, 100px);
   align-items: baseline;
   gap: var(--ds-space-sm) var(--ds-space-lg);
   font-size: 14px;
@@ -1556,20 +1569,68 @@ const scoreDisplayMap = computed(() => {
   text-overflow: ellipsis;
 }
 
+/* 比分：扁平高雅字体、字号加大、以冒号 : 为基准上下卡片对齐 */
 .demo-bar-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 0 6px;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--ds-font-sans), system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.demo-bar-score-mine,
+.demo-bar-score-theirs {
+  overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.demo-bar-score-mine,
+.demo-bar-score-winner {
+  justify-self: end;
+  text-align: right;
+}
+
+.demo-bar-score-theirs,
+.demo-bar-score-loser {
+  justify-self: start;
+  text-align: left;
+}
+
+.demo-bar-score-mine,
+.demo-bar-score-theirs,
+.demo-bar-score-winner,
+.demo-bar-score-loser,
+.demo-bar-score-draw {
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: baseline;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+
+.demo-bar-score-divider {
+  flex-shrink: 0;
+  color: var(--gh-text-muted);
+  font-weight: 400;
+  line-height: 1.2;
+  font-size: inherit;
+  font-family: inherit;
 }
 
 .demo-bar-score-winner {
   color: #3fb950;
   font-weight: 600;
-}
-
-.demo-bar-score-divider {
-  color: var(--gh-text-muted);
-  font-weight: 400;
 }
 
 .demo-bar-score-loser {
@@ -1669,7 +1730,6 @@ const scoreDisplayMap = computed(() => {
   z-index: 1;
   width: 100%;
   padding: var(--ds-space-sm) var(--ds-space-lg);
-  padding-top: 0;
   border-top: 1px solid var(--gh-border);
   background: rgba(13, 17, 23, 0.5);
 }
