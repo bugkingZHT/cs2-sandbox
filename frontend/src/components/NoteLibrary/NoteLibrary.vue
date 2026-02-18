@@ -138,9 +138,14 @@
             </div>
           </div>
 
-          <!-- Body: 全文 content（阅读友好宽度） -->
+          <!-- Body: 全文 content（富文本用 v-html，纯文本保留换行） -->
           <div v-if="item.content" class="card-body">
-            <div class="card-content">{{ item.content }}</div>
+            <div
+              v-if="isContentHtml(item.content)"
+              class="card-content card-content-rich"
+              v-html="item.content"
+            ></div>
+            <div v-else class="card-content card-content-plain">{{ item.content }}</div>
           </div>
 
           <!-- Actions: 左下跳转 + 右侧分享、「...」 -->
@@ -308,6 +313,12 @@ const filteredNoteList = computed(() => {
   }
   return list.sort((a, b) => b.add_time - a.add_time);
 });
+
+/** 判断是否为富文本 HTML（Editor 输出），否则按纯文本展示 */
+function isContentHtml(content: string): boolean {
+  const t = (content || '').trim();
+  return t.startsWith('<') && t.includes('>');
+}
 
 /** 当前打开「更多」菜单的笔记项（用于 Teleport 下拉） */
 const openMenuNote = computed(() => {
@@ -988,10 +999,35 @@ function confirmDelete(item: CloudArchiveItem) {
   font-size: var(--ds-text-base);
   color: var(--ds-text-secondary);
   line-height: 1.6;
-  white-space: pre-wrap;
   overflow-wrap: break-word;
   flex: 1;
   min-height: 0;
+}
+
+.card-content-plain {
+  white-space: pre-wrap;
+}
+
+/* 富文本展示（与 Editor 输出一致；:deep 使 v-html 内节点也能命中） */
+.card-content-rich :deep(strong),
+.card-content-rich :deep(b) { font-weight: 600; font-size: calc(1em + 2px); }
+.card-content-rich :deep(em),
+.card-content-rich :deep(i) { font-style: italic; }
+.card-content-rich :deep(u) { text-decoration: underline; }
+.card-content-rich :deep(s) { text-decoration: line-through; }
+.card-content-rich :deep(.text-color-white) { color: #FFFFFF !important; }
+.card-content-rich :deep(.text-color-yellow) { color: #F5C518 !important; }
+.card-content-rich :deep(.text-color-green) { color: #00C853 !important; }
+.card-content-rich :deep(.text-color-blue) { color: #2196F3 !important; }
+.card-content-rich :deep(.text-color-purple) { color: #9C27B0 !important; }
+.card-content-rich :deep(.text-color-orange) { color: #FF6D00 !important; }
+.card-content-rich :deep(.equipment-inline-icon) {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin: 0 2px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
 .card-meta {

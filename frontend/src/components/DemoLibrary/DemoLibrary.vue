@@ -328,32 +328,20 @@
         <div class="demo-bar-middle">
           <div class="demo-bar-meta">
             <span class="demo-bar-map">{{ demo.mapName || 'Unknown Map' }}</span>
-            <span class="demo-bar-score">
-              <template v-if="demo.status === 1">
-                <template v-if="scoreDisplayMap[demo.id ?? '']">
-                  <span
-                    :class="[
-                      'demo-bar-score-mine',
-                      scoreDisplayMap[demo.id ?? ''].myResult === 'win' && 'demo-bar-score-winner',
-                      scoreDisplayMap[demo.id ?? ''].myResult === 'loss' && 'demo-bar-score-loser',
-                      scoreDisplayMap[demo.id ?? ''].myResult === 'draw' && 'demo-bar-score-draw'
-                    ]"
-                  >{{ scoreDisplayMap[demo.id ?? ''].myTeam }} {{ scoreDisplayMap[demo.id ?? ''].myScore }}</span>
-                  <span class="demo-bar-score-divider"> : </span>
-                  <span
-                    :class="[
-                      'demo-bar-score-theirs',
-                      scoreDisplayMap[demo.id ?? ''].myResult === 'win' && 'demo-bar-score-loser',
-                      scoreDisplayMap[demo.id ?? ''].myResult === 'loss' && 'demo-bar-score-winner',
-                      scoreDisplayMap[demo.id ?? ''].myResult === 'draw' && 'demo-bar-score-draw'
-                    ]"
-                  >{{ scoreDisplayMap[demo.id ?? ''].theirScore }} {{ scoreDisplayMap[demo.id ?? ''].theirTeam }}</span>
-                </template>
-                <template v-else>
-                  <span class="demo-bar-score-winner">{{ getWinnerTeam(demo) }} {{ getWinnerScore(demo) }}</span>
-                  <span class="demo-bar-score-divider"> : </span>
-                  <span class="demo-bar-score-loser">{{ getLoserScore(demo) }} {{ getLoserTeam(demo) }}</span>
-                </template>
+            <span class="demo-bar-score-col">
+              <template v-if="demo.status === 1 && scoreLeftRightMap[demo.id ?? '']">
+                {{ String(scoreLeftRightMap[demo.id ?? ''].leftScore).padStart(2, '0') }} : {{ String(scoreLeftRightMap[demo.id ?? ''].rightScore).padStart(2, '0') }}
+              </template>
+            </span>
+            <span class="demo-bar-teams-col">
+              <template v-if="demo.status === 1 && scoreLeftRightMap[demo.id ?? '']">
+                <img
+                  v-if="scoreLeftRightMap[demo.id ?? ''].isWinner"
+                  src="/icons/winner.svg"
+                  alt=""
+                  class="demo-bar-winner-icon"
+                />
+                <span class="demo-bar-teams-text">{{ scoreLeftRightMap[demo.id ?? ''].leftTeam }} / {{ scoreLeftRightMap[demo.id ?? ''].rightTeam }}</span>
               </template>
             </span>
             <div class="demo-bar-spacer" aria-hidden="true"></div>
@@ -1327,6 +1315,44 @@ const scoreDisplayMap = computed(() => {
   }
   return map;
 });
+
+type ScoreLeftRight = { leftTeam: string; leftScore: number; rightTeam: string; rightScore: number; isWinner: boolean };
+
+function getScoreLeftRight(demo: ReplayData): ScoreLeftRight | null {
+  const sd = scoreDisplayMap.value[demo.id ?? ''];
+  if (sd) {
+    if (sd.myResult === 'win') {
+      return { leftTeam: sd.myTeam, leftScore: sd.myScore, rightTeam: sd.theirTeam, rightScore: sd.theirScore, isWinner: true };
+    }
+    if (sd.myResult === 'loss') {
+      return { leftTeam: sd.theirTeam, leftScore: sd.theirScore, rightTeam: sd.myTeam, rightScore: sd.myScore, isWinner: true };
+    }
+    const leftFirst = sd.myScore >= sd.theirScore;
+    return {
+      leftTeam: leftFirst ? sd.myTeam : sd.theirTeam,
+      leftScore: leftFirst ? sd.myScore : sd.theirScore,
+      rightTeam: leftFirst ? sd.theirTeam : sd.myTeam,
+      rightScore: leftFirst ? sd.theirScore : sd.myScore,
+      isWinner: false,
+    };
+  }
+  return {
+    leftTeam: getWinnerTeam(demo),
+    leftScore: getWinnerScore(demo),
+    rightTeam: getLoserTeam(demo),
+    rightScore: getLoserScore(demo),
+    isWinner: (demo.scoreCT || 0) !== (demo.scoreT || 0),
+  };
+}
+
+const scoreLeftRightMap = computed(() => {
+  const map: Record<string, ScoreLeftRight> = {};
+  for (const demo of sortedDemoList.value) {
+    const r = getScoreLeftRight(demo);
+    if (r) map[demo.id ?? ''] = r;
+  }
+  return map;
+});
 </script>
 
 <style scoped>
@@ -1604,10 +1630,10 @@ const scoreDisplayMap = computed(() => {
   overflow: hidden;
 }
 
-/* 主信息区：地图(=time宽) | 比分(左) | 空站位 | 文件名 | 时间(=map宽) */
+/* 主信息区：地图 | 比分(左绿右红渐变) | icon+teamA/teamB(亮白底) | 空站位 | 文件名 | 时间 */
 .demo-bar-meta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 2fr) 135px;
+  grid-template-columns: 120px auto auto minmax(0, 1fr) minmax(0, 2fr) 135px;
   align-items: center;
   column-gap: 22px;
   row-gap: var(--ds-space-md);
@@ -1631,82 +1657,55 @@ const scoreDisplayMap = computed(() => {
   letter-spacing: 0.01em;
 }
 
-/* 比分区：靠左，背景 + mono 字体 */
-.demo-bar-score {
-  justify-self: start;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 0 10px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  min-width: 0;
+/* 比分列：xx : xx，左绿右红渐变，mono */
+.demo-bar-score-col {
+  justify-self: center;
+  margin-right: 36px;
   font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-family: var(--ds-font-mono);
   letter-spacing: 0.03em;
-  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  background: var(--ds-surface-active);
   border-radius: 6px;
   padding: 4px 10px;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
-.demo-bar-score-mine,
-.demo-bar-score-theirs {
+/* 队伍列：icon + teamA / teamB，亮白底，mono */
+.demo-bar-teams-col {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  color: var(--gh-text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  line-height: 1.3;
+  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   min-width: 0;
 }
 
-.demo-bar-score-mine,
-.demo-bar-score-winner {
-  justify-self: end;
-  text-align: right;
-}
-
-.demo-bar-score-theirs,
-.demo-bar-score-loser {
-  justify-self: start;
-  text-align: left;
-}
-
-.demo-bar-score-mine,
-.demo-bar-score-theirs,
-.demo-bar-score-winner,
-.demo-bar-score-loser,
-.demo-bar-score-draw {
-  line-height: 1.3;
-  display: inline-flex;
-  align-items: center;
-  font-size: inherit;
-  font-variant-numeric: tabular-nums;
-  font-family: inherit;
-  letter-spacing: inherit;
-}
-
-.demo-bar-score-divider {
+.demo-bar-winner-icon {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  color: var(--gh-text-muted);
-  font-weight: 500;
-  font-size: 0.95em;
-  line-height: 1.3;
-  font-family: inherit;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(77%) sepia(52%) saturate(500%) hue-rotate(5deg);
 }
 
-.demo-bar-score-winner {
-  color: #3fb950;
-  font-weight: 700;
-}
-
-.demo-bar-score-loser {
-  color: #f85149;
-  font-weight: 600;
-}
-
-.demo-bar-score-draw {
-  color: var(--gh-text-muted);
-  font-weight: 600;
+.demo-bar-teams-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .demo-bar-file {

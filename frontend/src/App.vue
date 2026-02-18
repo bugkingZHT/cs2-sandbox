@@ -305,13 +305,8 @@
                 placeholder="笔记名称"
               />
             </div>
-            <div class="form-group">
-              <textarea
-                v-model="uploadFormContent"
-                class="form-input form-textarea form-textarea--note"
-                rows="12"
-                placeholder="备注内容（可选）"
-              ></textarea>
+            <div class="form-group note-form-editor-wrap">
+              <Editor v-model="uploadFormContent" />
             </div>
             <div class="form-group">
               <div class="form-radios">
@@ -401,6 +396,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, de
 const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlayer/ReplayPlayer.vue'));
 const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
 const NoteLibrary = defineAsyncComponent(() => import('@/components/NoteLibrary/NoteLibrary.vue'));
+import Editor from '@/components/NoteLibrary/Editor.vue';
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
 import { useReplayData } from '@/composables/useReplayData';
 import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composables/useNote';
@@ -2111,7 +2107,7 @@ const showBetaWarning = () => {
 
 /* 战术笔记发布/编辑页：更大 modal，content 区域做大 */
 .beta-modal--note-form {
-  max-width: 560px;
+  max-width: 800px;
   width: 92vw;
   text-align: left;
 }
@@ -2124,9 +2120,15 @@ const showBetaWarning = () => {
   margin-bottom: var(--ds-space-xl);
 }
 
-.beta-modal--note-form .form-textarea--note {
+.beta-modal--note-form .note-form-editor-wrap {
   min-height: 220px;
-  resize: vertical;
+  display: flex;
+  flex-direction: column;
+}
+
+.beta-modal--note-form .note-form-editor-wrap .doc-editor {
+  flex: 1;
+  min-height: 0;
 }
 
 .beta-modal .modal-icon {

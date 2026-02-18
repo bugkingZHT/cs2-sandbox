@@ -513,11 +513,16 @@
             </div>
             </div>
           </div>
-          <!-- Note tab (cloud only): title + content -->
+          <!-- Note tab (cloud only): title + content（支持富文本） -->
           <div v-show="leftPanelTab === 'note'" class="left-panel-content left-panel-note">
             <template v-if="props.cloudNote">
               <h3 class="left-panel-note-title">{{ props.cloudNote.title }}</h3>
-              <div class="left-panel-note-content">{{ props.cloudNote.content || '—' }}</div>
+              <div
+                v-if="isNoteContentHtml(props.cloudNote.content)"
+                class="left-panel-note-content left-panel-note-content-rich"
+                v-html="props.cloudNote.content"
+              ></div>
+              <div v-else class="left-panel-note-content">{{ props.cloudNote.content || '—' }}</div>
             </template>
             <template v-else>
               <p class="left-panel-note-empty">暂无笔记内容</p>
@@ -602,6 +607,12 @@ const pureMode = ref(false);
 const showOverlayPanels = ref(true);
 // 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
 const leftPanelTab = ref<'players' | 'rounds' | 'note'>('players');
+
+function isNoteContentHtml(content: string | null | undefined): boolean {
+  const t = (content || '').trim();
+  return t.startsWith('<') && t.includes('>');
+}
+
 function goBack() {
   const saved = sessionStorage.getItem(REPLAYER_RETURN_URL_KEY);
   if (saved) {
@@ -1657,7 +1668,7 @@ onBeforeUnmount(() => {
 .left-panel-note {
   overflow-y: auto;
   max-height: 70vh;
-  max-width: 50vw;
+  max-width: 50%;
   padding: var(--ds-space-sm) 0;
 }
 
@@ -1673,8 +1684,32 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--gh-text-muted);
   line-height: 1.5;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.left-panel-note-content:not(.left-panel-note-content-rich) {
+  white-space: pre-wrap;
+}
+
+.left-panel-note-content-rich :deep(strong),
+.left-panel-note-content-rich :deep(b) { font-weight: 600; font-size: calc(1em + 2px); }
+.left-panel-note-content-rich :deep(em),
+.left-panel-note-content-rich :deep(i) { font-style: italic; }
+.left-panel-note-content-rich :deep(u) { text-decoration: underline; }
+.left-panel-note-content-rich :deep(s) { text-decoration: line-through; }
+.left-panel-note-content-rich :deep(.text-color-white) { color: #FFFFFF !important; }
+.left-panel-note-content-rich :deep(.text-color-yellow) { color: #F5C518 !important; }
+.left-panel-note-content-rich :deep(.text-color-green) { color: #00C853 !important; }
+.left-panel-note-content-rich :deep(.text-color-blue) { color: #2196F3 !important; }
+.left-panel-note-content-rich :deep(.text-color-purple) { color: #9C27B0 !important; }
+.left-panel-note-content-rich :deep(.text-color-orange) { color: #FF6D00 !important; }
+.left-panel-note-content-rich :deep(.equipment-inline-icon) {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin: 0 2px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
 .left-panel-note-empty {
