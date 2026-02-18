@@ -1,4 +1,5 @@
 import type { ReplayMeta } from '../types/replay';
+import { resolveTeamDisplayName } from './teamDisplay';
 
 // Database schema
 const DB_NAME = 'cs-demobox';
@@ -164,12 +165,10 @@ export class IndexedDBMetaStorage {
         const teamNamesSet = new Set<string>();
         
         metas.forEach((meta: ReplayMeta) => {
-          if (meta.teamCT && meta.teamCT.trim()) {
-            teamNamesSet.add(meta.teamCT.trim());
-          }
-          if (meta.teamT && meta.teamT.trim()) {
-            teamNamesSet.add(meta.teamT.trim());
-          }
+          const ctName = resolveTeamDisplayName(meta.teamCT ?? '', 3, meta.serverPlayer);
+          const tName = resolveTeamDisplayName(meta.teamT ?? '', 2, meta.serverPlayer);
+          if (ctName !== '—') teamNamesSet.add(ctName);
+          if (tName !== '—') teamNamesSet.add(tName);
         });
         
         // Convert to sorted array

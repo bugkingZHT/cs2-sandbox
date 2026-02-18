@@ -121,10 +121,7 @@
                 <div class="card-hero-title">{{ item.title }}</div>
                 <div class="card-hero-meta">
                   <span v-if="item.mapName" class="card-hero-map">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                      <circle cx="12" cy="10" r="3"/>
-                    </svg>
+                    <img src="/icons/map.svg" alt="" class="card-hero-map-icon" />
                     {{ item.mapName }}
                   </span>
                   <span v-if="item.teamCT && item.teamT" class="card-hero-match">{{ item.teamCT }} vs {{ item.teamT }}</span>
@@ -209,11 +206,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import type { CloudArchiveItem } from '@/composables/useNote';
 import { useNote } from '@/composables/useNote';
 import { useAuth } from '@/composables/useAuth';
 import { MAP_CONFIGS } from '@/config/map';
+import { getQuery, replaceLocation, pathRef, searchRef } from '@/location';
 
 const props = withDefaults(
   defineProps<{
@@ -236,8 +234,20 @@ const emit = defineEmits<{
 const { currentUser } = useAuth();
 const { noteList, itemsLoading, loadNotes } = useNote();
 
-// 按地图筛选（参考 DemoLibrary）
+// 按地图筛选（参考 DemoLibrary），与 URL 同步
 const filterMapNames = ref<string[]>([]);
+
+function parseMapFilterFromUrl(): string[] {
+  const q = getQuery();
+  return (q.map ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function buildNoteFilterSearch(): string {
+  if (filterMapNames.value.length === 0) return '';
+  const params = new URLSearchParams();
+  params.set('map', filterMapNames.value.join(','));
+  return '?' + params.toString();
+}
 const filterMapNameInput = ref('');
 const showMapDropdown = ref(false);
 const openMenuNoteId = ref<string | null>(null);
@@ -359,8 +369,26 @@ function goToItem(item: CloudArchiveItem) {
 }
 
 onMounted(() => {
+  filterMapNames.value = parseMapFilterFromUrl();
   loadNotes();
   document.addEventListener('click', handleClickOutside);
+});
+
+watch(
+  () => filterMapNames.value.slice(),
+  () => {
+    replaceLocation(pathRef.value || '/notes', buildNoteFilterSearch());
+  },
+  { deep: true }
+);
+
+// React to browser back/forward (URL changed externally)
+watch(searchRef, () => {
+  const map = parseMapFilterFromUrl();
+  const same =
+    map.length === filterMapNames.value.length && map.every((m, i) => m === filterMapNames.value[i]);
+  if (same) return;
+  filterMapNames.value = map;
 });
 
 onUnmounted(() => {
@@ -797,7 +825,7 @@ function confirmDelete(item: CloudArchiveItem) {
   overflow: hidden;
 }
 
-/* 两层遮罩；过渡在 100% 位置才变化到目标色 */
+/* 两层遮罩；过渡在 100% 位置才变化到目标色；增强遮罩使头图更模糊 */
 .card-background::before {
   content: '';
   position: absolute;
@@ -805,8 +833,9 @@ function confirmDelete(item: CloudArchiveItem) {
   z-index: 1;
   background: linear-gradient(
     to bottom,
-    rgba(22, 27, 34, 0.65) 0%,
-    rgba(22, 27, 34, 0.05) 100%,
+    rgba(22, 27, 34, 0.70) 0%,
+    rgba(22, 27, 34, 0.70) 60%,
+    rgba(22, 27, 34, 0.70) 100%
   );
   pointer-events: none;
 }
@@ -830,7 +859,7 @@ function confirmDelete(item: CloudArchiveItem) {
   height: 100%;
   object-fit: cover;
   transition: transform var(--ds-transition-base);
-  opacity: 0.8;
+  opacity: 0.5;
   filter: brightness(0.85) saturate(0.95);
 }
 
@@ -895,8 +924,9 @@ function confirmDelete(item: CloudArchiveItem) {
   border-radius: 4px;
 }
 
-.card-hero-map svg {
-  color: var(--ds-primary);
+.card-hero-map-icon {
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
 }
 

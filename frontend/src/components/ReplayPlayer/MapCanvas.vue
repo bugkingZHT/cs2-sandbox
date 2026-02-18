@@ -140,16 +140,13 @@
           <button
             type="button"
             class="save-to-note-btn zoom-column-btn"
-            :title="canAddToNote ? '保存当前回合到笔记' : '当前回合可保存到笔记（需在播放器内选择回合）'"
-            :disabled="!canAddToNote || noteUploading"
-            @click="emit('save-current-round')"
+            :class="{ 'is-published': !!publishedNote }"
+            :title="publishedNote ? '编辑已发布的笔记' : (canAddToNote ? '发布笔记' : '当前回合可发布到笔记')"
+            :disabled="(!publishedNote && !canAddToNote) || noteUploading"
+            @click="publishedNote ? emit('edit-note', publishedNote) : emit('save-current-round')"
           >
-            <svg class="save-to-note-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="5" y1="6" x2="5" y2="6"/><line x1="10" y1="6" x2="19" y2="6"/>
-              <line x1="5" y1="12" x2="5" y2="12"/><line x1="10" y1="12" x2="19" y2="12"/>
-              <line x1="5" y1="18" x2="5" y2="18"/><line x1="10" y1="18" x2="19" y2="18"/>
-            </svg>
-            <span class="save-to-note-label">保存到笔记</span>
+            <img src="/icons/upload.svg" alt="" class="save-to-note-icon" width="18" height="18" />
+            <span class="save-to-note-label">{{ publishedNote ? '编辑笔记' : '保存到笔记' }}</span>
           </button>
         </div>
         <div class="zoom-reset-group">
@@ -204,6 +201,7 @@ import {
   resetPlayerRenderer,
 } from '../../composables/playersRender';
 import DrawingBoard from './DrawingBoard.vue';
+import type { CloudArchiveItem } from '@/composables/useNote';
 
 const props = withDefaults(
   defineProps<{
@@ -226,12 +224,15 @@ const props = withDefaults(
     canAddToNote?: boolean;
     showSaveToNote?: boolean;
     noteUploading?: boolean;
+    /** 当前回合已发布的笔记（有则按钮绿色、点击为编辑） */
+    publishedNote?: CloudArchiveItem | null;
   }>(),
-  { showSaveToNote: true }
+  { showSaveToNote: true, publishedNote: null }
 );
 
 const emit = defineEmits<{
   (e: 'save-current-round'): void;
+  (e: 'edit-note', item: CloudArchiveItem): void;
   (e: 'close-drawing'): void;
   (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
@@ -1080,6 +1081,17 @@ onBeforeUnmount(() => {
 .save-to-note-btn.zoom-column-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.save-to-note-btn.zoom-column-btn.is-published {
+  border-color: #3fb950;
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+
+.save-to-note-btn.zoom-column-btn.is-published:hover:not(:disabled) {
+  background: rgba(63, 185, 80, 0.35);
+  border-color: #56d364;
 }
 
 .save-to-note-btn .save-to-note-icon {

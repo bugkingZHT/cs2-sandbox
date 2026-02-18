@@ -29,6 +29,14 @@ function normalizeSearch(s: string): string {
   return s.startsWith('?') ? s : '?' + s;
 }
 
+/** 进入 replayer 前保存的「上一级」完整路径（pathname+search），返回时整页跳转用 */
+export const REPLAYER_RETURN_URL_KEY = 'replayer_return_url';
+
+/** 保存当前页为 replayer 返回目标（应在 navigate 到 replayer 前调用） */
+export function saveReplayerReturnUrl() {
+  sessionStorage.setItem(REPLAYER_RETURN_URL_KEY, window.location.pathname + window.location.search);
+}
+
 /** 前端导航：仅改 URL，不刷新页面；Go 已注册对应路径。 */
 export function navigate(path: string, search = '') {
   const q = normalizeSearch(search);

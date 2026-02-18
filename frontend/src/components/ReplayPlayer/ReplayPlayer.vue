@@ -95,9 +95,11 @@
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
           :can-add-to-note="props.canAddToNote"
-          :show-save-to-note="replayerSource !== 'cloud'"
+          :show-save-to-note="replayerSource !== 'cloud' || !!props.publishedNoteForRound"
           :note-uploading="props.noteUploading"
+          :published-note="props.publishedNoteForRound ?? null"
           @save-current-round="emit('save-current-round')"
+          @edit-note="emit('edit-note', $event)"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
@@ -473,11 +475,6 @@
           <!-- Round selector (vertical, same position as player cards) - local only -->
           <div v-show="leftPanelTab === 'rounds'" class="left-panel-content left-panel-rounds">
             <div class="left-panel-rounds-inner">
-            <!-- 当前回合 T/CT 开局开销，左右随上下半场区分 -->
-            <div class="round-selector-cost-row">
-              <span class="round-selector-cost left">${{ currentRoundCostLeft }}</span>
-              <span class="round-selector-cost right">${{ currentRoundCostRight }}</span>
-            </div>
             <div class="round-selector-vertical">
               <template v-for="r in (replay?.totalRounds || 0)" :key="r">
                 <button
@@ -576,19 +573,27 @@ import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
-import { getRoundResult, getRoundResultIcon, getRoundCosts, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
-import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
-const props = defineProps<{
-  /** 是否可保存当前回合到云存档（由 App 根据播放状态计算） */
-  canAddToNote?: boolean;
-  /** 云存档上传中 */
-  noteUploading?: boolean;
-  /** 当前云笔记（source=cloud 时用于左侧「笔记」tab 展示 title + content） */
-  cloudNote?: { title: string; content?: string } | null;
-}>();
+import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
+import { replaceLocation, pathRef, searchRef, getQuery, REPLAYER_RETURN_URL_KEY } from '@/location';
+import type { CloudArchiveItem } from '@/composables/useNote';
+
+const props = withDefaults(
+  defineProps<{
+    /** 是否可保存当前回合到云存档（由 App 根据播放状态计算） */
+    canAddToNote?: boolean;
+    /** 云存档上传中 */
+    noteUploading?: boolean;
+    /** 当前云笔记（source=cloud 时用于左侧「笔记」tab 展示 title + content） */
+    cloudNote?: { title: string; content?: string } | null;
+    /** 当前回合已发布的笔记（有则按钮绿色、点击为编辑） */
+    publishedNoteForRound?: CloudArchiveItem | null;
+  }>(),
+  { publishedNoteForRound: null }
+);
 
 const emit = defineEmits<{
   (e: 'save-current-round'): void;
+  (e: 'edit-note', item: CloudArchiveItem): void;
 }>();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
@@ -598,11 +603,15 @@ const showOverlayPanels = ref(true);
 // 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
 const leftPanelTab = ref<'players' | 'rounds' | 'note'>('players');
 function goBack() {
-  setTimeout(() => {
-    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-    const path = replayerSource.value === 'cloud' ? '/notes' : '/demolib';
-    window.location.href = `${base}${path}`;
-  }, 0);
+  const saved = sessionStorage.getItem(REPLAYER_RETURN_URL_KEY);
+  if (saved) {
+    sessionStorage.removeItem(REPLAYER_RETURN_URL_KEY);
+    window.location.href = window.location.origin + saved;
+    return;
+  }
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  const path = replayerSource.value === 'cloud' ? '/notes' : '/demolib';
+  window.location.href = base + path;
 }
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
@@ -610,19 +619,33 @@ if (replayerPureMode) {
   watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
 }
 
-// 纯净模式与 URL 同步：点击 pure 后地址栏带上 pure=1，离开后去掉
-function syncPureToUrl() {
+// 纯净模式 + 左侧 Tab 与 URL 同步：pure=1 / tab=players|rounds|note|disable（tab=disable 表示小眼睛按下，左侧面板不展示）
+function syncReplayerUrl() {
   const q = getQuery();
-  if (pureMode.value) q.pure = '1'; else delete q.pure;
+  if (pureMode.value) {
+    q.pure = '1';
+    q.tab = 'disable';
+  } else {
+    delete q.pure;
+    q.tab = showOverlayPanels.value ? leftPanelTab.value : 'disable';
+  }
   const search = new URLSearchParams(q).toString();
   replaceLocation(pathRef.value, search);
 }
-watch(pureMode, syncPureToUrl);
+watch(pureMode, syncReplayerUrl);
+watch(showOverlayPanels, syncReplayerUrl);
+watch(leftPanelTab, syncReplayerUrl);
 
-// 打开链接时若带 pure=1 则默认启用纯净模式
+// 打开链接时根据 URL 恢复 pure 与 tab（tab=disable 仅表示小眼睛按下、左侧面板不展示，不改变 pure 模式）
 onMounted(() => {
   const q = getQuery();
   if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
+  if (q.tab === 'disable') {
+    showOverlayPanels.value = false;
+  } else if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'note') {
+    showOverlayPanels.value = true;
+    leftPanelTab.value = q.tab;
+  }
 });
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource } = useReplayData();
@@ -925,16 +948,6 @@ const playerNameMap = computed(() => {
 const currentRound = computed(() => {
   if (!safeFrames.value.length) return 0;
   return safeFrames.value[currentFrameIndex.value]?.round || 0;
-});
-
-// 当前回合 T/CT 开局开销，左右随上下半场区分（上半场左 T 右 CT，下半场左 CT 右 T）
-const currentRoundCostLeft = computed(() => {
-  const { costT, costCT } = getRoundCosts(currentRound.value, replay.value?.roundResults);
-  return isSecondHalf(currentRound.value) ? costCT : costT;
-});
-const currentRoundCostRight = computed(() => {
-  const { costT, costCT } = getRoundCosts(currentRound.value, replay.value?.roundResults);
-  return isSecondHalf(currentRound.value) ? costT : costCT;
 });
 
 // 计算实时比分（基于 roundResults，区分上下半场换边）
@@ -1386,13 +1399,18 @@ const loadRoundData = async (roundNumber: number) => {
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
     
-    // 同步 URL：local 用 source=local&uuid&round；cloud 保持 source=cloud&note_id
+    // 同步 URL：保留 source/uuid/note_id/round，并带上 tab 与 pure
     const q = getQuery();
-    const pure = pureMode.value ? '&pure=1' : '';
-    const search = (q.source === 'cloud' && q.note_id)
-      ? `source=cloud&note_id=${encodeURIComponent(q.note_id)}${pure}`
-      : `source=local&uuid=${replay.value.uuid}&round=${roundNumber}${pure}`;
-    replaceLocation('/replayer', search);
+    if (q.source === 'cloud' && q.note_id) {
+      q.source = 'cloud';
+      q.note_id = q.note_id;
+    } else {
+      q.source = 'local';
+      q.uuid = replay.value.uuid;
+      q.round = String(roundNumber);
+    }
+    if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; q.tab = showOverlayPanels.value ? leftPanelTab.value : 'disable'; }
+    replaceLocation('/replayer', new URLSearchParams(q).toString());
     
     // Resume playback if it was playing before
     if (wasPlaying) {
@@ -1663,24 +1681,6 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 13px;
   color: var(--gh-text-muted);
-}
-
-.round-selector-cost-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 12px 6px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--gh-text-muted);
-}
-
-.round-selector-cost.left {
-  margin-right: auto;
-}
-
-.round-selector-cost.right {
-  margin-left: auto;
 }
 
 .round-selector-vertical {

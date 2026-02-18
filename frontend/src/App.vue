@@ -133,7 +133,9 @@
           :can-add-to-note="canAddToNote"
           :note-uploading="noteUploading"
           :cloud-note="cloudNoteForReplayer"
+          :published-note-for-round="publishedNoteForCurrentRound"
           @save-current-round="handleAddToNote"
+          @edit-note="onRequestEditNote"
         />
       </main>
     </div>
@@ -292,7 +294,7 @@
               <line x1="5" y1="18" x2="5" y2="18"/><line x1="10" y1="18" x2="19" y2="18"/>
             </svg>
           </div>
-          <h3 class="modal-title">{{ editingNoteId ? '修改笔记' : '保存当前回合到笔记' }}</h3>
+          <h3 class="modal-title">{{ editingNoteId ? '修改笔记' : '发布笔记' }}</h3>
           <div class="modal-form">
             <div class="form-group">
               <input
@@ -403,9 +405,10 @@ const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/Pa
 import { useReplayData } from '@/composables/useReplayData';
 import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composables/useNote';
 import { useAuth } from '@/composables/useAuth';
+import { resolveTeamDisplayName } from '@/composables/teamDisplay';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
-import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery } from '@/location';
+import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery, saveReplayerReturnUrl } from '@/location';
 
 const { 
   parsing, 
@@ -515,6 +518,19 @@ const cloudNoteForReplayer = computed(() => {
   return item ? { title: item.title, content: item.content ?? '' } : null;
 });
 
+/** 当前回合是否已有发布的笔记（有则按钮绿色、点击为编辑） */
+const publishedNoteForCurrentRound = computed(() => {
+  if (replayerSource.value === 'cloud' && replayerNoteId.value) {
+    return noteList.value.find((n) => n.id === replayerNoteId.value) ?? null;
+  }
+  if (replayerSource.value === 'local' && currentDemoId.value != null && currentRoundNumber.value != null) {
+    return noteList.value.find(
+      (n) => n.demo_uuid === currentDemoId.value && n.demo_round === currentRoundNumber.value
+    ) ?? null;
+  }
+  return null;
+});
+
 function openShareModal(item: CloudArchiveItem) {
   openNoteMenuId.value = null;
   openShareModalFromNote(item);
@@ -551,7 +567,11 @@ async function handleAddToNote() {
     return;
   }
   openUploadModal({
-    replay: { mapName: r.mapName, teamCT: r.teamCT, teamT: r.teamT },
+    replay: {
+      mapName: r.mapName,
+      teamCT: resolveTeamDisplayName(r.teamCT ?? '', 3, r.serverPlayer),
+      teamT: resolveTeamDisplayName(r.teamT ?? '', 2, r.serverPlayer),
+    },
     roundNumber: round,
     demoId: uuid,
   });
@@ -568,7 +588,8 @@ function formatNoteTime(ms: number): string {
 }
 
 function goToNoteItem(item: CloudArchiveItem) {
-  navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}`);
+  saveReplayerReturnUrl();
+  navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}&tab=note`);
 }
 
 /** 侧边栏使用刷新跳转，保证完整加载目标页 */
@@ -805,7 +826,9 @@ async function ensureReplayerRouteData() {
     if (currentDemoId.value) {
       const q = getQuery();
       const base = `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`;
-      replaceLocation('/replayer', base + (q.pure === '1' || q.pure === 'true' ? '&pure=1' : ''));
+      const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
+      const tab = (q.tab && ['players', 'rounds', 'note', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '';
+      replaceLocation('/replayer', base + pure + tab);
     }
     return;
   }
@@ -899,8 +922,11 @@ watch(currentPage, (newPage) => {
 
 const goToPlayer = () => {
   if (hasSelectedDemo.value) {
-    const pure = (getQuery().pure === '1' || getQuery().pure === 'true') ? '&pure=1' : '';
-    navigate('/replayer', `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}${pure}`);
+    saveReplayerReturnUrl();
+    const q = getQuery();
+    const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
+    const tab = (q.tab && ['players', 'rounds', 'note', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '';
+    navigate('/replayer', `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}${pure}${tab}`);
   }
 };
 

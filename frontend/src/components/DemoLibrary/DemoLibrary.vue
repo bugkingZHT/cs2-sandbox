@@ -356,6 +356,7 @@
                 </template>
               </template>
             </span>
+            <div class="demo-bar-spacer" aria-hidden="true"></div>
             <span class="demo-bar-file">{{ demo.fileName || '—' }}</span>
             <span class="demo-bar-time">{{ demo.uploadTime ? formatAbsoluteTime(demo.uploadTime) : '—' }}</span>
           </div>
@@ -520,7 +521,8 @@ import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
-import { navigate } from '@/location';
+import { resolveTeamDisplayName } from '@/composables/teamDisplay';
+import { navigate, getQuery, replaceLocation, pathRef, searchRef, saveReplayerReturnUrl } from '@/location';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -559,6 +561,7 @@ const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
 
 function openReplayer(demoUuid: string, round: number) {
+  saveReplayerReturnUrl();
   navigate('/replayer', `source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}`);
 }
 
@@ -566,11 +569,38 @@ function openReplayer(demoUuid: string, round: number) {
 const showUploadModal = ref(false);
 const isUploadDragOver = ref(false);
 
-// Filter state (real-time filtering)
+// Filter state (real-time filtering)，与 URL 同步
+
+function parseFiltersFromUrl(): {
+  map: string[];
+  team: string[];
+  player: string[];
+  economy: 'all' | 'eco' | 'half' | 'full' | 'pistol';
+} {
+  const q = getQuery();
+  const map = (q.map ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const team = (q.team ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const player = (q.player ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const economy = (['all', 'eco', 'half', 'full', 'pistol'] as const).includes(q.economy as any)
+    ? (q.economy as 'all' | 'eco' | 'half' | 'full' | 'pistol')
+    : 'all';
+  return { map, team, player, economy };
+}
+
 const filterMapNames = ref<string[]>([]);
 const filterTeamNames = ref<string[]>([]);
 const filterPlayerNames = ref<string[]>([]);
 const filterEconomyType = ref<'all' | 'eco' | 'half' | 'full' | 'pistol'>('all');
+
+function buildFilterSearch(): string {
+  const params = new URLSearchParams();
+  if (filterMapNames.value.length > 0) params.set('map', filterMapNames.value.join(','));
+  if (filterTeamNames.value.length > 0) params.set('team', filterTeamNames.value.join(','));
+  if (filterPlayerNames.value.length > 0) params.set('player', filterPlayerNames.value.join(','));
+  if (filterEconomyType.value !== 'all') params.set('economy', filterEconomyType.value);
+  const s = params.toString();
+  return s ? '?' + s : '';
+}
 
 // Input states
 const filterMapNameInput = ref('');
@@ -605,15 +635,13 @@ const filteredMapOptions = computed(() => {
 
 // Filtered team options based on input
 const filteredTeamOptions = computed(() => {
-  // Count demos for each team
+  // Count demos for each team (use resolved display names)
   const teamCounts = new Map<string, number>();
   props.demoList.forEach(demo => {
-    if (demo.teamCT && demo.teamCT.trim()) {
-      teamCounts.set(demo.teamCT.trim(), (teamCounts.get(demo.teamCT.trim()) || 0) + 1);
-    }
-    if (demo.teamT && demo.teamT.trim()) {
-      teamCounts.set(demo.teamT.trim(), (teamCounts.get(demo.teamT.trim()) || 0) + 1);
-    }
+    const ctName = getTeamDisplayName(demo, 'ct');
+    const tName = getTeamDisplayName(demo, 't');
+    if (ctName !== '—') teamCounts.set(ctName, (teamCounts.get(ctName) || 0) + 1);
+    if (tName !== '—') teamCounts.set(tName, (teamCounts.get(tName) || 0) + 1);
   });
   
   let teams = allTeamNames.value;
@@ -672,12 +700,11 @@ const getMapDemoCount = (mapName: string): number => {
   return count;
 };
 
-// Get demo count for a team
+// Get demo count for a team (match by resolved display name)
 const getTeamDemoCount = (teamName: string): number => {
   let count = 0;
   props.demoList.forEach(demo => {
-    if ((demo.teamCT && demo.teamCT.trim() === teamName) || 
-        (demo.teamT && demo.teamT.trim() === teamName)) {
+    if (getTeamDisplayName(demo, 'ct') === teamName || getTeamDisplayName(demo, 't') === teamName) {
       count++;
     }
   });
@@ -873,18 +900,56 @@ const dismissBanner = () => {
   isDismissed.value = true;
 };
 
-// Update storage quota on mount and when demo list changes
+// Init filters from URL on mount
 onMounted(() => {
+  const { map, team, player, economy } = parseFiltersFromUrl();
+  filterMapNames.value = map;
+  filterTeamNames.value = team;
+  filterPlayerNames.value = player;
+  filterEconomyType.value = economy;
+
   loadTeamNames(); // Load team names from IndexedDB
   loadPlayerNames(); // Load player names from IndexedDB
-  
+
   // Add click outside listener for dropdown
   document.addEventListener('click', handleClickOutside);
-  
+
   // Cleanup on unmount
   return () => {
     document.removeEventListener('click', handleClickOutside);
   };
+});
+
+// Sync filters to URL when changed
+watch(
+  () => [
+    filterMapNames.value.slice(),
+    filterTeamNames.value.slice(),
+    filterPlayerNames.value.slice(),
+    filterEconomyType.value,
+  ],
+  () => {
+    replaceLocation(pathRef.value || '/demolib', buildFilterSearch());
+  },
+  { deep: true }
+);
+
+// React to browser back/forward (URL changed externally)
+watch(searchRef, () => {
+  const { map, team, player, economy } = parseFiltersFromUrl();
+  const same =
+    map.length === filterMapNames.value.length &&
+    map.every((m, i) => m === filterMapNames.value[i]) &&
+    team.length === filterTeamNames.value.length &&
+    team.every((t, i) => t === filterTeamNames.value[i]) &&
+    player.length === filterPlayerNames.value.length &&
+    player.every((p, i) => p === filterPlayerNames.value[i]) &&
+    economy === filterEconomyType.value;
+  if (same) return;
+  filterMapNames.value = map;
+  filterTeamNames.value = team;
+  filterPlayerNames.value = player;
+  filterEconomyType.value = economy;
 });
 
 watch(() => props.demoList.length, () => {
@@ -920,11 +985,11 @@ const sortedDemoList = computed(() => {
     });
   }
   
-  // Filter by team names (support multiple)
+  // Filter by team names (support multiple, match resolved display names)
   if (filterTeamNames.value.length > 0) {
     filteredList = filteredList.filter(demo => {
-      const teamCT = (demo.teamCT || '').toLowerCase();
-      const teamT = (demo.teamT || '').toLowerCase();
+      const teamCT = getTeamDisplayName(demo, 'ct').toLowerCase();
+      const teamT = getTeamDisplayName(demo, 't').toLowerCase();
       return filterTeamNames.value.some(searchTerm => {
         const term = searchTerm.toLowerCase();
         return teamCT.includes(term) || teamT.includes(term);
@@ -1148,12 +1213,23 @@ const formatAbsoluteTime = (timestamp: number | undefined) => {
   });
 };
 
+const getTeamDisplayName = (demo: ReplayData, side: 'ct' | 't') =>
+  resolveTeamDisplayName(
+    side === 'ct' ? (demo.teamCT ?? '') : (demo.teamT ?? ''),
+    side === 'ct' ? 3 : 2,
+    demo.serverPlayer
+  );
+
 const getWinnerTeam = (demo: ReplayData) => {
-  return (demo.scoreCT || 0) > (demo.scoreT || 0) ? demo.teamCT : demo.teamT;
+  return (demo.scoreCT || 0) > (demo.scoreT || 0)
+    ? getTeamDisplayName(demo, 'ct')
+    : getTeamDisplayName(demo, 't');
 };
 
 const getLoserTeam = (demo: ReplayData) => {
-  return (demo.scoreCT || 0) > (demo.scoreT || 0) ? demo.teamT : demo.teamCT;
+  return (demo.scoreCT || 0) > (demo.scoreT || 0)
+    ? getTeamDisplayName(demo, 't')
+    : getTeamDisplayName(demo, 'ct');
 };
 
 const getWinnerScore = (demo: ReplayData) => {
@@ -1225,8 +1301,6 @@ const getScoreDisplayWithPlayerFilter = (demo: ReplayData): {
   if (filterPlayerNames.value.length === 0 || !demo.serverPlayer?.length) return null;
   const scoreCT = demo.scoreCT || 0;
   const scoreT = demo.scoreT || 0;
-  const teamCT = demo.teamCT ?? '';
-  const teamT = demo.teamT ?? '';
   for (const filterName of filterPlayerNames.value) {
     const term = filterName.toLowerCase();
     const player = demo.serverPlayer.find(p => p.name && p.name.toLowerCase().includes(term));
@@ -1235,9 +1309,9 @@ const getScoreDisplayWithPlayerFilter = (demo: ReplayData): {
     if (myResult === null) continue;
     const isCT = player.team === 3;
     return {
-      myTeam: isCT ? teamCT : teamT,
+      myTeam: isCT ? getTeamDisplayName(demo, 'ct') : getTeamDisplayName(demo, 't'),
       myScore: isCT ? scoreCT : scoreT,
-      theirTeam: isCT ? teamT : teamCT,
+      theirTeam: isCT ? getTeamDisplayName(demo, 't') : getTeamDisplayName(demo, 'ct'),
       theirScore: isCT ? scoreT : scoreCT,
       myResult,
     };
@@ -1530,21 +1604,26 @@ const scoreDisplayMap = computed(() => {
   overflow: hidden;
 }
 
-/* 主信息区：地图 | 比分(加宽) | 文件名 | 时间 */
+/* 主信息区：地图(=time宽) | 比分(左) | 空站位 | 文件名 | 时间(=map宽) */
 .demo-bar-meta {
   display: grid;
-  grid-template-columns: minmax(88px, 140px) minmax(280px, 380px) minmax(0, 1fr) minmax(80px, 110px);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 2fr) 135px;
   align-items: center;
-  gap: var(--ds-space-md) var(--ds-space-xl);
-  font-size: 15px;
+  column-gap: 22px;
+  row-gap: var(--ds-space-md);
   width: 100%;
   min-width: 0;
   line-height: 1.4;
+  overflow: hidden;
+}
+
+.demo-bar-spacer {
+  min-width: 0;
 }
 
 .demo-bar-map {
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 14px;
   color: var(--gh-text);
   white-space: nowrap;
   overflow: hidden;
@@ -1552,21 +1631,25 @@ const scoreDisplayMap = computed(() => {
   letter-spacing: 0.01em;
 }
 
-/* 比分区：充分加宽，字号与字重突出 */
+/* 比分区：靠左，背景 + mono 字体 */
 .demo-bar-score {
+  justify-self: start;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  align-items: baseline;
+  align-items: center;
   gap: 0 10px;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   min-width: 0;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  font-family: var(--ds-font-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--ds-font-mono);
   letter-spacing: 0.03em;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 4px 10px;
 }
 
 .demo-bar-score-mine,
@@ -1595,7 +1678,7 @@ const scoreDisplayMap = computed(() => {
 .demo-bar-score-draw {
   line-height: 1.3;
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   font-size: inherit;
   font-variant-numeric: tabular-nums;
   font-family: inherit;
@@ -1628,23 +1711,29 @@ const scoreDisplayMap = computed(() => {
 
 .demo-bar-file {
   color: var(--gh-text-muted);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 0.01em;
+  justify-self: end;
+  text-align: right;
 }
 
 .demo-bar-time {
   color: var(--gh-text-muted);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: right;
   letter-spacing: 0.02em;
+  justify-self: end;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .demo-bar-parsing {

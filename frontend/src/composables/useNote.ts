@@ -3,6 +3,8 @@ import { getMetaStorage } from './indexdb-storage';
 import { CLOUD_ARCHIVE_STORE } from './indexdb-storage';
 import { getOPFSStorage } from './opfs-storage';
 import { useAuth } from './useAuth';
+import { resolveTeamDisplayName } from './teamDisplay';
+import type { PlayerInfo } from '@/types/replay';
 
 /** 上传弹窗所需的回合上下文（由 App 在打开弹窗时传入） */
 export interface UploadReplayContext {
@@ -54,8 +56,13 @@ function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
     try {
       const meta = JSON.parse(item.demo_meta) as Record<string, unknown>;
       if (typeof meta.mapName === 'string') mapName = meta.mapName;
-      if (typeof meta.teamCT === 'string') teamCT = meta.teamCT;
-      if (typeof meta.teamT === 'string') teamT = meta.teamT;
+      const rawCT = typeof meta.teamCT === 'string' ? meta.teamCT : '';
+      const rawT = typeof meta.teamT === 'string' ? meta.teamT : '';
+      const serverPlayer = Array.isArray(meta.serverPlayer) ? (meta.serverPlayer as PlayerInfo[]) : undefined;
+      teamCT = resolveTeamDisplayName(rawCT, 3, serverPlayer);
+      teamT = resolveTeamDisplayName(rawT, 2, serverPlayer);
+      if (teamCT === '—') teamCT = undefined;
+      if (teamT === '—') teamT = undefined;
     } catch {
       // ignore
     }
@@ -191,7 +198,7 @@ export function useNote() {
   function getShareUrl(): string {
     const id = createdNoteId.value;
     if (!id) return '';
-    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(id)}&pure=1`;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(id)}&tab=note`;
   }
 
   async function copyShareLink() {
@@ -354,7 +361,7 @@ export function useNote() {
   let shareModalCopyCopiedTimer: ReturnType<typeof setTimeout> | null = null;
 
   function getShareUrlForNoteId(noteId: string): string {
-    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&pure=1`;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&tab=note`;
   }
 
   function openShareModal(item: CloudArchiveItem) {
