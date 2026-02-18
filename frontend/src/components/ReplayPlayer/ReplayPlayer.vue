@@ -472,6 +472,12 @@
           </div>
           <!-- Round selector (vertical, same position as player cards) - local only -->
           <div v-show="leftPanelTab === 'rounds'" class="left-panel-content left-panel-rounds">
+            <div class="left-panel-rounds-inner">
+            <!-- 当前回合 T/CT 开局开销，左右随上下半场区分 -->
+            <div class="round-selector-cost-row">
+              <span class="round-selector-cost left">${{ currentRoundCostLeft }}</span>
+              <span class="round-selector-cost right">${{ currentRoundCostRight }}</span>
+            </div>
             <div class="round-selector-vertical">
               <template v-for="r in (replay?.totalRounds || 0)" :key="r">
                 <button
@@ -481,22 +487,33 @@
                   :disabled="replayerSource === 'cloud' && r !== currentRound"
                   @click="loadRoundData(r)"
                 >
-                  <img
-                    v-if="getRoundResultIcon(r, replay?.roundResults) && shouldIconBeFirst(r, replay?.roundResults)"
-                    :src="getRoundResultIcon(r, replay?.roundResults)!"
-                    class="round-selector-icon"
-                    :alt="getRoundResult(r, replay?.roundResults) || ''"
-                  />
-                  <span class="round-selector-num">{{ r }}</span>
-                  <img
-                    v-if="getRoundResultIcon(r, replay?.roundResults) && !shouldIconBeFirst(r, replay?.roundResults)"
-                    :src="getRoundResultIcon(r, replay?.roundResults)!"
-                    class="round-selector-icon"
-                    :alt="getRoundResult(r, replay?.roundResults) || ''"
-                  />
+                  <span
+                    class="round-economy-tag left"
+                    :class="getRoundEconomyTypes(r, replay?.roundResults).left"
+                  >{{ getRoundEconomyTypes(r, replay?.roundResults).left }}</span>
+                  <div class="round-selector-center">
+                    <img
+                      v-if="getRoundResultIcon(r, replay?.roundResults) && shouldIconBeFirst(r, replay?.roundResults)"
+                      :src="getRoundResultIcon(r, replay?.roundResults)!"
+                      class="round-selector-icon"
+                      :alt="getRoundResult(r, replay?.roundResults) || ''"
+                    />
+                    <span class="round-selector-num">{{ r }}</span>
+                    <img
+                      v-if="getRoundResultIcon(r, replay?.roundResults) && !shouldIconBeFirst(r, replay?.roundResults)"
+                      :src="getRoundResultIcon(r, replay?.roundResults)!"
+                      class="round-selector-icon"
+                      :alt="getRoundResult(r, replay?.roundResults) || ''"
+                    />
+                  </div>
+                  <span
+                    class="round-economy-tag right"
+                    :class="getRoundEconomyTypes(r, replay?.roundResults).right"
+                  >{{ getRoundEconomyTypes(r, replay?.roundResults).right }}</span>
                 </button>
                 <div v-if="r === 12" class="round-selector-h-divider"></div>
               </template>
+            </div>
             </div>
           </div>
           <!-- Note tab (cloud only): title + content -->
@@ -559,7 +576,7 @@ import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
-import { getRoundResult, getRoundResultIcon, shouldIconBeFirst } from '@/utils/roundResult';
+import { getRoundResult, getRoundResultIcon, getRoundCosts, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
 const props = defineProps<{
   /** 是否可保存当前回合到云存档（由 App 根据播放状态计算） */
@@ -908,6 +925,16 @@ const playerNameMap = computed(() => {
 const currentRound = computed(() => {
   if (!safeFrames.value.length) return 0;
   return safeFrames.value[currentFrameIndex.value]?.round || 0;
+});
+
+// 当前回合 T/CT 开局开销，左右随上下半场区分（上半场左 T 右 CT，下半场左 CT 右 T）
+const currentRoundCostLeft = computed(() => {
+  const { costT, costCT } = getRoundCosts(currentRound.value, replay.value?.roundResults);
+  return isSecondHalf(currentRound.value) ? costCT : costT;
+});
+const currentRoundCostRight = computed(() => {
+  const { costT, costCT } = getRoundCosts(currentRound.value, replay.value?.roundResults);
+  return isSecondHalf(currentRound.value) ? costT : costCT;
 });
 
 // 计算实时比分（基于 roundResults，区分上下半场换边）
@@ -1574,8 +1601,39 @@ onBeforeUnmount(() => {
 }
 
 .left-panel-rounds {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  min-height: 0;
   overflow-y: auto;
-  max-height: 70vh;
+  padding-top: 10px;
+  direction: rtl; /* 滚动条在左侧 */
+}
+
+.left-panel-rounds-inner {
+  direction: ltr;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* 回合列表滚动条：白色高亮 */
+.left-panel-rounds::-webkit-scrollbar {
+  width: 8px;
+}
+
+.left-panel-rounds::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.left-panel-rounds::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+}
+
+.left-panel-rounds::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .left-panel-note {
@@ -1607,15 +1665,36 @@ onBeforeUnmount(() => {
   color: var(--gh-text-muted);
 }
 
+.round-selector-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--gh-text-muted);
+}
+
+.round-selector-cost.left {
+  margin-right: auto;
+}
+
+.round-selector-cost.right {
+  margin-left: auto;
+}
+
 .round-selector-vertical {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
-  padding: 4px;
+  gap: 0;
+  padding: 8px;
 }
 
+/* 单回合固定高度，不限制一页数量，超出滚动 */
 .round-selector-row-btn {
+  flex-shrink: 0;
+  height: 36px;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -1623,8 +1702,8 @@ onBeforeUnmount(() => {
   gap: 8px;
   width: 100%;
   min-width: 200px;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.70);
+  padding: 0 12px;
+  background: var(--ds-bg-tertiary, #21262d);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--ds-radius-sm);
   color: #f5f5f0;
@@ -1650,6 +1729,16 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
+.round-selector-center {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .round-selector-icon {
   width: 18px;
   height: 18px;
@@ -1660,6 +1749,35 @@ onBeforeUnmount(() => {
 .round-selector-num {
   flex-shrink: 0;
   min-width: 1.5em;
+}
+
+/* 经济类型 tag：绿 eco、黄 half、红 full */
+.round-economy-tag {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.round-economy-tag.right {
+  margin-left: auto;
+}
+.round-economy-tag.eco {
+  background: rgba(63, 185, 80, 0.35);
+  color: #3fb950;
+}
+.round-economy-tag.half {
+  background: rgba(210, 153, 34, 0.35);
+  color: #d29922;
+}
+.round-economy-tag.full {
+  background: rgba(248, 81, 73, 0.35);
+  color: #f85149;
+}
+.round-economy-tag.pistol {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 
 .round-selector-h-divider {

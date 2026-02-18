@@ -5,29 +5,34 @@
       <div class="demo-library-header">
         <div class="header-content">
           <div class="filter-controls">
+          <!-- 经济类型筛选（回合） -->
           <div class="filter-group">
             <div class="filter-buttons">
-              <button 
-                class="filter-btn" 
-                :class="{ active: filterStatus === 'all' }"
-                @click="filterStatus = 'all'"
-              >
-                全部
-              </button>
-              <button 
-                class="filter-btn" 
-                :class="{ active: filterStatus === 'parsed' }"
-                @click="filterStatus = 'parsed'"
-              >
-                已解析
-              </button>
-              <button 
-                class="filter-btn" 
-                :class="{ active: filterStatus === 'unparsed' }"
-                @click="filterStatus = 'unparsed'"
-              >
-                未解析
-              </button>
+              <button
+                class="filter-btn filter-btn-economy"
+                :class="{ active: filterEconomyType === 'all' }"
+                @click="filterEconomyType = 'all'"
+              >全部</button>
+              <button
+                class="filter-btn filter-btn-economy eco"
+                :class="{ active: filterEconomyType === 'eco' }"
+                @click="filterEconomyType = 'eco'"
+              >Eco</button>
+              <button
+                class="filter-btn filter-btn-economy half"
+                :class="{ active: filterEconomyType === 'half' }"
+                @click="filterEconomyType = 'half'"
+              >Half</button>
+              <button
+                class="filter-btn filter-btn-economy full"
+                :class="{ active: filterEconomyType === 'full' }"
+                @click="filterEconomyType = 'full'"
+              >Full</button>
+              <button
+                class="filter-btn filter-btn-economy pistol"
+                :class="{ active: filterEconomyType === 'pistol' }"
+                @click="filterEconomyType = 'pistol'"
+              >Pistol</button>
             </div>
           </div>
           <!-- 地图筛选 -->
@@ -388,8 +393,10 @@
                   <button
                     type="button"
                     class="demo-bar-round-btn"
+                    :class="{ 'is-filtered-out': filterEconomyType !== 'all' && !roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType) }"
                     :title="'播放回合 ' + r"
-                    @click.stop="openReplayer(demo.uuid, r)"
+                    :disabled="filterEconomyType !== 'all' && !roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType)"
+                    @click.stop="(filterEconomyType === 'all' || roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType)) && openReplayer(demo.uuid, r)"
                   >
                     <img
                       v-if="getRoundResultIcon(r, demo.roundResults) && shouldIconBeFirst(r, demo.roundResults)"
@@ -512,7 +519,7 @@ import type { ReplayData } from '@/types/replay';
 import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
-import { getRoundResult, getRoundResultIcon, shouldIconBeFirst } from '@/utils/roundResult';
+import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
 import { navigate } from '@/location';
 
 const props = defineProps<{
@@ -563,7 +570,7 @@ const isUploadDragOver = ref(false);
 const filterMapNames = ref<string[]>([]);
 const filterTeamNames = ref<string[]>([]);
 const filterPlayerNames = ref<string[]>([]);
-const filterStatus = ref<'all' | 'parsed' | 'unparsed'>('all');
+const filterEconomyType = ref<'all' | 'eco' | 'half' | 'full' | 'pistol'>('all');
 
 // Input states
 const filterMapNameInput = ref('');
@@ -941,16 +948,6 @@ const sortedDemoList = computed(() => {
       });
     });
   }
-  
-  // Filter by status
-  if (filterStatus.value === 'parsed') {
-    // status === 1 means parsed successfully
-    filteredList = filteredList.filter(demo => demo.status === 1);
-  } else if (filterStatus.value === 'unparsed') {
-    // status === 0 (parsing) or status === -1 (failed) means not successfully parsed
-    filteredList = filteredList.filter(demo => demo.status === 0 || demo.status === -1);
-  }
-  // 'all' shows everything, no filtering needed
   
   // Sort by timestamp (newest first)
   return filteredList.sort((a, b) => {
@@ -1446,7 +1443,7 @@ const scoreDisplayMap = computed(() => {
   flex-direction: column;
   gap: 0;
   padding: 0;
-  border: 1px solid var(--gh-border);
+  border: none;
   border-radius: 10px;
   color: var(--gh-text);
   position: relative;
@@ -1464,7 +1461,7 @@ const scoreDisplayMap = computed(() => {
 .demo-bar-card-bg-placeholder {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, var(--gh-bg-tertiary) 0%, var(--gh-bg-secondary) 100%);
+  background: var(--gh-bg-secondary);
 }
 
 .demo-bar-card-bg-img-wrap {
@@ -1504,12 +1501,13 @@ const scoreDisplayMap = computed(() => {
 .demo-bar-card-bg-mask {
   position: absolute;
   inset: 0;
+  /* 遮罩过渡与卡片背景 secondary 一致 (#161b22) */
   background: linear-gradient(
     to right,
-    rgba(13, 17, 23, 0.75) 0%,
-    rgba(13, 17, 23, 0.5) 28%,
-    rgba(13, 17, 23, 0.92) 35%,
-    rgba(13, 17, 23, 0.97) 100%
+    rgba(22, 27, 34, 0.75) 0%,
+    rgba(22, 27, 34, 0.5) 28%,
+    rgba(22, 27, 34, 0.92) 35%,
+    var(--gh-bg-secondary) 100%
   );
 }
 
@@ -1536,14 +1534,6 @@ const scoreDisplayMap = computed(() => {
 }
 .demo-bar-card-inner > .demo-bar-failed-msg {
   order: 3;
-}
-
-.demo-bar-card.is-parsing {
-  border-color: rgba(88, 166, 255, 0.4);
-}
-
-.demo-bar-card.is-failed {
-  border-color: rgba(248, 81, 73, 0.4);
 }
 
 .demo-bar-middle {
@@ -1731,7 +1721,7 @@ const scoreDisplayMap = computed(() => {
   width: 100%;
   padding: var(--ds-space-sm) var(--ds-space-lg);
   border-top: 1px solid var(--gh-border);
-  background: rgba(13, 17, 23, 0.5);
+  background: var(--gh-bg-secondary);
 }
 
 .demo-bar-round-nav {
@@ -1788,6 +1778,17 @@ const scoreDisplayMap = computed(() => {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.demo-bar-round-btn.is-filtered-out,
+.demo-bar-round-btn:disabled.is-filtered-out {
+  opacity: 0.4;
+  color: var(--gh-text-muted);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.demo-bar-round-btn.is-filtered-out .demo-bar-round-icon {
+  opacity: 0.6;
+}
+
 .demo-bar-round-icon {
   width: 14px;
   height: 14px;
@@ -1832,6 +1833,17 @@ const scoreDisplayMap = computed(() => {
   align-items: center;
   gap: var(--ds-space-md);
 }
+
+.filter-group-label {
+  font-size: 12px;
+  color: var(--gh-text-muted);
+  white-space: nowrap;
+}
+
+.filter-btn-economy.active.eco { background: rgba(63, 185, 80, 0.35); color: #3fb950; }
+.filter-btn-economy.active.half { background: rgba(210, 153, 34, 0.35); color: #d29922; }
+.filter-btn-economy.active.full { background: rgba(248, 81, 73, 0.35); color: #f85149; }
+.filter-btn-economy.active.pistol { background: rgba(255, 255, 255, 0.2); color: #fff; }
 
 .filter-label {
   font-size: var(--ds-text-sm);
@@ -2442,12 +2454,11 @@ const scoreDisplayMap = computed(() => {
   overflow: hidden;
   cursor: pointer;
   transition: all var(--ds-transition-base);
-  border: 2px solid var(--ds-border-subtle);
+  border: none;
   background: var(--ds-surface-base);
 }
 
 .demo-card:hover {
-  border-color: var(--ds-primary);
   transform: translateY(-6px);
   box-shadow: var(--ds-shadow-glow);
 }
@@ -2478,7 +2489,6 @@ const scoreDisplayMap = computed(() => {
 }
 
 .demo-card.is-parsing:hover {
-  border-color: var(--ds-border-default);
   transform: none;
   box-shadow: none;
 }
@@ -2489,7 +2499,6 @@ const scoreDisplayMap = computed(() => {
 }
 
 .demo-card.is-failed:hover {
-  border-color: var(--ds-border-default);
   transform: none;
   box-shadow: none;
 }

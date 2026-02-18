@@ -39,10 +39,21 @@ export interface Point {
 // 回合胜负结果类型
 export type RoundResult = 'ct_win' | 't_win' | 'bomb_defused' | 'bomb_exploded';
 
-// 单回合结果信息
+// 经济类型：Eco 人均 <$1600, Half $1600–$4200, Full ≥$4200
+export type EconomyType = 'eco' | 'half' | 'full';
+
+// 单回合结果信息（人均与经济类型由前端根据 cost/count 计算）
 export interface RoundResultInfo {
   round: number;
   result: RoundResult;
+  /** T 队伍本回合总开销 */
+  costT?: number;
+  /** CT 队伍本回合总开销 */
+  costCT?: number;
+  /** T 队伍参与统计人数 */
+  countT?: number;
+  /** CT 队伍参与统计人数 */
+  countCT?: number;
 }
 
 export interface ProjectileState {

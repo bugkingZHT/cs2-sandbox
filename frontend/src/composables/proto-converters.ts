@@ -125,7 +125,11 @@ function protoToReplayMeta(proto: any): ReplayMeta {
     totalRounds: proto.totalRounds || 0,
     roundResults: proto.roundResults?.map((rr: any) => ({
       round: rr.round || 0,
-      result: rr.result || 'ct_win'
+      result: rr.result || 'ct_win',
+      costT: rr.costT ?? rr.cost_t,
+      costCT: rr.costCT ?? rr.cost_ct,
+      countT: rr.countT ?? rr.count_t,
+      countCT: rr.countCT ?? rr.count_ct,
     })) || [],
     totalFrames: 0, // Not stored in proto, will be computed client-side
     totalDurationMs: 0, // Not stored in proto, will be computed client-side
@@ -294,7 +298,11 @@ function replayMetaToProto(meta: ReplayMeta): any {
   // Convert roundResults to proto format
   const roundResults = meta.roundResults?.map(rr => ({
     round: rr.round,
-    result: rr.result
+    result: rr.result,
+    costT: rr.costT,
+    costCT: rr.costCT,
+    countT: rr.countT,
+    countCT: rr.countCT,
   })) || [];
 
   console.log('[ReplayMetaToProto] Converting roundResults:', {

@@ -139,12 +139,20 @@ const (
 	RoundResultBombExploded RoundResult = "bomb_exploded"
 )
 
-// 单回合结果信息
+// 单回合结果信息（人均与经济类型由前端根据 cost/count 计算）
 type RoundResultInfo struct {
 	// 回合编号
 	Round int `json:"round"`
 	// 回合结果
 	Result RoundResult `json:"result"`
+	// T 队伍本回合总开销
+	CostT int `json:"costT"`
+	// CT 队伍本回合总开销
+	CostCT int `json:"costCT"`
+	// T 队伍参与统计人数（用于前端计算人均）
+	CountT int `json:"countT"`
+	// CT 队伍参与统计人数
+	CountCT int `json:"countCT"`
 }
 
 // 回合时间信息

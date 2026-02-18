@@ -568,18 +568,18 @@ function goToNoteItem(item: CloudArchiveItem) {
   navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}`);
 }
 
+/** 侧边栏使用刷新跳转，保证完整加载目标页 */
+function navigateWithReload(path: string) {
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  window.location.href = base + path;
+}
+
 function onNavigateToDemolib() {
-  if (replayerSource.value === 'cloud') {
-    clearCloudPlaybackState();
-  }
-  navigate('/demolib');
+  navigateWithReload('/demolib');
 }
 
 function onNavigateToNotes() {
-  if (replayerSource.value === 'cloud') {
-    clearCloudPlaybackState();
-  }
-  navigate('/notes');
+  navigateWithReload('/notes');
 }
 
 function onNoteDragEnd() {

@@ -25,11 +25,12 @@ func (b *replayBuilder) registerEventHandlers() {
 		// Reset dropped equipment blacklist - will be built at round frame 0
 		b.droppedEquipmentBlacklist = make(map[int]struct{})
 		b.droppedBlacklistBuiltRound = -1
+		// 不在 RoundStart 里重置 roundFreezeEndCost/Count，否则若事件顺序为 RoundFreezetimeEnd → RoundStart 会清掉本回合刚写入的数据；仅在 RoundFreezetimeEnd 写入，RoundEnd 使用即本回合数据
 	})
 
 	// Register freeze time end handler
 	b.parser.RegisterEventHandler(func(e events.RoundFreezetimeEnd) {
-		b.inFreezeTime = false // Exit freeze time
+		b.inFreezeTime = false
 		b.freezeEndTick = b.parser.GameState().IngameTick()
 	})
 
@@ -71,12 +72,12 @@ func (b *replayBuilder) registerEventHandlers() {
 			}
 		}
 
-		// Store round result
-		b.roundResults = append(b.roundResults, entity.RoundResultInfo{
+		// 只写入 builder，不 append 到 roundResults；由 ParseNextRound 末尾统计经济后 append 到 meta
+		b.lastRoundResult = &entity.RoundResultInfo{
 			Round:  b.currentRound,
 			Result: result,
-		})
-		log.Printf("[RoundEnd] Stored result for round %d: %s (Total results: %d)", b.currentRound, result, len(b.roundResults))
+		}
+		log.Printf("[RoundEnd] Recorded result for round %d: %s", b.currentRound, result)
 	})
 
 	// Smoke event handlers

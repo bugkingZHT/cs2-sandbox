@@ -839,7 +839,7 @@ function confirmDelete(item: CloudArchiveItem) {
 
 .note-grid {
   display: flex;
-  gap: var(--ds-space-lg, 24px);
+  gap: var(--ds-space-sm);
   padding: 0 var(--ds-space-md);
   align-items: flex-start;
 }
@@ -848,7 +848,7 @@ function confirmDelete(item: CloudArchiveItem) {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-lg, 24px);
+  gap: var(--ds-space-sm);
   min-width: 0;
 }
 
@@ -865,13 +865,11 @@ function confirmDelete(item: CloudArchiveItem) {
   flex-direction: column;
   min-height: 0;
   padding: 0;
+  border: none;
   border-radius: 12px;
   overflow: visible;
-  cursor: pointer;
   transition: all var(--ds-transition-base);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  border: 2px solid var(--ds-border-subtle);
+  background: var(--ds-bg-primary-solid, #0d1117);
 }
 
 .note-card.is-current {
@@ -893,30 +891,60 @@ function confirmDelete(item: CloudArchiveItem) {
   overflow: hidden;
 }
 
+/* 两层遮罩；过渡在 100% 位置才变化到目标色 */
+.card-background::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    to bottom,
+    rgba(22, 27, 34, 0.75) 0%,
+    rgba(22, 27, 34, 0.90) 100%,
+  );
+  pointer-events: none;
+}
+
+.card-background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 99%,
+    var(--ds-bg-secondary) 100%
+  );
+  pointer-events: none;
+}
+
 .card-background img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform var(--ds-transition-base);
+  opacity: 0.5;
+  filter: brightness(0.8) saturate(0.95);
 }
 
 .card-hero-cover {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.70);
-  z-index: 1;
+  background: none;
+  z-index: 3;
   pointer-events: none;
 }
 
 .card-hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.3) 50%, transparent 100%);
+  background: none;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 12px;
-  z-index: 2;
+  padding: var(--ds-space-md) var(--ds-space-xl);
+  z-index: 4;
 }
 
 .card-hero-row {
@@ -1011,7 +1039,7 @@ function confirmDelete(item: CloudArchiveItem) {
 /* === Card Body：全文 content，使用标准色 === */
 .card-body {
   flex: 1;
-  padding: var(--ds-space-md);
+  padding: var(--ds-space-xl);
   background: var(--ds-bg-secondary);
   display: flex;
   flex-direction: column;
@@ -1060,7 +1088,7 @@ function confirmDelete(item: CloudArchiveItem) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: var(--ds-space-sm) var(--ds-space-md);
+  padding: var(--ds-space-md) var(--ds-space-lg);
   background: var(--ds-bg-secondary);
   flex-shrink: 0;
   border-radius: 0 0 12px 12px;

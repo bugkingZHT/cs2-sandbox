@@ -171,7 +171,7 @@ import { MATCH_CONFIG, getDisplayTeam } from '@/config/game';
 import { DEBUG_CONFIG } from '@/config/debug';
 import type { RoundResultInfo, ReplayData } from '@/types/replay';
 import { showFrameData } from '@/composables/frameDataViewer';
-import { getRoundResult, getRoundResultIcon, getRoundEndIcon, getRoundEndClass, getRoundEndTitle, shouldIconBeFirst } from '@/utils/roundResult';
+import { getRoundResult, getRoundResultIcon, getRoundEndIcon, getRoundEndClass, getRoundEndTitle, shouldIconBeFirst } from '@/config/eco';
 
 const props = defineProps<{
   currentFrameIndex: number;

@@ -207,6 +207,10 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		if noSave {
 			continue
 		}
+
+		e.builder.calculateRoundEqValue(gs)
+
+		// Build frame
 		if len(frames) > 0 {
 			e.builder.prevFrame = &frames[len(frames)-1]
 		}
@@ -215,7 +219,22 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		e.totalParsedFrames++
 	}
 
-	// 3. Wrap up: persist, GC
+	// 3. 将本回合经济统计从 builder 追加到 roundResults（eventhandler 只做统计不 append）
+	if e.builder.lastRoundResult != nil && e.builder.lastRoundResult.Round == startRound {
+		// get eval from builder
+		costT, costCT, countT, countCT := e.builder.computeRoundCosts()
+		e.builder.lastRoundResult.CostT = costT
+		e.builder.lastRoundResult.CostCT = costCT
+		e.builder.lastRoundResult.CountT = countT
+		e.builder.lastRoundResult.CountCT = countCT
+
+		// append result to meta
+		e.builder.roundResults = append(e.builder.roundResults, *e.builder.lastRoundResult)
+		e.builder.lastRoundResult = nil
+		log.Printf("[ParseNextRound] Appended round %d result to meta (total %d)", startRound, len(e.builder.roundResults))
+	}
+
+	// 4. Wrap up: persist, GC
 	log.Printf("[ParseNextRound] Completed round %d with %d frames (raw=%d, parsed=%d)", startRound, len(frames), rawFrames, parsedFrames)
 	runtime.GC()
 	log.Printf("[ParseNextRound] 🗑️ GC triggered after completing round %d", startRound)
@@ -343,14 +362,28 @@ type replayBuilder struct {
 	freezeEndTick   int // Tick when freeze time ended
 	bombPlantedTick int // Tick when bomb was planted
 	roundEndTick    int // Tick when round ended
-	// Round results tracking
-	roundResults []entity.RoundResultInfo // Store all round results
+	// Round results: eventhandler 只写入 lastRoundResult，由 ParseNextRound 末尾 append 到 roundResults
+	roundResults    []entity.RoundResultInfo // 最终写入 meta
+	lastRoundResult *entity.RoundResultInfo  // 本回合结束时的统计，供 ParseNextRound 追加
 	// Player registry: track all players seen during match
 	playerRegistry map[int]entity.PlayerInfo // Player ID -> PlayerInfo
 	// Dropped equipment blacklist: entity IDs present at round frame 0 (old throwables from previous round)
 	// Only track new drops that appear during the round, exclude these blacklisted entities
 	droppedEquipmentBlacklist  map[int]struct{}
 	droppedBlacklistBuiltRound int // Round number for which blacklist was built (-1 = not built)
+	// Per-round equipment value at freezetime end (first frame of “round start”, 本回合装备总价值)
+	roundFreezeEndCostT   int
+	roundFreezeEndCostCT  int
+	roundFreezeEndCountT  int
+	roundFreezeEndCountCT int
+}
+
+// computeRoundCosts returns CostT, CostCT and countT, countCT: 本回合 freezetime 结束瞬间双方装备总价值及人数（已在 RoundFreezetimeEnd 中写入）.
+func (b *replayBuilder) computeRoundCosts() (costT, costCT, countT, countCT int) {
+	costT, costCT, countT, countCT = b.roundFreezeEndCostT, b.roundFreezeEndCostCT, b.roundFreezeEndCountT, b.roundFreezeEndCountCT
+	b.roundFreezeEndCostT = -1
+	b.roundFreezeEndCostCT = -1
+	return
 }
 
 // trackPlayer adds or updates a player in the player registry
@@ -798,4 +831,29 @@ func (b *replayBuilder) calculateRoundTime(gs demoinfocs.GameState, currentTick 
 		Phase:         phase,
 		TimeRemaining: timeRemaining,
 	}
+}
+
+func (b *replayBuilder) calculateRoundEqValue(gs demoinfocs.GameState) {
+	if b.roundFreezeEndCostT >= 0 || b.roundFreezeEndCostCT >= 0 {
+		return
+	}
+	var costT, costCT, countT, countCT int
+	for _, pl := range gs.Participants().Playing() {
+		if pl == nil {
+			continue
+		}
+		v := pl.EquipmentValueFreezeTimeEnd()
+		switch pl.Team {
+		case common.TeamTerrorists:
+			costT += v
+			countT++
+		case common.TeamCounterTerrorists:
+			costCT += v
+			countCT++
+		}
+	}
+	b.roundFreezeEndCostT = costT
+	b.roundFreezeEndCostCT = costCT
+	b.roundFreezeEndCountT = countT
+	b.roundFreezeEndCountCT = countCT
 }
