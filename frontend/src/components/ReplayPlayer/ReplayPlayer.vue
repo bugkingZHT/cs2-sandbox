@@ -609,8 +609,8 @@ const showOverlayPanels = ref(true);
 const leftPanelTab = ref<'players' | 'rounds' | 'note'>('players');
 
 function isNoteContentHtml(content: string | null | undefined): boolean {
-  const t = (content || '').trim();
-  return t.startsWith('<') && t.includes('>');
+  const t = content || '';
+  return t.includes('<') && t.includes('>');
 }
 
 function goBack() {
@@ -1666,9 +1666,9 @@ onBeforeUnmount(() => {
 }
 
 .left-panel-note {
+  width: 420px;
   overflow-y: auto;
   max-height: 70vh;
-  max-width: 50%;
   padding: var(--ds-space-sm) 0;
 }
 

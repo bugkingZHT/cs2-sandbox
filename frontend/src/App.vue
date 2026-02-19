@@ -203,7 +203,7 @@
     <!-- 云存档删除确认 -->
     <div v-if="confirmDeleteNoteId !== null" class="beta-modal-overlay" @click="confirmDeleteNoteId = null">
       <div class="beta-modal" @click.stop>
-        <div class="modal-icon">
+        <div class="modal-icon error">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 9v4"/>
             <path d="M12 17h.01"/>
@@ -214,7 +214,7 @@
         <p class="modal-message">确定要删除此笔记吗？</p>
         <div class="modal-actions">
           <button type="button" class="ds-btn-secondary" @click="confirmDeleteNoteId = null">取消</button>
-          <button type="button" class="ds-btn-primary" @click="onConfirmDeleteNote">删除</button>
+          <button type="button" class="ds-btn-primary ds-btn-danger" @click="onConfirmDeleteNote">删除</button>
         </div>
       </div>
     </div>
@@ -323,7 +323,7 @@
           </div>
           <div class="modal-actions">
             <button type="button" class="ds-btn-secondary" @click="closeUploadModal">取消</button>
-            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">{{ editingNoteId ? '保存修改' : '保存' }}</button>
+            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">{{ editingNoteId ? '保存修改' : '发布' }}</button>
           </div>
         </template>
         <!-- 上传中 -->
@@ -546,8 +546,8 @@ function onCloseShareModal() {
   openNoteMenuId.value = null;
 }
 
-function onConfirmDeleteNote() {
-  confirmDeleteNoteConfirm();
+async function onConfirmDeleteNote() {
+  await confirmDeleteNoteConfirm();
   openNoteMenuId.value = null;
 }
 
@@ -2257,6 +2257,17 @@ const showBetaWarning = () => {
 .ds-btn-primary.ds-btn-small:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.ds-btn-primary.ds-btn-danger {
+  background: var(--ds-danger, #ef4444);
+  border-color: var(--ds-danger, #ef4444);
+  color: #fff;
+}
+
+.ds-btn-primary.ds-btn-danger:hover {
+  background: #dc2626;
+  border-color: #dc2626;
 }
 
 /* === Debug Modal === */

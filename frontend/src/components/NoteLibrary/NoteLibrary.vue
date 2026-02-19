@@ -118,13 +118,37 @@
             <div class="card-hero-cover"></div>
             <div class="card-hero-overlay">
               <div class="card-hero-row">
-                <div class="card-hero-title">{{ item.title }}</div>
-                <div class="card-hero-meta">
-                  <span v-if="item.mapName" class="card-hero-map">
-                    <img src="/icons/map.svg" alt="" class="card-hero-map-icon" />
-                    {{ item.mapName }}
-                  </span>
-                  <span v-if="item.teamCT && item.teamT" class="card-hero-match">{{ item.teamCT }} vs {{ item.teamT }}</span>
+                <div class="card-hero-left">
+                  <div class="card-hero-title">{{ item.title }}</div>
+                  <div class="card-hero-meta">
+                    <span v-if="item.mapName" class="card-hero-map">
+                      <img src="/icons/map.svg" alt="" class="card-hero-map-icon" />
+                      {{ item.mapName }}
+                    </span>
+                    <span v-if="item.add_time" class="card-hero-time">{{ formatNoteTime(item.add_time) }}</span>
+                  </div>
+                </div>
+                <div class="card-hero-actions" @click.stop>
+                  <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <span>播放</span>
+                  </button>
+                  <div class="card-more-wrap">
+                    <button
+                      type="button"
+                      class="card-action-btn card-more-btn"
+                      title="更多"
+                      aria-haspopup="true"
+                      :aria-expanded="openMenuNoteId === item.id"
+                      @click.stop="toggleMenu(item.id, $event)"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div class="card-hero-badges">
@@ -148,38 +172,6 @@
             <div v-else class="card-content card-content-plain">{{ item.content }}</div>
           </div>
 
-          <!-- Actions: 左下跳转 + 右侧分享、「...」 -->
-          <div class="card-actions" @click.stop>
-            <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-              <span>播放</span>
-            </button>
-            <div class="card-actions-right">
-              <button type="button" class="card-action-btn card-share-btn" title="分享" @click.stop="openShare(item)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-                </svg>
-                <span>分享</span>
-              </button>
-              <div class="card-more-wrap">
-                <button
-                  type="button"
-                  class="card-action-btn card-more-btn"
-                  title="更多"
-                  aria-haspopup="true"
-                  :aria-expanded="openMenuNoteId === item.id"
-                  @click.stop="toggleMenu(item.id, $event)"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -192,6 +184,13 @@
         :style="{ top: moreMenuPosition.top + 'px', left: moreMenuPosition.left + 'px' }"
         @click.stop
       >
+        <button type="button" class="more-menu-item" @click.stop="openShare(openMenuNote); openMenuNoteId = null">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          <span>分享</span>
+        </button>
         <button type="button" class="more-menu-item" @click.stop="openEdit(openMenuNote); openMenuNoteId = null">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
@@ -314,10 +313,10 @@ const filteredNoteList = computed(() => {
   return list.sort((a, b) => b.add_time - a.add_time);
 });
 
-/** 判断是否为富文本 HTML（Editor 输出），否则按纯文本展示 */
+/** 判断是否为富文本 HTML（Editor 输出：含 img/span/strong 等），否则按纯文本展示 */
 function isContentHtml(content: string): boolean {
-  const t = (content || '').trim();
-  return t.startsWith('<') && t.includes('>');
+  const t = content || '';
+  return t.includes('<') && t.includes('>');
 }
 
 /** 当前打开「更多」菜单的笔记项（用于 Teleport 下拉） */
@@ -898,10 +897,18 @@ function confirmDelete(item: CloudArchiveItem) {
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 6px 10px;
+  gap: 6px 12px;
 }
 
-/* 宽度不足时 title 占满第一行、meta 换行到下方，避免标题在左侧被裁掉 */
+.card-hero-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 宽度不足时 title 占满第一行、meta 换行到下方 */
 .card-hero-title {
   font-size: var(--ds-text-lg);
   font-weight: 600;
@@ -912,16 +919,32 @@ function confirmDelete(item: CloudArchiveItem) {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  flex: 1 1 100%;
   min-width: 0;
 }
 
 .card-hero-meta {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.card-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.card-hero-actions .card-action-btn {
+
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.card-hero-actions .card-action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
 }
 
 .card-hero-map {
@@ -931,7 +954,7 @@ function confirmDelete(item: CloudArchiveItem) {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.9);
   padding: 2px 8px;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
 }
 
@@ -942,7 +965,7 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 
-.card-hero-match {
+.card-hero-time {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.8);
 }
@@ -991,6 +1014,7 @@ function confirmDelete(item: CloudArchiveItem) {
   background: var(--ds-bg-secondary);
   display: flex;
   flex-direction: column;
+  border-radius: 0 0 12px 12px;
   gap: var(--ds-space-sm);
   min-height: 0;
 }
@@ -1055,25 +1079,7 @@ function confirmDelete(item: CloudArchiveItem) {
   font-variant-numeric: tabular-nums;
 }
 
-/* === Card Actions：左下进入 + 右侧分享、更多下拉 === */
-.card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: var(--ds-space-md) var(--ds-space-lg);
-  background: var(--ds-bg-secondary);
-  flex-shrink: 0;
-  border-radius: 0 0 12px 12px;
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.card-actions-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* === Card Action 按钮（位于 card-hero-row 右侧） === */
 .card-action-btn.card-go-btn:hover {
   background: #238636;
   border-color: #238636;
@@ -1093,7 +1099,7 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .card-action-btn {
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: var(--ds-surface-base);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
@@ -1117,7 +1123,7 @@ function confirmDelete(item: CloudArchiveItem) {
 }
 
 .card-more-btn {
-  padding: 8px;
+  padding: 6px;
 }
 
 .card-more-btn svg {

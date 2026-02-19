@@ -94,10 +94,14 @@ function getStore(db: IDBDatabase, mode: IDBTransactionMode = 'readonly') {
   return tx.objectStore(CLOUD_ARCHIVE_STORE);
 }
 
+/** 共享的笔记列表，保证 App 与 NoteLibrary 等使用同一份数据，loadNotes 后都能看到更新 */
+const sharedNoteList = ref<CloudArchiveItem[]>([]);
+const sharedItemsLoading = ref(false);
+
 export function useNote() {
   const { currentUser, handleSessionExpired, fetchAuthMe } = useAuth();
-  const noteList = ref<CloudArchiveItem[]>([]);
-  const itemsLoading = ref(false);
+  const noteList = sharedNoteList;
+  const itemsLoading = sharedItemsLoading;
 
   const quotaUsed = computed(() => currentUser.value?.quota_used ?? 0);
   const quotaLimit = computed(() => currentUser.value?.quota_limit ?? 5);
@@ -232,6 +236,7 @@ export function useNote() {
       };
       await updateItem(editingNoteId.value, payload);
       showNoteToast('已修改战术笔记', 'info');
+      await loadNotes();
       closeUploadModal();
       return;
     }
@@ -344,9 +349,12 @@ export function useNote() {
 
   // Delete confirm modal
   const confirmDeleteNoteId = ref<string | null>(null);
-  function confirmDeleteNoteConfirm() {
+  async function confirmDeleteNoteConfirm() {
     if (confirmDeleteNoteId.value !== null) {
-      removeItem(confirmDeleteNoteId.value);
+      const id = confirmDeleteNoteId.value;
+      await removeItem(id);
+      showNoteToast('已删除战术笔记', 'info');
+      await loadNotes();
       confirmDeleteNoteId.value = null;
     }
   }
