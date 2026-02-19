@@ -244,10 +244,21 @@ const props = withDefaults(
     /** 云笔记回放：source 为 cloud 时有值 */
     replayerSource?: 'local' | 'cloud' | null;
     replayerNoteId?: string | null;
-    /** 大卡上隐藏的玩家 ID，不在地图上绘制 */
+    /** 大卡上隐藏的玩家 ID，不在地图上绘制（设置-玩家取消勾选时等价于全部加入此处） */
     hiddenPlayerIds?: number[];
+    /** 设置：地图上是否展示投掷道具 / 掉落道具 / C4（玩家由 hiddenPlayerIds 控制） */
+    showMapProjectiles?: boolean;
+    showMapDropped?: boolean;
+    showMapBomb?: boolean;
   }>(),
-  { showSaveToNote: true, hideSaveToNote: false, publishedNote: null }
+  {
+    showSaveToNote: true,
+    hideSaveToNote: false,
+    publishedNote: null,
+    showMapProjectiles: true,
+    showMapDropped: true,
+    showMapBomb: true,
+  }
 );
 
 const emit = defineEmits<{
@@ -815,7 +826,7 @@ const drawPlayersForFrame = () => {
   // Clear projectiles (they don't need smooth transitions)
   clearProjectiles();
 
-  // Draw players using external renderer（隐藏大卡上勾选隐藏的玩家）
+  // Draw players using external renderer（隐藏大卡上勾选隐藏的玩家；设置-玩家取消勾选=全部隐藏，由 hiddenPlayerIds 传入）
   drawPlayersForFrameExternal({
     frame,
     meta: props.replayMeta,
@@ -830,8 +841,10 @@ const drawPlayersForFrame = () => {
     hiddenPlayerIds: props.hiddenPlayerIds,
   });
 
-  // Draw projectiles if present（隐藏玩家时，其投掷物一并隐藏）
-  if (frame.projectiles || frame.droppedEquipment) {
+  // Draw projectiles / dropped if enabled（隐藏玩家时，其投掷物一并隐藏；设置中可关闭投掷/掉落图层）
+  const showProj = props.showMapProjectiles !== false;
+  const showDropped = props.showMapDropped !== false;
+  if ((showProj || showDropped) && (frame.projectiles || frame.droppedEquipment)) {
     const hiddenSet = props.hiddenPlayerIds?.length ? new Set(props.hiddenPlayerIds) : null;
     let projectilesToDraw = frame.projectiles;
     let sortedProjsToDraw = frame.sortedProjs;
@@ -879,17 +892,17 @@ const drawPlayersForFrame = () => {
     }
     
     drawProjectilesForFrame(
-      projectilesToDraw, 
-      playersArray, 
-      sortedProjsToDraw,
-      frame.droppedEquipment,
+      showProj ? projectilesToDraw : undefined,
+      playersArray,
+      showProj ? sortedProjsToDraw : undefined,
+      showDropped ? frame.droppedEquipment : undefined,
       frame.timeMs,
       frame.round // Pass current round for team color flipping
     );
   }
 
-  // Draw planted bomb if present
-  if (frame.bomb) {
+  // Draw planted bomb if present（设置中可关闭 C4 图层）
+  if (props.showMapBomb !== false && frame.bomb) {
     drawBombForFrame({
       bomb: frame.bomb,
       roundTime: frame.roundTime,
@@ -927,6 +940,16 @@ watch(
     }
   },
   { deep: true }
+);
+
+// 设置中切换地图图层显示时重绘（玩家由 hiddenPlayerIds 控制，不在此处）
+watch(
+  () => [props.showMapProjectiles, props.showMapDropped, props.showMapBomb],
+  () => {
+    if (props.frames && props.frames.length > 0) {
+      drawPlayersForFrame();
+    }
+  },
 );
 
 // Watch isPlaying prop to stop animation when paused

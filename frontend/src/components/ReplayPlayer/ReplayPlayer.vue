@@ -98,6 +98,9 @@
           :replayer-source="replayerSource"
           :replayer-note-id="replayerNoteId"
           :hidden-player-ids="hiddenPlayerIdsArray"
+          :show-map-projectiles="showMapProjectiles"
+          :show-map-dropped="showMapDropped"
+          :show-map-bomb="showMapBomb"
         />
 
         <!-- 投掷物分析蒙版 -->
@@ -165,6 +168,12 @@
                 :class="{ active: leftPanelTab === 'note' }"
                 @click="leftPanelTab = 'note'"
               >笔记</button>
+              <button
+                type="button"
+                class="left-panel-tab"
+                :class="{ active: leftPanelTab === 'settings' }"
+                @click="leftPanelTab = 'settings'"
+              >设置</button>
             </div>
           </div>
           <div v-show="leftPanelTab === 'players'" class="left-panel-content left-panel-players">
@@ -580,6 +589,30 @@
               <p class="left-panel-note-empty">暂无笔记内容</p>
             </template>
           </div>
+          <!-- 设置 tab：地图上展示哪些元素，卡片布局与回合 tab 同宽 -->
+          <div v-show="leftPanelTab === 'settings'" class="left-panel-content left-panel-settings">
+            <div class="left-panel-settings-inner">
+              <div class="settings-card">
+                <div class="settings-card-title">地图显示</div>
+                <label class="settings-option">
+                  <input type="checkbox" v-model="showMapPlayers" />
+                  <span>玩家</span>
+                </label>
+                <label class="settings-option">
+                  <input type="checkbox" v-model="showMapProjectiles" />
+                  <span>投掷物</span>
+                </label>
+                <label class="settings-option">
+                  <input type="checkbox" v-model="showMapDropped" />
+                  <span>掉落道具</span>
+                </label>
+                <label class="settings-option">
+                  <input type="checkbox" v-model="showMapBomb" />
+                  <span>C4</span>
+                </label>
+              </div>
+            </div>
+          </div>
           <div class="left-panel-footer">
             <button
               v-if="replayerSource === 'local'"
@@ -680,7 +713,11 @@ const emit = defineEmits<{
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
 // 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
-const leftPanelTab = ref<'players' | 'rounds' | 'note'>('players');
+const leftPanelTab = ref<'players' | 'rounds' | 'note' | 'settings'>('players');
+// 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
+const showMapProjectiles = ref(true);
+const showMapDropped = ref(true);
+const showMapBomb = ref(true);
 // 导演剪辑模式：多选回合在一条时间线播放（仅 local）
 const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
@@ -688,6 +725,8 @@ const clipRounds = ref<ClipRoundConfig[]>([]);
 const hiddenPlayerIds = ref<Set<number>>(new Set());
 /** 进入道具解析前保存的隐藏状态，退出时恢复 */
 const hiddenPlayerIdsBeforeAnalyze = ref<Set<number> | null>(null);
+/** 设置里「玩家」取消勾选时保存的隐藏状态，勾选时恢复 */
+const hiddenPlayerIdsBeforeSettingsHideAll = ref<number[] | null>(null);
 
 function togglePlayerVisibility(playerId: number) {
   const next = new Set(hiddenPlayerIds.value);
@@ -759,7 +798,7 @@ watch(leftPanelTab, syncReplayerUrl);
 onMounted(() => {
   const q = getQuery();
   if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
-  if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'note') {
+  if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'note' || q.tab === 'settings') {
     leftPanelTab.value = q.tab;
   }
 });
@@ -778,6 +817,31 @@ const effectiveReplay = computed<ReplayData | null>(() => {
     return { ...r, serverPlayer: mergedServerPlayer.value };
   }
   return r;
+});
+
+const allPlayerIds = computed(() => effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? []);
+/** 设置-玩家：与卡片小眼睛共用逻辑。取消勾选=全部隐藏，勾选=恢复之前状态 */
+const showMapPlayers = computed({
+  get: () => {
+    const all = allPlayerIds.value;
+    return all.length === 0 || !all.every((id) => hiddenPlayerIds.value.has(id));
+  },
+  set: (v: boolean) => {
+    const all = allPlayerIds.value;
+    if (all.length === 0) return;
+    if (v) {
+      const saved = hiddenPlayerIdsBeforeSettingsHideAll.value;
+      if (saved != null) {
+        hiddenPlayerIds.value = new Set(saved);
+        hiddenPlayerIdsBeforeSettingsHideAll.value = null;
+      } else {
+        hiddenPlayerIds.value = new Set();
+      }
+    } else {
+      hiddenPlayerIdsBeforeSettingsHideAll.value = Array.from(hiddenPlayerIds.value);
+      hiddenPlayerIds.value = new Set(all);
+    }
+  },
 });
 
 // source 切换时：cloud 下若当前是「回合」则切到「玩家」；local 下若当前是「笔记」则切到「玩家」
@@ -1943,6 +2007,58 @@ onBeforeUnmount(() => {
   color: var(--gh-text-muted);
 }
 
+/* 设置 tab：与回合 tab 同宽、同滚动，内容用卡片展示 */
+.left-panel-settings {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 10px;
+  direction: rtl;
+}
+
+.left-panel-settings-inner {
+  direction: ltr;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 0;
+}
+
+.settings-card {
+  background: var(--ds-bg-tertiary, #21262d);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--ds-radius-sm);
+  padding: 12px 14px;
+}
+
+.settings-card-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gh-text);
+}
+
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #f5f5f0;
+  cursor: pointer;
+}
+
+.settings-option:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-option input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
 .round-selector-vertical {
   display: flex;
   flex-direction: column;
@@ -2300,7 +2416,6 @@ onBeforeUnmount(() => {
   color: #f5f5f0;
   font-family: system-ui, -apple-system, sans-serif;
   line-height: 1;
-  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
