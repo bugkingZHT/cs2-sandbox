@@ -301,7 +301,7 @@
                 v-model="uploadFormTitle"
                 type="text"
                 class="form-input"
-                maxlength="32"
+                maxlength="64"
                 placeholder="笔记名称"
               />
             </div>

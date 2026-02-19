@@ -90,6 +90,19 @@
     <div class="map-controls-panel">
     <!-- Zoom Controls (Bottom) -->
     <div class="map-zoom-controls">
+      <div v-if="!pureMode && replayerSource === 'cloud' && replayerNoteId" class="embed-link-wrap">
+        <button
+          type="button"
+          class="zoom-btn embed-link-btn"
+          title="复制内嵌分享链接"
+          @click="copyEmbedLink"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </button>
+      </div>
       <button
         v-if="!pureMode"
         class="zoom-btn brush-btn"
@@ -226,6 +239,9 @@ const props = withDefaults(
     noteUploading?: boolean;
     /** 当前回合已发布的笔记（有则按钮绿色、点击为编辑） */
     publishedNote?: CloudArchiveItem | null;
+    /** 云笔记回放：source 为 cloud 时有值 */
+    replayerSource?: 'local' | 'cloud' | null;
+    replayerNoteId?: string | null;
   }>(),
   { showSaveToNote: true, publishedNote: null }
 );
@@ -340,6 +356,22 @@ const copyText = async (text: string) => {
     copiedField.value = 'cmd';
     setTimeout(() => { copiedField.value = null; }, 1200);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制到剪贴板', type: 'info' } }));
+  } catch {
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
+  }
+};
+
+/** 云笔记回放时复制带 pure=1 的内嵌分享链接 */
+const copyEmbedLink = async () => {
+  const noteId = props.replayerNoteId;
+  if (!noteId) return;
+  const base = typeof window !== 'undefined' ? window.location.origin : '';
+  const pathBase = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
+  const prefix = pathBase && pathBase !== '/' ? pathBase : '';
+  const url = `${base}${prefix}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&tab=note&pure=1`;
+  try {
+    await navigator.clipboard.writeText(url);
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
   } catch {
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
   }
@@ -1101,6 +1133,19 @@ onBeforeUnmount(() => {
 
 .save-to-note-btn .save-to-note-label {
   display: none;
+}
+
+.embed-link-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.embed-link-btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
 /* + / - / [] 垂直连体按钮 */

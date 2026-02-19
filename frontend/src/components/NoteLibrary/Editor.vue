@@ -545,8 +545,8 @@
   .editor-body :deep(.text-color-orange) { color: #FF6D00; }
   
   .editor-body :deep(.equipment-inline-icon) {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     vertical-align: middle;
     margin: 0 2px;
     object-fit: contain;

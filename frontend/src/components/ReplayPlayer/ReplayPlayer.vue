@@ -115,6 +115,8 @@
           @tab-recorder-stop="tabRecorder.stopRecording"
           @tab-recorder-clear-pending="tabRecorder.clearPendingDownload"
           @tab-recorder-download="tabRecorder.downloadRecording"
+          :replayer-source="replayerSource"
+          :replayer-note-id="replayerNoteId"
         />
 
         <!-- 投掷物分析蒙版 -->
@@ -659,7 +661,7 @@ onMounted(() => {
   }
 });
 
-const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource } = useReplayData();
+const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource, replayerNoteId } = useReplayData();
 
 // source 切换时：cloud 下若当前是「回合」则切到「玩家」；local 下若当前是「笔记」则切到「玩家」
 watch(replayerSource, (source) => {

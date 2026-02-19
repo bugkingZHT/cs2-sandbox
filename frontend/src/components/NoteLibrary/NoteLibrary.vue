@@ -1010,7 +1010,7 @@ function confirmDelete(item: CloudArchiveItem) {
 /* === Card Body：全文 content，阅读友好（1.5rem 内边距、1.6 行高） === */
 .card-body {
   flex: 1;
-  padding: 1.5rem;
+  padding: var(--ds-space-2xl) var(--ds-space-3xl);
   background: var(--ds-bg-secondary);
   display: flex;
   flex-direction: column;
@@ -1046,8 +1046,8 @@ function confirmDelete(item: CloudArchiveItem) {
 .card-content-rich :deep(.text-color-purple) { color: #9C27B0 !important; }
 .card-content-rich :deep(.text-color-orange) { color: #FF6D00 !important; }
 .card-content-rich :deep(.equipment-inline-icon) {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   vertical-align: middle;
   margin: 0 2px;
   object-fit: contain;

@@ -150,7 +150,7 @@ export function useNote() {
     const rawName = r.mapName?.startsWith('de_') ? r.mapName.substring(3) : r.mapName;
     const cleanMapName = rawName ? rawName.toUpperCase() : rawName;
     const defaultTitle = cleanMapName ? `${cleanMapName} - ${dateStr} - 回合${round}` : `${dateStr} - 回合${round}`;
-    uploadFormTitle.value = defaultTitle.slice(0, 32);
+    uploadFormTitle.value = defaultTitle.slice(0, 64);
     uploadFormContent.value = '';
     uploadFormPermission.value = 'private';
     uploadModalStep.value = 'form';
@@ -167,7 +167,7 @@ export function useNote() {
   function openEditModal(item: CloudArchiveItem) {
     editingNoteId.value = item.id;
     uploadContext.value = null;
-    uploadFormTitle.value = (item.title ?? '').slice(0, 32);
+    uploadFormTitle.value = (item.title ?? '').slice(0, 64);
     uploadFormContent.value = item.content ?? '';
     uploadFormPermission.value = (item.permission === 'public' ? 'public' : 'private');
     uploadModalStep.value = 'form';
