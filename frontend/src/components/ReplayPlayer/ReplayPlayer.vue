@@ -1623,7 +1623,7 @@ const isRifleWeapon = (weaponId: string | null): boolean => {
   return (id >= 200 && id < 400) || (id >= 100 && id < 200);
 };
 
-// 导演剪辑：按选中顺序维护列表，最后选中的回合作为 baseRound
+// 导演剪辑：按选中顺序维护列表，最先选中的回合作为 baseRound
 function toggleClipRound(roundNumber: number) {
   const idx = clipRounds.value.findIndex((c) => c.round === roundNumber);
   if (idx >= 0) {

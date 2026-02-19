@@ -20,7 +20,7 @@ function frameIndexAtOrBefore(frames: Frame[], targetMs: number): number {
 }
 
 /**
- * 导演剪辑：从 OPFS 加载多回合，按选中顺序构成有序结构，以最后一个选中的回合为 baseRound；
+ * 导演剪辑：从 OPFS 加载多回合，按选中顺序构成有序结构，以最先选中的回合为 baseRound；
  * 各回合用 timeMs - startMs 对齐后按时间点合并为一条并行时间线。
  */
 export function useClipMerge(
@@ -56,7 +56,7 @@ export function useClipMerge(
 
       for (let roundIdx = 0; roundIdx < rounds.length; roundIdx++) {
         const cfg = rounds[roundIdx];
-        const isBaseRound = roundIdx === rounds.length - 1;
+        const isBaseRound = roundIdx === 0;
         const roundBytes = await opfs.loadRound(uuid, cfg.round);
         if (!roundBytes) {
           error.value = `回合 ${cfg.round} 未找到，请先加载该回合`;
@@ -155,7 +155,7 @@ export function useClipMerge(
         allSegments.push(normalized);
       }
 
-      const baseSeg = allSegments[allSegments.length - 1];
+      const baseSeg = allSegments[0];
       const baseStartMs = baseSeg.length > 0 ? baseSeg[0].timeMs : 0;
 
       // 2. 时间轴以 baseRound 为准：使用 baseRound 的 timeMs 序列（应用 baseRound 的 start，保持原始时间）
@@ -175,7 +175,7 @@ export function useClipMerge(
         const t0 = T - baseStartMs;
         for (let segIdx = 0; segIdx < allSegments.length; segIdx++) {
           const seg = allSegments[segIdx];
-          const idx = frameIndexAtOrBefore(seg, segIdx === allSegments.length - 1 ? T : t0);
+          const idx = frameIndexAtOrBefore(seg, segIdx === 0 ? T : t0);
           if (idx < 0) continue;
           const fr = seg[idx];
           if (fr.players) {
