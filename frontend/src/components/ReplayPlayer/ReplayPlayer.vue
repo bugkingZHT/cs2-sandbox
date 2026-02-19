@@ -2,27 +2,6 @@
   <div class="viewer-layout">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
-      <!-- 有地图时：左下角小眼睛（pure 模式不显示） -->
-      <div v-if="coverType === 'none' && !pureMode" class="replayer-left-actions at-bottom">
-        <button
-          v-if="!pureMode"
-          type="button"
-          class="overlay-eye-btn"
-          :class="{ 'is-hidden': !showOverlayPanels }"
-          :title="showOverlayPanels ? '隐藏玩家卡与击杀' : '显示玩家卡与击杀'"
-          @click="showOverlayPanels = !showOverlayPanels"
-        >
-          <svg v-if="showOverlayPanels" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          <svg v-else class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-            <line x1="1" y1="1" x2="23" y2="23"/>
-          </svg>
-        </button>
-      </div>
-
       <!-- Cover：按优先级只显示一种，返回按钮在内容下方 -->
       <div
         v-if="coverType !== 'none'"
@@ -84,10 +63,10 @@
       <!-- 地图画布 -->
       <div v-else class="map-canvas-wrapper">
         <MapCanvas 
-          :frames="frames" 
+          :frames="effectiveFrames" 
           :bounds="bounds" 
           :current-frame-index="effectiveFrameIndex"
-          :replay-meta="replay"
+          :replay-meta="effectiveReplay"
           :is-playing="isPlaying"
           :is-dragging="isDraggingTimeline"
           :map-name="replay?.mapName"
@@ -96,6 +75,7 @@
           :pure-mode="pureMode"
           :can-add-to-note="props.canAddToNote"
           :show-save-to-note="replayerSource !== 'cloud' || !!props.publishedNoteForRound"
+          :hide-save-to-note="true"
           :note-uploading="props.noteUploading"
           :published-note="props.publishedNoteForRound ?? null"
           @save-current-round="emit('save-current-round')"
@@ -117,6 +97,7 @@
           @tab-recorder-download="tabRecorder.downloadRecording"
           :replayer-source="replayerSource"
           :replayer-note-id="replayerNoteId"
+          :hidden-player-ids="hiddenPlayerIdsArray"
         />
 
         <!-- 投掷物分析蒙版 -->
@@ -135,7 +116,7 @@
         />
 
         <!-- 击杀回传 (Kill Feed) -->
-        <div v-if="!pureMode && showOverlayPanels" class="kill-feed-container">
+        <div v-if="!pureMode" class="kill-feed-container">
           <TransitionGroup name="list">
             <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
               <div class="kill-card">
@@ -149,8 +130,8 @@
           </TransitionGroup>
         </div>
 
-        <!-- Left Panel: Tab (玩家 / 回合) + Player Cards or Round Selector -->
-        <div v-if="!pureMode && showOverlayPanels" class="players-panel top-left">
+        <!-- Left Panel: Tab (玩家/回合) + Player Cards or Round Selector + 剪辑/发布 -->
+        <div v-if="coverType === 'none' && !pureMode" class="players-panel top-left">
           <div class="left-panel-header">
             <button
               type="button"
@@ -187,14 +168,15 @@
             </div>
           </div>
           <div v-show="leftPanelTab === 'players'" class="left-panel-content left-panel-players">
-          <!-- First Half (1-12): T Team on top, Second Half (13+): CT Team on top -->
-          
-          <!-- First Team (T for rounds 1-12, CT for rounds 13+) -->
+            <div class="left-panel-players-inner">
+          <!-- First Half (1-12): T on top, Second Half (13+): CT on top. left-team-score-eye 控制上侧 -->
+          <div class="upper-team-cards-slot" ref="upperTeamCardsRef">
           <div v-if="currentRound <= 12" class="team-cards-container t">
-            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+              <div class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
               <!-- Column 1: Player Info -->
               <div class="card-col col-info">
-                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-id">{{ p.name || 'UNKNOWN' }}</div>
                 <div class="player-stats">
                   <div class="stat-item">
                     <img src="/icons/kill.svg" class="stat-icon" />
@@ -255,13 +237,25 @@
                   />
                 </div>
               </div>
+            </div>
+              <div class="player-card-hover-cover">
+                <button type="button" class="player-card-action copy-pos" title="复制坐标" @click.stop="copyPlayerPosition(p)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button type="button" class="player-card-action toggle-vis" :class="{ active: isPlayerHidden(p.id!) }" :title="isPlayerHidden(p.id!) ? '显示该玩家' : '隐藏该玩家'" @click.stop="togglePlayerVisibility(p.id!)">
+                  <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+              <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
             </div>
           </div>
           <div v-else class="team-cards-container ct">
-            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+              <div class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
               <!-- Column 1: Player Info -->
               <div class="card-col col-info">
-                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-id">{{ p.name || 'UNKNOWN' }}</div>
                 <div class="player-stats">
                   <div class="stat-item">
                     <img src="/icons/kill.svg" class="stat-icon" />
@@ -323,27 +317,64 @@
                 </div>
               </div>
             </div>
+              <div class="player-card-hover-cover">
+                <button type="button" class="player-card-action copy-pos" title="复制坐标" @click.stop="copyPlayerPosition(p)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button type="button" class="player-card-action toggle-vis" :class="{ active: isPlayerHidden(p.id!) }" :title="isPlayerHidden(p.id!) ? '显示该玩家' : '隐藏该玩家'" @click.stop="togglePlayerVisibility(p.id!)">
+                  <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+              <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
+            </div>
+          </div>
           </div>
 
-          <!-- Score Display (Between Teams): 左=上方队伍 右=下方队伍，下半场用 isSecondHalf 判断显示颜色 -->
+          <!-- Score Display (Between Teams): 左=上方队伍 右=下方队伍，下半场用 isSecondHalf 判断显示颜色；hover 显示小眼睛一键隐藏/显示该队 -->
           <div class="score-divider">
             <div class="score-display">
-              <div class="team-score" :class="isSecondHalf(currentRound) ? 'ct-score' : 't-score'">
-                {{ currentScoreT }}
+              <div class="team-score-wrap left-team-score-wrap">
+                <button
+                  type="button"
+                  class="team-score-eye left-team-score-eye"
+                  :class="{ active: isLeftTeamHidden }"
+                  :title="isLeftTeamHidden ? '显示上侧队伍' : '隐藏上侧队伍'"
+                  @click.stop="toggleLeftTeamVisibility"
+                >
+                  <svg v-if="!isLeftTeamHidden" class="team-score-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg v-else class="team-score-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+                <div class="team-score" :class="isSecondHalf(currentRound) ? 'ct-score' : 't-score'">
+                  {{ currentScoreT }}
+                </div>
               </div>
               <div class="score-separator">:</div>
-              <div class="team-score" :class="isSecondHalf(currentRound) ? 't-score' : 'ct-score'">
-                {{ currentScoreCT }}
+              <div class="team-score-wrap right-team-score-wrap">
+                <div class="team-score" :class="isSecondHalf(currentRound) ? 't-score' : 'ct-score'">
+                  {{ currentScoreCT }}
+                </div>
+                <button
+                  type="button"
+                  class="team-score-eye right-team-score-eye"
+                  :class="{ active: isRightTeamHidden }"
+                  :title="isRightTeamHidden ? '显示下侧队伍' : '隐藏下侧队伍'"
+                  @click.stop="toggleRightTeamVisibility"
+                >
+                  <svg v-if="!isRightTeamHidden" class="team-score-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg v-else class="team-score-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Second Team (CT for rounds 1-12, T for rounds 13+) -->
+          <!-- Second Team (CT for rounds 1-12, T for rounds 13+). right-team-score-eye 控制下侧 -->
+          <div class="lower-team-cards-slot" ref="lowerTeamCardsRef">
           <div v-if="currentRound <= 12" class="team-cards-container ct">
-            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
-              <!-- Column 1: Player Info -->
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+              <div class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
               <div class="card-col col-info">
-                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-id">{{ p.name || 'UNKNOWN' }}</div>
                 <div class="player-stats">
                   <div class="stat-item">
                     <img src="/icons/kill.svg" class="stat-icon" />
@@ -359,18 +390,13 @@
                   <span class="money-value">{{ (p.money || 0).toLocaleString() }}</span>
                 </div>
               </div>
-              
-              <!-- Column 2: Equipment -->
               <div class="card-col col-equipment">
                 <div class="active-weapon">
                   <img 
                     v-if="getPrimaryWeapon(p)"
                     :src="getWeaponIconPath(getPrimaryWeapon(p))" 
                     class="weapon-icon"
-                    :class="{ 
-                      'is-active': isWeaponActive(p, getPrimaryWeapon(p)),
-                      'is-rifle': isRifleWeapon(getPrimaryWeapon(p))
-                    }"
+                    :class="{ 'is-active': isWeaponActive(p, getPrimaryWeapon(p)), 'is-rifle': isRifleWeapon(getPrimaryWeapon(p)) }"
                     @error="onWeaponIconError"
                   />
                 </div>
@@ -385,15 +411,10 @@
                   />
                 </div>
               </div>
-              
-              <!-- Column 3: Status -->
               <div class="card-col col-status">
                 <div class="health-display">
                   <div class="health-value">{{ Math.round(p.health || 0) }}</div>
                 </div>
-                <!-- <div class="armor-display">
-                  <div class="armor-value">{{ Math.round(p.armor || 0) }}</div>
-                </div> -->
                 <div class="gear-items">
                   <img 
                     v-for="(item, idx) in getGearItems(p)" 
@@ -404,13 +425,25 @@
                   />
                 </div>
               </div>
+              </div>
+              <div class="player-card-hover-cover">
+                <button type="button" class="player-card-action copy-pos" title="复制坐标" @click.stop="copyPlayerPosition(p)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button type="button" class="player-card-action toggle-vis" :class="{ active: isPlayerHidden(p.id!) }" :title="isPlayerHidden(p.id!) ? '显示该玩家' : '隐藏该玩家'" @click.stop="togglePlayerVisibility(p.id!)">
+                  <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+              <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
             </div>
           </div>
           <div v-else class="team-cards-container t">
-            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+              <div class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
               <!-- Column 1: Player Info -->
               <div class="card-col col-info">
-                <div class="player-id">{{ (p.name || 'UNKNOWN').toUpperCase() }}</div>
+                <div class="player-id">{{ p.name || 'UNKNOWN' }}</div>
                 <div class="player-stats">
                   <div class="stat-item">
                     <img src="/icons/kill.svg" class="stat-icon" />
@@ -470,21 +503,38 @@
                     @error="onWeaponIconError"
                   />
                 </div>
-              </div>
             </div>
+              <div class="player-card-hover-cover">
+                <button type="button" class="player-card-action copy-pos" title="复制坐标" @click.stop="copyPlayerPosition(p)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button type="button" class="player-card-action toggle-vis" :class="{ active: isPlayerHidden(p.id!) }" :title="isPlayerHidden(p.id!) ? '显示该玩家' : '隐藏该玩家'" @click.stop="togglePlayerVisibility(p.id!)">
+                  <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+              <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
+            </div>
+          </div>
+          </div>
+          </div>
           </div>
           </div>
           <!-- Round selector (vertical, same position as player cards) - local only -->
           <div v-show="leftPanelTab === 'rounds'" class="left-panel-content left-panel-rounds">
+            <div v-if="isClipMode" class="clip-mode-hint">已选 {{ clipRounds.length }} 个回合</div>
             <div class="left-panel-rounds-inner">
             <div class="round-selector-vertical">
               <template v-for="r in (replay?.totalRounds || 0)" :key="r">
                 <button
                   type="button"
                   class="round-selector-row-btn"
-                  :class="{ active: currentRound === r }"
+                  :class="{
+                    active: !isClipMode ? currentRound === r : clipRounds.some(c => c.round === r),
+                    'clip-selected': isClipMode && clipRounds.some(c => c.round === r)
+                  }"
                   :disabled="replayerSource === 'cloud' && r !== currentRound"
-                  @click="loadRoundData(r)"
+                  @click="isClipMode ? toggleClipRound(r) : loadRoundData(r)"
                 >
                   <span
                     class="round-economy-tag left"
@@ -530,6 +580,29 @@
               <p class="left-panel-note-empty">暂无笔记内容</p>
             </template>
           </div>
+          <div class="left-panel-footer">
+            <button
+              v-if="replayerSource === 'local'"
+              type="button"
+              class="left-panel-footer-btn clip-mode-btn"
+              :class="{ active: isClipMode }"
+              title="导演剪辑：多选回合在一条时间线并行播放"
+              @click="isClipMode = !isClipMode"
+            >
+              <img src="/icons/slip.svg" class="left-panel-footer-btn-icon" alt="" />
+            </button>
+            <button
+              type="button"
+              class="left-panel-footer-btn publish-note-btn"
+              :class="{ 'is-published': !!props.publishedNoteForRound }"
+              :title="props.publishedNoteForRound ? '编辑已发布的笔记' : (props.canAddToNote ? '发布笔记' : '当前回合可发布到笔记')"
+              :disabled="(!props.publishedNoteForRound && !props.canAddToNote) || props.noteUploading"
+              @click="props.publishedNoteForRound ? emit('edit-note', props.publishedNoteForRound) : emit('save-current-round')"
+            >
+              <img src="/icons/upload.svg" alt="" class="left-panel-footer-btn-icon" width="18" height="18" />
+              <span class="left-panel-footer-btn-text">发布</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -556,7 +629,7 @@
         :replay-meta="replay"
         :pure-mode="pureMode"
         :cloud-replay="replayerSource === 'cloud'"
-        :can-play="!!(frames?.length)"
+        :can-play="effectiveFrames.length > 0"
         :hide-round-selector="true"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
@@ -570,14 +643,15 @@
 
 <script setup lang="ts">
 import type { Ref } from 'vue';
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
 import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
 import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaRecorder';
 import { useReplayData } from '@/composables/useReplayData';
+import { useClipMerge } from '@/composables/useClipMerge';
 import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
-import type { Frame, PlayerState, ReplayData, ProjectileState } from '@/types/replay';
+import type { Frame, PlayerState, ReplayData, ProjectileState, ClipRoundConfig } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
@@ -605,10 +679,41 @@ const emit = defineEmits<{
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
-// 左上角小眼睛：非纯净模式下可单独隐藏左侧玩家卡 + 右侧击杀
-const showOverlayPanels = ref(true);
 // 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
 const leftPanelTab = ref<'players' | 'rounds' | 'note'>('players');
+// 导演剪辑模式：多选回合在一条时间线播放（仅 local）
+const isClipMode = ref(false);
+const clipRounds = ref<ClipRoundConfig[]>([]);
+// 大卡上点击小眼睛隐藏的玩家 ID：不在地图绘制，大卡持续深色蒙层
+const hiddenPlayerIds = ref<Set<number>>(new Set());
+
+function togglePlayerVisibility(playerId: number) {
+  const next = new Set(hiddenPlayerIds.value);
+  if (next.has(playerId)) next.delete(playerId);
+  else next.add(playerId);
+  hiddenPlayerIds.value = next;
+}
+
+function isPlayerHidden(playerId: number) {
+  return hiddenPlayerIds.value.has(playerId);
+}
+
+async function copyPlayerPosition(p: PlayerState) {
+  const x = (p.x ?? 0).toFixed(6);
+  const y = (p.y ?? 0).toFixed(6);
+  const z = (p.z ?? 0).toFixed(6);
+  const pitch = (p.pitch ?? 0).toFixed(6);
+  const yaw = (p.yaw ?? 0).toFixed(6);
+  const cmd = `setpos ${x} ${y} ${z}; setang ${pitch} ${yaw} 0`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '坐标已复制到剪贴板', type: 'info' } }));
+  } catch {
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
+  }
+}
+
+const hiddenPlayerIdsArray = computed(() => Array.from(hiddenPlayerIds.value));
 
 function isNoteContentHtml(content: string | null | undefined): boolean {
   const t = content || '';
@@ -632,7 +737,7 @@ if (replayerPureMode) {
   watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
 }
 
-// 纯净模式 + 左侧 Tab 与 URL 同步：pure=1 / tab=players|rounds|note|disable（tab=disable 表示小眼睛按下，左侧面板不展示）
+// 纯净模式 + 左侧 Tab 与 URL 同步：pure=1 / tab=players|rounds|note
 function syncReplayerUrl() {
   const q = getQuery();
   if (pureMode.value) {
@@ -640,28 +745,38 @@ function syncReplayerUrl() {
     q.tab = 'disable';
   } else {
     delete q.pure;
-    q.tab = showOverlayPanels.value ? leftPanelTab.value : 'disable';
+    q.tab = leftPanelTab.value;
   }
   const search = new URLSearchParams(q).toString();
   replaceLocation(pathRef.value, search);
 }
 watch(pureMode, syncReplayerUrl);
-watch(showOverlayPanels, syncReplayerUrl);
 watch(leftPanelTab, syncReplayerUrl);
 
-// 打开链接时根据 URL 恢复 pure 与 tab（tab=disable 仅表示小眼睛按下、左侧面板不展示，不改变 pure 模式）
+// 打开链接时根据 URL 恢复 pure 与 tab
 onMounted(() => {
   const q = getQuery();
   if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
-  if (q.tab === 'disable') {
-    showOverlayPanels.value = false;
-  } else if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'note') {
-    showOverlayPanels.value = true;
+  if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'note') {
     leftPanelTab.value = q.tab;
   }
 });
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource, replayerNoteId } = useReplayData();
+
+const { mergedFrames, mergedServerPlayer, loading: clipMergeLoading, error: clipMergeError } = useClipMerge(replay, clipRounds);
+
+const effectiveFrames = computed<Frame[]>(() => {
+  if (isClipMode.value && clipRounds.value.length > 0 && mergedFrames.value.length > 0) return mergedFrames.value;
+  return frames.value ?? [];
+});
+const effectiveReplay = computed<ReplayData | null>(() => {
+  const r = replay.value ?? null;
+  if (isClipMode.value && clipRounds.value.length > 0 && mergedServerPlayer.value.length > 0 && r) {
+    return { ...r, serverPlayer: mergedServerPlayer.value };
+  }
+  return r;
+});
 
 // source 切换时：cloud 下若当前是「回合」则切到「玩家」；local 下若当前是「笔记」则切到「玩家」
 watch(replayerSource, (source) => {
@@ -676,7 +791,7 @@ const coverType = computed<CoverType>(() => {
   if (replayerRouteLoading?.value) return 'route_loading';
   if (replayRouteError.value === 'not_found') return 'not_found';
   if (replayRouteError.value === 'forbidden') return 'forbidden';
-  if (!replay.value || !frames.value || frames.value.length === 0) return 'no_data';
+  if (!replay.value || !effectiveFrames.value.length) return 'no_data';
   return 'none';
 });
 
@@ -835,9 +950,9 @@ const buildKillList = (framesArray: Frame[]) => {
   console.log(`[ReplayPlayer] Built kill list with ${killList.length} events`);
 };
 
-// 监听 replay 和 frames 的变化
+// 监听 replay 与有效帧（单回合 frames 或剪辑 mergedFrames）变化
 watch(
-  () => ({ replay: replay.value, frames: frames.value }),
+  () => ({ replay: effectiveReplay.value, frames: effectiveFrames.value }),
   (data) => {
     console.log('[ReplayPlayer] 数据更新:', {
       hasReplay: !!data.replay,
@@ -845,18 +960,13 @@ watch(
       frameCount: data.frames?.length || 0
     });
     
-    // Reset playback state when new replay is loaded
     if (data.replay && data.frames && data.frames.length > 0) {
       currentFrameIndex.value = 0;
       currentPlaybackTimeMs.value = data.frames[0]?.timeMs ?? 0;
       isPlaying.value = false;
       cancelAnimation();
       lastTimestamp = 0;
-      
-      // Build kill list for the round
       buildKillList(data.frames);
-      
-      // Check URL for frameId after data is loaded
       checkUrlFrameId();
     }
   },
@@ -882,7 +992,7 @@ watch(isDraggingTimeline, (isDragging) => {
   }
 });
 
-const safeFrames = computed<Frame[]>(() => frames.value || []);
+const safeFrames = computed<Frame[]>(() => effectiveFrames.value || []);
 
 const totalFrames = computed(() => safeFrames.value.length);
 
@@ -893,11 +1003,10 @@ const currentFrame = computed<Frame | null>(() => {
 
 const teamCTPlayers = computed<PlayerState[]>(() => {
   const frame = currentFrame.value;
-  if (!frame?.players || !replay.value?.serverPlayer) return [];
+  if (!frame?.players || !effectiveReplay.value?.serverPlayer) return [];
   
-  // Use sorted player IDs from replay.serverPlayer
   const result: PlayerState[] = [];
-  for (const playerInfo of replay.value.serverPlayer) {
+  for (const playerInfo of effectiveReplay.value.serverPlayer) {
     const displayTeam = getDisplayTeam(playerInfo.team, currentRound.value);
     if (displayTeam !== 3) continue; // Display as CT only
     
@@ -919,11 +1028,10 @@ const teamCTPlayers = computed<PlayerState[]>(() => {
 
 const teamTPlayers = computed<PlayerState[]>(() => {
   const frame = currentFrame.value;
-  if (!frame?.players || !replay.value?.serverPlayer) return [];
+  if (!frame?.players || !effectiveReplay.value?.serverPlayer) return [];
   
-  // Use sorted player IDs from replay.serverPlayer
   const result: PlayerState[] = [];
-  for (const playerInfo of replay.value.serverPlayer) {
+  for (const playerInfo of effectiveReplay.value.serverPlayer) {
     const displayTeam = getDisplayTeam(playerInfo.team, currentRound.value);
     if (displayTeam !== 2) continue; // Display as T only
     
@@ -943,17 +1051,26 @@ const teamTPlayers = computed<PlayerState[]>(() => {
   return result;
 });
 
-// 计算所有玩家 ID 到名称的映射，用于击杀信息显示
+// 从 team-cards-container 的 DOM 遍历得到玩家 ID（left=上侧容器，right=下侧容器）
+const upperTeamCardsRef = ref<HTMLElement | null>(null);
+const lowerTeamCardsRef = ref<HTMLElement | null>(null);
+function getPlayerIdsFromContainer(containerEl: HTMLElement | null): number[] {
+  if (!containerEl) return [];
+  const inner = containerEl.querySelector('.team-cards-container');
+  if (!inner) return [];
+  return Array.from(inner.querySelectorAll<HTMLElement>('.player-card-wrap[data-player-id]'))
+    .map((el) => Number(el.getAttribute('data-player-id')))
+    .filter((n) => !Number.isNaN(n));
+}
+
+// 计算所有玩家 ID 到名称的映射，用于击杀信息显示（剪辑模式下为合并后的 serverPlayer）
 const playerNameMap = computed(() => {
   const map: Record<number, string> = {};
-  
-  // Use serverPlayer from replay metadata for player names
-  if (replay.value?.serverPlayer) {
-    for (const playerInfo of replay.value.serverPlayer) {
+  if (effectiveReplay.value?.serverPlayer) {
+    for (const playerInfo of effectiveReplay.value.serverPlayer) {
       map[playerInfo.id] = playerInfo.name;
     }
   }
-  
   return map;
 });
 
@@ -962,6 +1079,46 @@ const currentRound = computed(() => {
   if (!safeFrames.value.length) return 0;
   return safeFrames.value[currentFrameIndex.value]?.round || 0;
 });
+
+// 上下侧容器内的玩家 ID 由 DOM 实时决定（剪辑模式下合并后玩家更多，需随容器内元素更新）
+const leftTeamIdsRef = ref<number[]>([]);
+const rightTeamIdsRef = ref<number[]>([]);
+function syncTeamIdsFromDom() {
+  leftTeamIdsRef.value = getPlayerIdsFromContainer(upperTeamCardsRef.value);
+  rightTeamIdsRef.value = getPlayerIdsFromContainer(lowerTeamCardsRef.value);
+}
+watch(
+  [
+    () => effectiveFrameIndex.value,
+    () => safeFrames.value.length,
+    () => effectiveReplay.value?.serverPlayer?.length ?? 0,
+    () => isClipMode.value,
+  ],
+  () => {
+    nextTick(syncTeamIdsFromDom);
+  },
+  { immediate: true }
+);
+const isLeftTeamHidden = computed(() => leftTeamIdsRef.value.length > 0 && leftTeamIdsRef.value.every((id) => hiddenPlayerIds.value.has(id)));
+const isRightTeamHidden = computed(() => rightTeamIdsRef.value.length > 0 && rightTeamIdsRef.value.every((id) => hiddenPlayerIds.value.has(id)));
+function toggleLeftTeamVisibility() {
+  const ids = getPlayerIdsFromContainer(upperTeamCardsRef.value);
+  const allHidden = ids.length > 0 && ids.every((id) => hiddenPlayerIds.value.has(id));
+  const next = new Set(hiddenPlayerIds.value);
+  if (allHidden) ids.forEach((id) => next.delete(id));
+  else ids.forEach((id) => next.add(id));
+  hiddenPlayerIds.value = next;
+  syncTeamIdsFromDom();
+}
+function toggleRightTeamVisibility() {
+  const ids = getPlayerIdsFromContainer(lowerTeamCardsRef.value);
+  const allHidden = ids.length > 0 && ids.every((id) => hiddenPlayerIds.value.has(id));
+  const next = new Set(hiddenPlayerIds.value);
+  if (allHidden) ids.forEach((id) => next.delete(id));
+  else ids.forEach((id) => next.add(id));
+  hiddenPlayerIds.value = next;
+  syncTeamIdsFromDom();
+}
 
 // 计算实时比分（基于 roundResults，区分上下半场换边）
 // roundResults 存的是「地图方」胜负：ct_win/bomb_defused=CT方赢，t_win/bomb_exploded=T方赢
@@ -1024,9 +1181,8 @@ const currentRoundKills = computed(() => {
 
 // 获取玩家阵营对应的 CSS 类（后半场翻转）
 const getTeamClass = (playerId: number) => {
-  // Use serverPlayer metadata to get team info
-  if (replay.value?.serverPlayer) {
-    const playerInfo = replay.value.serverPlayer.find(p => p.id === playerId);
+  if (effectiveReplay.value?.serverPlayer) {
+    const playerInfo = effectiveReplay.value.serverPlayer.find(p => p.id === playerId);
     if (playerInfo) {
       // Get display team (flipped in second half)
       const displayTeam = getDisplayTeam(playerInfo.team, currentRound.value);
@@ -1140,14 +1296,13 @@ const stepPlayback = (timestamp: number) => {
 };
 
 const togglePlay = () => {
-  const hasFrames = frames.value && frames.value.length > 0;
+  const arr = safeFrames.value;
+  const hasFrames = arr && arr.length > 0;
   if (!hasFrames) {
     return;
   }
 
-  // Defensive sync: ensure currentFrameIndex/currentPlaybackTimeMs are in sync with frames
-  // (fixes bug where play button doesn't work until timeline is clicked once after refresh)
-  const arr = frames.value ?? [];
+  // Defensive sync: ensure currentFrameIndex/currentPlaybackTimeMs are in sync with frames (含剪辑模式 merged 帧)
   const idx = currentFrameIndex.value;
   const frame = arr[idx];
   const expectedTimeMs = frame?.timeMs ?? 0;
@@ -1386,6 +1541,16 @@ const isRifleWeapon = (weaponId: string | null): boolean => {
   return (id >= 200 && id < 400) || (id >= 100 && id < 200);
 };
 
+// 导演剪辑：按选中顺序维护列表，最后选中的回合作为 baseRound
+function toggleClipRound(roundNumber: number) {
+  const idx = clipRounds.value.findIndex((c) => c.round === roundNumber);
+  if (idx >= 0) {
+    clipRounds.value = clipRounds.value.filter((_, i) => i !== idx);
+  } else {
+    clipRounds.value = [...clipRounds.value, { round: roundNumber }];
+  }
+}
+
 // Load specific round data from IndexedDB
 const loadRoundData = async (roundNumber: number) => {
   if (!replay.value?.uuid) {
@@ -1422,7 +1587,7 @@ const loadRoundData = async (roundNumber: number) => {
       q.uuid = replay.value.uuid;
       q.round = String(roundNumber);
     }
-    if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; q.tab = showOverlayPanels.value ? leftPanelTab.value : 'disable'; }
+    if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; q.tab = leftPanelTab.value; }
     replaceLocation('/replayer', new URLSearchParams(q).toString());
     
     // Resume playback if it was playing before
@@ -1525,24 +1690,6 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* 左下角：返回 + 小眼睛（有 cover 时整块在左上，有地图时在左下） */
-.replayer-left-actions {
-  position: absolute;
-  top: var(--ds-space-md);
-  left: var(--ds-space-md);
-  z-index: var(--ds-z-dropdown);
-  pointer-events: auto;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  transition: top 0.2s ease, bottom 0.2s ease;
-}
-.replayer-left-actions.at-bottom {
-  top: auto;
-  bottom: var(--ds-space-xl);
-}
-
 /* === Player Panels (Bottom Corners) === */
 .players-panel {
   position: absolute;
@@ -1553,9 +1700,11 @@ onBeforeUnmount(() => {
 .players-panel.top-left {
   top: var(--ds-space-xl);
   left: var(--ds-space-md);
+  bottom: var(--ds-space-xl);
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: 0;
 }
 
 .left-panel-header {
@@ -1623,18 +1772,73 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.2);
 }
 
+.left-panel-footer {
+  pointer-events: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.left-panel-collapsed {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .left-panel-content {
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex: 1;
   min-height: 0;
+  overflow: hidden;
   pointer-events: auto;
+}
+
+.left-panel-players {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  direction: rtl; /* 滚动条在左侧，与回合列表一致 */
+}
+
+.left-panel-players-inner {
+  direction: ltr;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* 玩家卡列表滚动条：与回合列表一致 */
+.left-panel-players::-webkit-scrollbar {
+  width: 8px;
+}
+
+.left-panel-players::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.left-panel-players::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+}
+
+.left-panel-players::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .left-panel-rounds {
   display: flex;
   flex-direction: column;
-  height: 70vh;
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding-top: 10px;
@@ -1670,7 +1874,8 @@ onBeforeUnmount(() => {
 .left-panel-note {
   width: 420px;
   overflow-y: auto;
-  max-height: 70vh;
+  flex: 1;
+  min-height: 0;
   padding: var(--ds-space-sm) 0;
 }
 
@@ -1738,7 +1943,7 @@ onBeforeUnmount(() => {
   justify-content: flex-start;
   gap: 8px;
   width: 100%;
-  min-width: 200px;
+  min-width: 0;
   padding: 0 12px;
   background: var(--ds-bg-tertiary, #21262d);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1764,6 +1969,23 @@ onBeforeUnmount(() => {
 .round-selector-row-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.round-selector-row-btn.clip-selected {
+  border-color: rgba(255, 200, 100, 0.6);
+  background: rgba(255, 180, 80, 0.2);
+}
+/* 剪辑模式下选中态优先于 hover 展示 */
+.round-selector-row-btn.clip-selected:hover:not(:disabled) {
+  border-color: rgba(255, 200, 100, 0.6);
+  background: rgba(255, 180, 80, 0.2);
+}
+
+.clip-mode-hint {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .round-selector-center {
@@ -1831,6 +2053,71 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 
+.player-card-wrap {
+  position: relative;
+  width: fit-content;
+}
+
+.player-card-hover-cover {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--ds-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.player-card-wrap:hover .player-card-hover-cover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player-card-wrap.is-hidden .player-card-hover-cover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player-card-action {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.player-card-action:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.player-card-action .action-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.player-card-action.toggle-vis.active {
+  background: rgba(255, 180, 80, 0.4);
+  color: #ffc870;
+}
+
+.player-card-hidden-cover {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: var(--ds-radius-sm);
+  pointer-events: none;
+}
+
 .score-divider {
   height: 42px; /* 降低高度 */
   display: flex;
@@ -1876,6 +2163,45 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
+.team-score-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: var(--ds-radius-sm);
+}
+.team-score-wrap:hover .team-score-eye {
+  opacity: 1;
+}
+.team-score-eye {
+  opacity: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.team-score-eye:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+.team-score-eye.active {
+  color: #ffc870;
+}
+.team-score-eye-icon {
+  width: 14px;
+  height: 14px;
+}
 .team-score {
   font-size: 24px; /* 略小字号 */
   font-weight: 800;
@@ -2125,33 +2451,57 @@ onBeforeUnmount(() => {
   transition: all var(--ds-transition-base);
 }
 
-/* === 小眼睛：隐藏/显示玩家卡与击杀（在返回按钮右侧） === */
-.overlay-eye-btn {
+/* === 左侧 footer：剪辑、发布（拉长+文字） === */
+.left-panel-footer-btn {
   flex-shrink: 0;
-  width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   height: 32px;
+  padding: 0 6px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
   color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  white-space: nowrap;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.overlay-eye-btn:hover {
+.left-panel-footer-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.4);
   color: white;
 }
-.overlay-eye-btn.is-hidden {
-  color: rgba(255, 255, 255, 0.6);
+.left-panel-footer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
-.overlay-eye-btn .eye-icon {
+.left-panel-footer-btn-icon {
   width: 18px;
   height: 18px;
+  display: block;
+}
+.left-panel-footer-btn-text {
+  line-height: 1;
+}
+.clip-mode-btn.active {
+  border-color: rgba(255, 200, 100, 0.6);
+  background: rgba(255, 180, 80, 0.25);
+  color: #ffc870;
+}
+.publish-note-btn.is-published {
+  border-color: rgba(100, 200, 120, 0.5);
+  background: rgba(80, 180, 100, 0.2);
+  color: #7dd87d;
+}
+.publish-note-btn.is-published:hover:not(:disabled) {
+  border-color: rgba(100, 200, 120, 0.6);
+  background: rgba(80, 180, 100, 0.3);
+  color: #9ee89e;
 }
 
 /* === Kill Feed === */
@@ -2507,11 +2857,6 @@ onBeforeUnmount(() => {
 
   .score-separator {
     font-size: 16px;
-  }
-
-  .replayer-left-actions.at-bottom {
-    bottom: 8px;
-    left: 6px;
   }
 
   .kill-feed-container {

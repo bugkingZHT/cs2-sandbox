@@ -149,7 +149,7 @@
         </button>
       </div>
       <div class="zoom-pure-column">
-        <div v-if="!pureMode" class="save-to-note-wrap">
+        <div v-if="!pureMode && !hideSaveToNote" class="save-to-note-wrap">
           <button
             type="button"
             class="save-to-note-btn zoom-column-btn"
@@ -236,14 +236,18 @@ const props = withDefaults(
     tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
     canAddToNote?: boolean;
     showSaveToNote?: boolean;
+    /** 为 true 时隐藏「保存到笔记」按钮（已移至左侧 footer） */
+    hideSaveToNote?: boolean;
     noteUploading?: boolean;
     /** 当前回合已发布的笔记（有则按钮绿色、点击为编辑） */
     publishedNote?: CloudArchiveItem | null;
     /** 云笔记回放：source 为 cloud 时有值 */
     replayerSource?: 'local' | 'cloud' | null;
     replayerNoteId?: string | null;
+    /** 大卡上隐藏的玩家 ID，不在地图上绘制 */
+    hiddenPlayerIds?: number[];
   }>(),
-  { showSaveToNote: true, publishedNote: null }
+  { showSaveToNote: true, hideSaveToNote: false, publishedNote: null }
 );
 
 const emit = defineEmits<{
@@ -811,7 +815,7 @@ const drawPlayersForFrame = () => {
   // Clear projectiles (they don't need smooth transitions)
   clearProjectiles();
 
-  // Draw players using external renderer
+  // Draw players using external renderer（隐藏大卡上勾选隐藏的玩家）
   drawPlayersForFrameExternal({
     frame,
     meta: props.replayMeta,
@@ -823,10 +827,27 @@ const drawPlayersForFrame = () => {
     onPlayerPointerOver,
     onPlayerPointerMove,
     onPlayerPointerOut,
+    hiddenPlayerIds: props.hiddenPlayerIds,
   });
 
-  // Draw projectiles if present
+  // Draw projectiles if present（隐藏玩家时，其投掷物一并隐藏）
   if (frame.projectiles || frame.droppedEquipment) {
+    const hiddenSet = props.hiddenPlayerIds?.length ? new Set(props.hiddenPlayerIds) : null;
+    let projectilesToDraw = frame.projectiles;
+    let sortedProjsToDraw = frame.sortedProjs;
+    if (hiddenSet && frame.projectiles && Object.keys(frame.projectiles).length > 0) {
+      const filtered: Record<number, ProjectileState> = {};
+      for (const [eidStr, proj] of Object.entries(frame.projectiles)) {
+        if (!hiddenSet.has(proj.throwerID)) {
+          filtered[Number(eidStr)] = proj;
+        }
+      }
+      projectilesToDraw = Object.keys(filtered).length > 0 ? filtered : undefined;
+      sortedProjsToDraw = projectilesToDraw && frame.sortedProjs
+        ? frame.sortedProjs.filter((eid) => projectilesToDraw && eid in projectilesToDraw)
+        : undefined;
+    }
+
     // Convert players map to array with metadata enrichment for projectiles renderer
     const playersArray: PlayerState[] = [];
     if (frame.players && props.replayMeta?.serverPlayer) {
@@ -858,9 +879,9 @@ const drawPlayersForFrame = () => {
     }
     
     drawProjectilesForFrame(
-      frame.projectiles, 
+      projectilesToDraw, 
       playersArray, 
-      frame.sortedProjs,
+      sortedProjsToDraw,
       frame.droppedEquipment,
       frame.timeMs,
       frame.round // Pass current round for team color flipping
@@ -895,6 +916,17 @@ watch(
       drawPlayersForFrame();
     }
   },
+);
+
+// 大卡上点击眼睛隐藏/显示玩家后，立即重绘地图
+watch(
+  () => props.hiddenPlayerIds,
+  () => {
+    if (props.frames && props.frames.length > 0) {
+      drawPlayersForFrame();
+    }
+  },
+  { deep: true }
 );
 
 // Watch isPlaying prop to stop animation when paused
@@ -1024,8 +1056,8 @@ onBeforeUnmount(() => {
 
 .map-controls-panel {
   position: absolute;
-  bottom: 24px;
-  right: 24px;
+  bottom: var(--ds-space-xl);
+  right: var(--ds-space-xl);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1569,7 +1601,6 @@ onBeforeUnmount(() => {
 /* === 最小 1024×768 适配 === */
 @media (max-width: 1024px), (max-height: 768px) {
   .map-controls-panel {
-    bottom: 12px;
     right: 12px;
     gap: 8px;
   }

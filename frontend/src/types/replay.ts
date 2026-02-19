@@ -172,6 +172,12 @@ export interface ReplayRound {
   frames: Frame[];
 }
 
+/** 导演剪辑：每段为回合号，可选该回合要保留的玩家 ID；未指定则保留该回合全部玩家 */
+export interface ClipRoundConfig {
+  round: number;
+  playerIds?: number[];
+}
+
 // WASM 返回的完整数据结构
 export interface ParsedReplayData {
   meta: ReplayMeta;

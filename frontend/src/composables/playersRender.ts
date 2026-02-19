@@ -376,8 +376,7 @@ const updateWeaponIcon = async (
   }
 };
 
-// Main draw function for players
-export const drawPlayersForFrame = (options: {
+export interface DrawPlayersForFrameOptions {
   frame: Frame | undefined;
   meta?: ReplayMeta | null;
   playerLayer: Container | null;
@@ -388,7 +387,12 @@ export const drawPlayersForFrame = (options: {
   onPlayerPointerOver?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerMove?: (e: { clientX: number; clientY: number }, player: PlayerState) => void;
   onPlayerPointerOut?: (player: PlayerState) => void;
-}) => {
+  /** 大卡上隐藏的玩家 ID，不绘制 */
+  hiddenPlayerIds?: number[];
+}
+
+// Main draw function for players
+export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
   const {
     frame,
     meta,
@@ -400,7 +404,9 @@ export const drawPlayersForFrame = (options: {
     onPlayerPointerOver,
     onPlayerPointerMove,
     onPlayerPointerOut,
+    hiddenPlayerIds,
   } = options;
+  const hiddenSet = hiddenPlayerIds && hiddenPlayerIds.length > 0 ? new Set(hiddenPlayerIds) : null;
 
   if (!playerLayer || !frame) {
     if (playerLayer) {
@@ -436,6 +442,7 @@ export const drawPlayersForFrame = (options: {
 
     for (const playerInfo of serverPlayers) {
       const playerId = playerInfo.id;
+      if (hiddenSet?.has(playerId)) continue;
       const frameData = playerMap[playerId];
       
       // Skip if player not found in current frame
@@ -477,6 +484,7 @@ export const drawPlayersForFrame = (options: {
     const playerMap = frame.players;
 
     for (const playerId of playerIds) {
+      if (hiddenSet?.has(playerId)) continue;
       const frameData = playerMap[playerId];
       if (!frameData) continue;
       
