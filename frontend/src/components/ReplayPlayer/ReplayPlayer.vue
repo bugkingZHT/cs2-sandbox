@@ -686,6 +686,8 @@ const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
 // 大卡上点击小眼睛隐藏的玩家 ID：不在地图绘制，大卡持续深色蒙层
 const hiddenPlayerIds = ref<Set<number>>(new Set());
+/** 进入道具解析前保存的隐藏状态，退出时恢复 */
+const hiddenPlayerIdsBeforeAnalyze = ref<Set<number> | null>(null);
 
 function togglePlayerVisibility(playerId: number) {
   const next = new Set(hiddenPlayerIds.value);
@@ -906,6 +908,22 @@ const handleGrenadeAnalyzeClose = () => {
   }
 };
 
+// 道具解析模式：进入时仅显示当前投掷人（其余用小眼睛逻辑 hide），退出时恢复先前隐藏状态
+watch(isGrenadeAnalyzeMode, (isAnalyze) => {
+  if (isAnalyze) {
+    hiddenPlayerIdsBeforeAnalyze.value = new Set(hiddenPlayerIds.value);
+    const throwerId = selectedProjectile.value?.throwerID;
+    const allIds = effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? [];
+    const toHide = throwerId != null ? allIds.filter((id) => id !== throwerId) : allIds;
+    hiddenPlayerIds.value = new Set(toHide);
+  } else {
+    if (hiddenPlayerIdsBeforeAnalyze.value != null) {
+      hiddenPlayerIds.value = hiddenPlayerIdsBeforeAnalyze.value;
+      hiddenPlayerIdsBeforeAnalyze.value = null;
+    }
+  }
+});
+
 // Check URL for frameId parameter and seek to it
 const checkUrlFrameId = () => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -1013,11 +1031,11 @@ const teamCTPlayers = computed<PlayerState[]>(() => {
     const frameData = frame.players[playerInfo.id];
     if (!frameData) continue; // Skip if player not in this frame
     
-    // Merge metadata with frame data, using display team for styling
+    // Merge metadata with frame data; name 与 hover 小卡一致：优先当前帧原生 name，再 fallback serverPlayer.name
     result.push({
       ...frameData,
       id: playerInfo.id,
-      name: playerInfo.name,
+      name: frameData.name ?? playerInfo.name,
       team: displayTeam, // Use display team
       steamID: playerInfo.steamID,
       isBot: playerInfo.isBot
@@ -1038,11 +1056,11 @@ const teamTPlayers = computed<PlayerState[]>(() => {
     const frameData = frame.players[playerInfo.id];
     if (!frameData) continue; // Skip if player not in this frame
     
-    // Merge metadata with frame data, using display team for styling
+    // Merge metadata with frame data; name 与 hover 小卡一致：优先当前帧原生 name，再 fallback serverPlayer.name
     result.push({
       ...frameData,
       id: playerInfo.id,
-      name: playerInfo.name,
+      name: frameData.name ?? playerInfo.name,
       team: displayTeam, // Use display team
       steamID: playerInfo.steamID,
       isBot: playerInfo.isBot
