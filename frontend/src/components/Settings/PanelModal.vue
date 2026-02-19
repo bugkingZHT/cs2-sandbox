@@ -1492,7 +1492,7 @@ const handleCleanStorageLeak = async () => {
 .profile-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-xs);
+  gap: var(--ds-space-sm);
   width: 100%;
 }
 
