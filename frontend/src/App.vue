@@ -136,6 +136,7 @@
           :published-note-for-round="publishedNoteForCurrentRound"
           @save-current-round="handleAddToNote"
           @edit-note="onRequestEditNote"
+          @clip-publish-available="onClipPublishAvailable"
         />
       </main>
     </div>
@@ -497,13 +498,15 @@ const {
   editingNoteId,
 } = useNote();
 
+const canPublishClip = ref(false);
+function onClipPublishAvailable(payload: { available: boolean }) {
+  canPublishClip.value = payload.available;
+}
 const canAddToNote = computed(
   () =>
     currentPage.value === 'player' &&
     replayerSource.value !== 'cloud' &&
-    !!currentDemoId.value &&
-    !!currentRoundNumber.value &&
-    !!replay.value
+    ((!!currentDemoId.value && !!currentRoundNumber.value && !!replay.value) || canPublishClip.value)
 );
 
 /** 当前播放的云笔记（source=cloud 时用于 ReplayPlayer 左侧「笔记」tab） */
@@ -514,15 +517,10 @@ const cloudNoteForReplayer = computed(() => {
   return item ? { title: item.title, content: item.content ?? '' } : null;
 });
 
-/** 当前回合是否已有发布的笔记（有则按钮绿色、点击为编辑） */
+/** 当前回合是否已有发布的笔记（有则按钮绿色、点击为编辑）。仅 cloud 时辨识；local 永远视为发布新笔记 */
 const publishedNoteForCurrentRound = computed(() => {
   if (replayerSource.value === 'cloud' && replayerNoteId.value) {
     return noteList.value.find((n) => n.id === replayerNoteId.value) ?? null;
-  }
-  if (replayerSource.value === 'local' && currentDemoId.value != null && currentRoundNumber.value != null) {
-    return noteList.value.find(
-      (n) => n.demo_uuid === currentDemoId.value && n.demo_round === currentRoundNumber.value
-    ) ?? null;
   }
   return null;
 });
@@ -551,26 +549,14 @@ async function onConfirmDeleteNote() {
   openNoteMenuId.value = null;
 }
 
-async function handleAddToNote() {
-  if (!canAddToNote.value || !currentDemoId.value || !currentRoundNumber.value || !replay.value) return;
-  const uuid = currentDemoId.value;
-  const round = currentRoundNumber.value;
-  const r = replay.value;
-
-  // 统一使用 modal，让新增时可填写 content（未登录则在 useNote 内走本地存档逻辑）
+async function handleAddToNote(forkContext?: import('@/composables/useNote').UploadReplayContext) {
+  // ReplayPlayer 已统一 fork 新 demo（round_0）并传入 context，直接打开上传弹窗
+  if (!forkContext) return;
   if (currentUser.value && isQuotaFull.value) {
     showQuotaExceededModal.value = true;
     return;
   }
-  openUploadModal({
-    replay: {
-      mapName: r.mapName,
-      teamCT: resolveTeamDisplayName(r.teamCT ?? '', 3, r.serverPlayer),
-      teamT: resolveTeamDisplayName(r.teamT ?? '', 2, r.serverPlayer),
-    },
-    roundNumber: round,
-    demoId: uuid,
-  });
+  openUploadModal(forkContext);
 }
 
 function formatNoteTime(ms: number): string {

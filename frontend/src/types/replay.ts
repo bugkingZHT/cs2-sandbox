@@ -125,6 +125,18 @@ export interface Frame {
   bomb?: BombFrame;
 }
 
+/** 发布时保存的播放设置，播放笔记时直接应用 */
+export interface ReplaySettings {
+  /** 隐藏的玩家 ID 列表（小眼睛关闭的玩家） */
+  hiddenPlayerIds?: number[];
+  /** 地图是否显示投掷物 */
+  showMapProjectiles?: boolean;
+  /** 地图是否显示掉落道具 */
+  showMapDropped?: boolean;
+  /** 地图是否显示 C4 */
+  showMapBomb?: boolean;
+}
+
 // 录像元数据（地图整体信息）
 export interface ReplayMeta {
   uuid: string;
@@ -154,6 +166,12 @@ export interface ReplayMeta {
   parsingProgress?: number; // 0-100
   parsingStatus?: string; // 状态描述
   lastTickTime?: number; // 最后tick时间戳（用于超时检测）
+
+  /** 发布时保存的播放设置，播放笔记时应用（玩家可见性、地图投掷物/掉落/C4） */
+  replaySettings?: ReplaySettings;
+
+  /** true 表示由发布笔记 fork 出的 demo，仅用于上传/笔记播放，不在 demolib 展示 */
+  fork?: boolean;
 }
 
 // 玩家基础信息（存储在元数据中）

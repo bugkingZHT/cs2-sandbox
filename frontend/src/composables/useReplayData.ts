@@ -117,8 +117,9 @@ function createReplayData() {
     }
     metas = await metaStorage.loadAllMetas();
 
-    // Step 5: 直接映射 meta 到 replayList（无需 cache 合并）
-    replayList.value = metas.map(meta => ({
+    // Step 5: 直接映射 meta 到 replayList（无需 cache 合并）；fork=true 的 demo 不在 demolib 展示
+    const listMetas = metas.filter((m) => m.fork !== true);
+    replayList.value = listMetas.map(meta => ({
       ...meta,
       id: meta.uuid,
       frames: [],

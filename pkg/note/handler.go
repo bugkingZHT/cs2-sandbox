@@ -176,8 +176,8 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	demoRound, err := strconv.Atoi(demoRoundStr)
-	if err != nil || demoRound < 1 {
-		writeJSONErr(w, http.StatusBadRequest, "demo_round must be positive integer")
+	if err != nil || demoRound < 0 {
+		writeJSONErr(w, http.StatusBadRequest, "demo_round must be non-negative integer")
 		return
 	}
 	if permission == "" {
@@ -426,8 +426,8 @@ func (h *Handlers) GetItemByDemo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	demoRound, err := strconv.Atoi(demoRoundStr)
-	if err != nil || demoRound < 1 {
-		writeJSONErr(w, http.StatusBadRequest, "demo_round must be positive integer")
+	if err != nil || demoRound < 0 {
+		writeJSONErr(w, http.StatusBadRequest, "demo_round must be non-negative integer")
 		return
 	}
 	u := session.UserFromContext(r.Context())
@@ -466,8 +466,8 @@ func (h *Handlers) GetFileByDemo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	demoRound, err := strconv.Atoi(demoRoundStr)
-	if err != nil || demoRound < 1 {
-		writeJSONErr(w, http.StatusBadRequest, "demo_round must be positive integer")
+	if err != nil || demoRound < 0 {
+		writeJSONErr(w, http.StatusBadRequest, "demo_round must be non-negative integer")
 		return
 	}
 	log.Printf("[Note] GetFileByDemo: demo_uuid=%s demo_round=%d", demoUUID, demoRound)

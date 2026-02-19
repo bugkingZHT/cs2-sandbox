@@ -629,11 +629,11 @@
               class="left-panel-footer-btn publish-note-btn"
               :class="{ 'is-published': !!props.publishedNoteForRound }"
               :title="props.publishedNoteForRound ? '编辑已发布的笔记' : (props.canAddToNote ? '发布笔记' : '当前回合可发布到笔记')"
-              :disabled="(!props.publishedNoteForRound && !props.canAddToNote) || props.noteUploading"
-              @click="props.publishedNoteForRound ? emit('edit-note', props.publishedNoteForRound) : emit('save-current-round')"
+              :disabled="(!props.publishedNoteForRound && !props.canAddToNote) || props.noteUploading || clipForking"
+              @click="onPublishClick"
             >
               <img src="/icons/upload.svg" alt="" class="left-panel-footer-btn-icon" width="18" height="18" />
-              <span class="left-panel-footer-btn-text">发布</span>
+              <span class="left-panel-footer-btn-text">{{ replayerSource === 'cloud' ? '编辑' : '发布' }}</span>
             </button>
           </div>
         </div>
@@ -689,7 +689,8 @@ import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
 import { replaceLocation, pathRef, searchRef, getQuery, REPLAYER_RETURN_URL_KEY } from '@/location';
-import type { CloudArchiveItem } from '@/composables/useNote';
+import type { CloudArchiveItem, UploadReplayContext } from '@/composables/useNote';
+import { forkClipToNewDemo } from '@/composables/clipForkForNote';
 
 const props = withDefaults(
   defineProps<{
@@ -706,8 +707,9 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  (e: 'save-current-round'): void;
+  (e: 'save-current-round', forkContext?: UploadReplayContext): void;
   (e: 'edit-note', item: CloudArchiveItem): void;
+  (e: 'clip-publish-available', payload: { available: boolean }): void;
 }>();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
@@ -721,6 +723,8 @@ const showMapBomb = ref(true);
 // 导演剪辑模式：多选回合在一条时间线播放（仅 local）
 const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
+/** 剪辑 fork 为 round_0 进行中，发布按钮短暂禁用 */
+const clipForking = ref(false);
 // 大卡上点击小眼睛隐藏的玩家 ID：不在地图绘制，大卡持续深色蒙层
 const hiddenPlayerIds = ref<Set<number>>(new Set());
 /** 进入道具解析前保存的隐藏状态，退出时恢复 */
@@ -818,6 +822,30 @@ const effectiveReplay = computed<ReplayData | null>(() => {
   }
   return r;
 });
+
+watch(
+  [isClipMode, () => mergedFrames.value.length],
+  () => {
+    emit('clip-publish-available', { available: isClipMode.value && mergedFrames.value.length > 0 });
+  },
+  { immediate: true }
+);
+
+// 播放笔记时应用 meta 中保存的 replaySettings（玩家可见性、地图投掷物/掉落/C4）
+watch(
+  [replayerSource, () => replay.value?.replaySettings],
+  () => {
+    if (replayerSource.value !== 'cloud') return;
+    const s = replay.value?.replaySettings;
+    if (!s) return;
+    hiddenPlayerIds.value = new Set(s.hiddenPlayerIds ?? []);
+    hiddenPlayerIdsBeforeSettingsHideAll.value = null;
+    showMapProjectiles.value = s.showMapProjectiles ?? true;
+    showMapDropped.value = s.showMapDropped ?? true;
+    showMapBomb.value = s.showMapBomb ?? true;
+  },
+  { immediate: true }
+);
 
 const allPlayerIds = computed(() => effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? []);
 /** 设置-玩家：与卡片小眼睛共用逻辑。取消勾选=全部隐藏，勾选=恢复之前状态 */
@@ -1630,6 +1658,40 @@ function toggleClipRound(roundNumber: number) {
     clipRounds.value = clipRounds.value.filter((_, i) => i !== idx);
   } else {
     clipRounds.value = [...clipRounds.value, { round: roundNumber }];
+  }
+}
+
+/** 发布笔记点击：不论是否剪辑模式，都 fork 一份 demo meta 并生成新 round_0.pb，再交给父级打开上传弹窗 */
+async function onPublishClick() {
+  if (props.publishedNoteForRound) {
+    emit('edit-note', props.publishedNoteForRound);
+    return;
+  }
+  if (!props.canAddToNote) return;
+  const framesToSave =
+    isClipMode.value && mergedFrames.value.length > 0 ? mergedFrames.value : (frames.value ?? []);
+  const sourceReplay = effectiveReplay.value ?? replay.value;
+  if (!sourceReplay || framesToSave.length === 0) {
+    window.dispatchEvent(
+      new CustomEvent('app:toast', { detail: { message: '请先加载回合或选择剪辑内容', type: 'warning' } })
+    );
+    return;
+  }
+  clipForking.value = true;
+  try {
+    const settings = {
+      hiddenPlayerIds: hiddenPlayerIdsArray.value,
+      showMapProjectiles: showMapProjectiles.value,
+      showMapDropped: showMapDropped.value,
+      showMapBomb: showMapBomb.value,
+    };
+    const ctx = await forkClipToNewDemo(framesToSave, sourceReplay, settings);
+    emit('save-current-round', ctx);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '导出失败';
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: msg, type: 'error' } }));
+  } finally {
+    clipForking.value = false;
   }
 }
 

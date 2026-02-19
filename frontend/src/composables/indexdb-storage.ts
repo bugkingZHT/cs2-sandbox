@@ -58,14 +58,17 @@ export class IndexedDBMetaStorage {
   // Save meta to IndexedDB
   async saveMeta(meta: ReplayMeta): Promise<void> {
     if (!this.db) throw new Error('DB not initialized');
-    
+    // Structured clone used by put() cannot clone Vue reactive proxies or other non-plain values.
+    // Ensure a plain object so put() never fails with "could not be cloned".
+    const plain = JSON.parse(JSON.stringify(meta)) as ReplayMeta;
+
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(META_STORE, 'readwrite');
       const store = tx.objectStore(META_STORE);
-      const request = store.put(meta);
-      
+      const request = store.put(plain);
+
       request.onsuccess = () => {
-        console.log(`[IndexedDB] Saved meta: ${meta.uuid.substring(0, 8)}, status=${meta.status}`);
+        console.log(`[IndexedDB] Saved meta: ${plain.uuid.substring(0, 8)}, status=${plain.status}`);
         resolve();
       };
       request.onerror = () => reject(request.error);

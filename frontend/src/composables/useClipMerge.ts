@@ -218,6 +218,7 @@ export function useClipMerge(
       const mergedPlayers: PlayerInfo[] = [];
       for (let segIdx = 0; segIdx < rounds.length; segIdx++) {
         const seg = allSegments[segIdx];
+        const roundNum = rounds[segIdx].round;
         const offset = idOffsetsPerSegment[segIdx] ?? 0;
         const idsInSeg = new Set<number>();
         for (const f of seg) {
@@ -230,12 +231,13 @@ export function useClipMerge(
         for (const newId of idsInSeg) {
           const oldId = newId - offset;
           const info = serverPlayer.find((p) => p.id === oldId);
+          const baseName = info?.name ?? `Player ${newId}`;
           mergedPlayers.push(
             info
-              ? { ...info, id: newId }
+              ? { ...info, id: newId, name: `${baseName}-${roundNum}` }
               : {
                   id: newId,
-                  name: `Player ${newId}`,
+                  name: `Player ${newId}-${roundNum}`,
                   team: 0,
                   steamID: 0,
                   isBot: false,
