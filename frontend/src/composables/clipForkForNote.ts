@@ -3,14 +3,14 @@
  * 供上传流程使用。
  */
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ReplaySettings } from '@/types/replay';
-import { getOPFSStorage } from './opfs-storage';
+import { getReplayStorage } from './indexdb-storage';
 import { getMetaStorage } from './indexdb-storage';
 import { encodeReplayRound } from './proto-converters';
 import { resolveTeamDisplayName } from './teamDisplay';
 import type { UploadReplayContext } from './useNote';
 
 /**
- * Fork 剪辑结果为新 demo：生成新 UUID，写入 meta 到 IndexedDB（含 replaySettings），将 merged 帧写入 OPFS round_0.pb，
+ * Fork 剪辑结果为新 demo：生成新 UUID，写入 meta 到 IndexedDB（含 replaySettings），将 merged 帧写入 IndexedDB round_0.pb，
  * 返回上传弹窗所需的上下文。
  */
 export async function forkClipToNewDemo(
@@ -74,8 +74,8 @@ export async function forkClipToNewDemo(
     frames: mergedFrames,
   };
   const roundBytes = await encodeReplayRound(round);
-  const opfs = await getOPFSStorage();
-  await opfs.saveRound(newUuid, 0, roundBytes);
+  const replay = await getReplayStorage();
+  await replay.saveRound(newUuid, 0, roundBytes);
 
   return {
     demoId: newUuid,

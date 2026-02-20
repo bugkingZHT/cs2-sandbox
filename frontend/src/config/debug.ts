@@ -23,10 +23,10 @@ export const DEBUG_CONFIG = {
   enableFrameDataViewer: true,
 
   /**
-   * Enable OPFS Storage Viewer
+   * Enable Replay Storage Viewer
    * 
    * When enabled, adds a debug button in the Demo Library header.
-   * Clicking this button opens OPFS storage details in a new browser tab.
+   * Clicking this button opens IndexedDB replay storage details in a new browser tab.
    * 
    * Useful for:
    * - Inspecting stored replay files
@@ -36,7 +36,7 @@ export const DEBUG_CONFIG = {
    * 
    * Set to `false` in production to disable this feature.
    */
-  enableOPFSStorageViewer: true,
+  enableStorageViewer: true,
 
   /**
    * Enable Storage Quota Display
@@ -94,7 +94,7 @@ export const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
 /** Default parse frame ratio when not set (1=1:1, 2=1:2, positive integer). */
 export const PARSE_FRAME_RATIO_DEFAULT = 2;
 
-/** localStorage key for OPFS leak cleanup max surge (debug panel). */
+/** localStorage key for orphan round cleanup max surge (debug panel). */
 export const MAX_SURGE_DEMO_NUM_KEY = 'maxSurgeDemoNum';
-/** Default max orphan dirs to keep when cleaning OPFS leak (non-negative integer). */
+/** Default max orphan replays to keep when cleaning storage (non-negative integer). */
 export const MAX_SURGE_DEMO_NUM_DEFAULT = 16;

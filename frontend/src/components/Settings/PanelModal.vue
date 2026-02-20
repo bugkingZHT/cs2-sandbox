@@ -338,7 +338,7 @@
                   <svg class="quota-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor">
                     <path d="M952.288 697.312l-108.352-467.2a83.424 83.424 0 0 0-26.944-49.344c-14.4-12.8-32.768-20.128-51.968-20.768H257.472c-40.256 1.568-72.768 32.704-78.944 71.68L70.208 697.28c-4.64 12.48-6.208 26.528-6.208 38.976C64 806.368 121.28 864 192.48 864h639.072C902.784 864 960 806.368 960 736.288c0-12.48-3.072-26.496-7.712-38.976z m-120.736 104.384H192.48a62.464 62.464 0 0 1-45.12-18.496 63.168 63.168 0 0 1-18.368-45.344c0-35.84 29.44-63.904 63.488-63.904h639.072c35.616 0 63.456 28.064 63.456 63.904 1.568 34.24-27.84 63.84-63.456 63.84z m-32.48-84.128a21.6 21.6 0 0 0-21.664 18.72 21.76 21.76 0 0 0 18.56 21.76h3.104a20.544 20.544 0 0 0 20.128-20.192c0-12.48-7.744-20.288-20.128-20.288z m-41.792 20.288c0-23.36 18.56-42.048 41.792-42.048 23.2 0 41.792 18.688 41.792 42.048 0 23.36-18.56 42.048-41.792 42.048a41.728 41.728 0 0 1-41.792-42.048z" fill="currentColor"></path>
                   </svg>
-                  <h3 class="quota-title">OPFS Storage Quota</h3>
+                  <h3 class="quota-title">Storage Quota</h3>
                 </div>
                 
                 <div class="quota-details">
@@ -433,7 +433,7 @@
                 </div>
               </div>
               <div
-                v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+                v-if="DEBUG_CONFIG.enableStorageViewer"
                 class="parse-option-cell"
               >
                 <div class="input-group">
@@ -451,17 +451,17 @@
             <div class="debug-actions-right">
               <div class="button-group">
                 <button
-                  v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+                  v-if="DEBUG_CONFIG.enableStorageViewer"
                   class="ds-btn ds-btn-console"
-                  @click="handleOPFSViewer"
+                  @click="handleStorageViewer"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                   </svg>
-                  <span>OPFS Viewer</span>
+                  <span>Storage Viewer</span>
                 </button>
                 <button
-                  v-if="DEBUG_CONFIG.enableOPFSStorageViewer"
+                  v-if="DEBUG_CONFIG.enableStorageViewer"
                   class="ds-btn ds-btn-console"
                   :disabled="cleaningStorage"
                   @click="handleCleanStorageLeak"
@@ -513,7 +513,7 @@ import {
   MAX_SURGE_DEMO_NUM_DEFAULT,
 } from '@/config/debug';
 import { FRONTEND_VERSION, COMPATIBLE_ENGINE_VERSIONS } from '@/config/version';
-import { cleanupOrphanedReplayStorage } from '@/composables/opfs-storage';
+import { cleanupOrphanedReplayStorage } from '@/composables/indexdb-storage';
 import { useAuth } from '@/composables/useAuth';
 
 interface Props {
@@ -524,7 +524,7 @@ interface Props {
 interface Emits {
   (e: 'close'): void;
   (e: 'open-frame-data-viewer'): void;
-  (e: 'open-opfs-viewer'): void;
+  (e: 'open-storage-viewer'): void;
 }
 
 const props = defineProps<Props>();
@@ -831,7 +831,7 @@ onMounted(() => {
   }
 
   // Load maxSurgeDemoNum from localStorage (default 32)
-  if (DEBUG_CONFIG.enableOPFSStorageViewer) {
+  if (DEBUG_CONFIG.enableStorageViewer) {
     const savedSurge = localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY);
     if (savedSurge !== null) {
       const n = parseInt(savedSurge, 10);
@@ -953,12 +953,12 @@ const handleFrameDataViewer = () => {
   emit('open-frame-data-viewer');
 };
 
-const handleOPFSViewer = () => {
+const handleStorageViewer = () => {
   emit('close');
-  emit('open-opfs-viewer');
+  emit('open-storage-viewer');
 };
 
-// Clean Storage Leak: remove OPFS dirs that have no meta in IndexedDB
+// Clean Storage: remove orphan rounds that have no meta in IndexedDB
 const cleaningStorage = ref(false);
 const cleanupMessage = ref('');
 const cleanupMessageType = ref<'success' | 'error' | 'info'>('info');
@@ -975,7 +975,7 @@ const handleCleanStorageLeak = async () => {
     const surge = Math.max(0, Math.floor(Number(maxSurgeDemoNum.value))) || MAX_SURGE_DEMO_NUM_DEFAULT;
     const result = await cleanupOrphanedReplayStorage(surge);
     if (result.count === 0) {
-      cleanupMessage.value = '没有发现泄露（所有 OPFS 目录均有对应 IndexedDB meta）';
+      cleanupMessage.value = '没有发现泄露（所有 round 均有对应 meta）';
       cleanupMessageType.value = 'info';
     } else {
       cleanupMessage.value = `已清理 ${result.count} 个泄露目录`;

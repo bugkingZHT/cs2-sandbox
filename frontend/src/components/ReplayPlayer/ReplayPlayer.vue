@@ -2189,7 +2189,7 @@ onBeforeUnmount(() => {
 }
 
 .settings-card-title {
-  margin: 0 0 10px;
+  padding: 0 0 var(--ds-space-md) 0;
   font-size: 13px;
   font-weight: 600;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);

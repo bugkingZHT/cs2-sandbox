@@ -161,7 +161,7 @@
       :current-page="currentPage"
       @close="showConsoleModal = false"
       @open-frame-data-viewer="handleFrameDataViewer"
-      @open-opfs-viewer="handleOPFSViewer"
+      @open-storage-viewer="handleStorageViewer"
     />
 
     <!-- Beta Warning Modal -->
@@ -404,7 +404,7 @@ import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composable
 import { useAuth } from '@/composables/useAuth';
 import { resolveTeamDisplayName } from '@/composables/teamDisplay';
 import { DEBUG_CONFIG } from '@/config/debug';
-import { showOPFSStorageDetails } from '@/composables/opfsStorageViewer';
+import { showReplayStorageDetails } from '@/composables/replayStorageViewer';
 import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery, saveReplayerReturnUrl } from '@/location';
 
 const { 
@@ -550,9 +550,12 @@ async function onConfirmDeleteNote() {
 }
 
 async function handleAddToNote(forkContext?: import('@/composables/useNote').UploadReplayContext) {
-  // ReplayPlayer 已统一 fork 新 demo（round_0）并传入 context，直接打开上传弹窗
   if (!forkContext) return;
-  if (currentUser.value && isQuotaFull.value) {
+  if (!currentUser.value) {
+    showNoteToast('需要登录账户', 'warning');
+    return;
+  }
+  if (isQuotaFull.value) {
     showQuotaExceededModal.value = true;
     return;
   }
@@ -943,9 +946,9 @@ const handleFrameDataViewer = () => {
   window.dispatchEvent(new CustomEvent('debug:show-frame-data'));
 };
 
-const handleOPFSViewer = async () => {
+const handleStorageViewer = async () => {
   showConsoleModal.value = false;
-  await showOPFSStorageDetails();
+  await showReplayStorageDetails();
 };
 
 const showBetaWarning = () => {

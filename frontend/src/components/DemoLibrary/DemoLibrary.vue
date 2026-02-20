@@ -290,9 +290,6 @@
 
     <!-- Empty State -->
     <div v-else-if="demoList.length === 0" class="ds-empty">
-      <div class="ds-empty-icon">
-        <img src="/icons/replay.svg" alt="No demos" class="empty-icon-svg" />
-      </div>
       <h3 class="ds-empty-title">暂无 Demo 文件</h3>
       <p class="ds-empty-description">点击"上传"按钮开始解析 Demo</p>
     </div>
@@ -1120,7 +1117,7 @@ const performForceDelete = async () => {
       console.log('[ForceDelete] 🗑️ Explicit GC triggered');
     }
     
-    // Step 3: Delete demo (this will clean up IndexedDB + OPFS)
+    // Step 3: Delete demo (this will clean up IndexedDB meta + rounds)
     emit('delete-demo', uuid);
     console.log('[ForceDelete] ✅ Demo deleted successfully');
     

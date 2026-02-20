@@ -1,7 +1,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ParsedReplayData, WorldBounds } from '@/types/replay';
 import ParserWorker from '@/workers/wasm-parser.worker?worker';
-import { getOPFSStorage, cleanupOrphanedReplayStorage } from './opfs-storage';
+import { getReplayStorage, cleanupOrphanedReplayStorage } from './indexdb-storage';
 import { getMetaStorage } from './indexdb-storage';
 import { decodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
 import { PARSER_CONFIG } from '@/config/parser';
@@ -105,7 +105,7 @@ function createReplayData() {
     let metas = await metaStorage.loadAllMetas();
     console.log('[LoadAllReplays] 从 IndexedDB 加载的 meta 数量:', metas.length);
 
-    // Step 2 & 3: 清理 OPFS 泄露（无 meta 的目录），超过 maxSurgeDemoNum 时按时间从旧到新清理至该数以内
+    // Step 2 & 3: 清理 IndexedDB 泄露（无 meta 的 round），超过 maxSurgeDemoNum 时按时间从旧到新清理至该数以内
     const maxSurge = Math.max(0, parseInt(localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY) ?? String(MAX_SURGE_DEMO_NUM_DEFAULT), 10)) || MAX_SURGE_DEMO_NUM_DEFAULT;
     await cleanupOrphanedReplayStorage(maxSurge);
 
@@ -129,23 +129,23 @@ function createReplayData() {
     console.log('[LoadAllReplays] 最终 replay list 大小:', replayList.value.length);
   };
 
-  // Load replay meta and first round from OPFS
-  const loadReplayFromOPFS = async (uuid?: string): Promise<ReplayData | null> => {
-    console.log('[OPFS] 开始从数据库加载回放数据...', { uuid, storedUuid: localStorage.getItem(LATEST_KEY) });
+  // Load replay meta and first round from IndexedDB
+  const loadReplayFromStorage = async (uuid?: string): Promise<ReplayData | null> => {
+    console.log('[ReplayStorage] 开始从数据库加载回放数据...', { uuid, storedUuid: localStorage.getItem(LATEST_KEY) });
     const metaStorage = await getMetaStorage();
-    const opfsStorage = await getOPFSStorage();
+    const replayStorage = await getReplayStorage();
     
     const targetUuid = uuid || localStorage.getItem(LATEST_KEY);
-    console.log('[OPFS] 目标UUID:', targetUuid);
+    console.log('[ReplayStorage] 目标UUID:', targetUuid);
     if (!targetUuid) {
-      console.log('[OPFS] 没有找到目标UUID，返回null');
+      console.log('[ReplayStorage] 没有找到目标UUID，返回null');
       return null;
     }
 
     // 从 IndexedDB 加载 meta
     const rawMeta = await metaStorage.loadMeta(targetUuid);
     if (!rawMeta) {
-      console.log('[OPFS] 未找到 meta');
+      console.log('[ReplayStorage] 未找到 meta');
       return null;
     }
 
@@ -155,18 +155,18 @@ function createReplayData() {
     // 兼容性检查
     const compat = checkCompatibility(meta.engineVersion);
     if (!compat.compatible) {
-      console.warn('[OPFS]', compat.warning);
+      console.warn('[ReplayStorage]', compat.warning);
     }
 
-    // 从 OPFS 加载第一回合
-    const roundBytes = await opfsStorage.loadRound(targetUuid, 1);
+    // 从 IndexedDB 加载第一回合
+    const roundBytes = await replayStorage.loadRound(targetUuid, 1);
     if (!roundBytes) {
-      console.warn('[OPFS] 第一回合未找到');
+      console.warn('[ReplayStorage] 第一回合未找到');
       return null;
     }
     const firstRound = adaptRound(await decodeReplayRound(roundBytes), meta.engineVersion);
 
-    console.log('[OPFS] Loaded meta and first round (round 1) with', firstRound.frames.length, 'frames');
+    console.log('[ReplayStorage] Loaded meta and first round (round 1) with', firstRound.frames.length, 'frames');
 
     // Sort frames within the first round
     const sortedFrames = firstRound.frames.sort((a, b) => a.timeMs - b.timeMs);
@@ -205,11 +205,11 @@ function createReplayData() {
   ): Promise<{ frames: Frame[]; roundDurationMs: number } | null> => {
     try {
       const metaStorage = await getMetaStorage();
-      const opfsStorage = await getOPFSStorage();
+      const replayStorage = await getReplayStorage();
       const rawMeta = await metaStorage.loadMeta(uuid);
       if (!rawMeta) return null;
       const meta = adaptMeta(rawMeta);
-      const roundBytes = await opfsStorage.loadRound(uuid, roundNumber);
+      const roundBytes = await replayStorage.loadRound(uuid, roundNumber);
       if (!roundBytes) return null;
       const round = adaptRound(await decodeReplayRound(roundBytes), meta.engineVersion);
       const sortedFrames = round.frames.sort((a, b) => a.timeMs - b.timeMs);
@@ -262,14 +262,14 @@ function createReplayData() {
     });
   };
 
-  /** 本地录像：IndexedDB meta + OPFS uuid 路径，找不到即 not_found */
+  /** 本地录像：IndexedDB meta + round 数据，找不到即 not_found */
   const loadReplayByLocal = async (uuid: string, roundNumber: number) => {
     replayRouteError.value = null;
     replayerSource.value = 'local';
     replayerNoteId.value = null;
     try {
       const metaStorage = await getMetaStorage();
-      const opfsStorage = await getOPFSStorage();
+      const replayStorage = await getReplayStorage();
       const rawMeta = await metaStorage.loadMeta(uuid);
       if (!rawMeta) {
         replayRouteError.value = 'not_found';
@@ -277,7 +277,7 @@ function createReplayData() {
       }
       const meta = adaptMeta(rawMeta);
       setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
-      const roundBytes = await opfsStorage.loadRound(uuid, roundNumber);
+      const roundBytes = await replayStorage.loadRound(uuid, roundNumber);
       if (!roundBytes) {
         replayRouteError.value = 'not_found';
         return;
@@ -289,13 +289,13 @@ function createReplayData() {
     }
   };
 
-  /** 云录像：GET item 拿 meta，用返回的 demo_uuid/demo_round 查 OPFS；有则复用，无则从服务器拉取并写入 OPFS */
+  /** 云录像：GET item 拿 meta，用返回的 demo_uuid/demo_round 查 IndexedDB；有则复用，无则从服务器拉取并写入 IndexedDB */
   const loadReplayByCloud = async (noteId: string) => {
     replayRouteError.value = null;
     replayerSource.value = 'cloud';
     replayerNoteId.value = noteId;
     try {
-      const opfsStorage = await getOPFSStorage();
+      const replayStorage = await getReplayStorage();
       const res = await fetch(`/api/note/items/${encodeURIComponent(noteId)}`, { credentials: 'include' });
       if (res.status === 403) {
         replayRouteError.value = 'forbidden';
@@ -351,7 +351,7 @@ function createReplayData() {
         };
       }
       setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
-      const roundBytes = await opfsStorage.loadRound(demoUuid, demoRound);
+      const roundBytes = await replayStorage.loadRound(demoUuid, demoRound);
       if (roundBytes) {
         await applyRoundBytes(roundBytes, demoRound);
         return;
@@ -360,7 +360,7 @@ function createReplayData() {
       try {
         const buf = await fetchRoundFileFromCloud(demoUuid, demoRound);
         const roundBytesFetched = new Uint8Array(buf);
-        await opfsStorage.saveRound(demoUuid, demoRound, roundBytesFetched);
+        await replayStorage.saveRound(demoUuid, demoRound, roundBytesFetched);
         await applyRoundBytes(roundBytesFetched, demoRound);
       } catch (e) {
         console.warn('[LoadReplayByCloud] file fetch failed:', e);
@@ -372,7 +372,7 @@ function createReplayData() {
     }
   };
 
-  /** 切换回合：仅 local 模式从 OPFS 加载；cloud 单回合不切换 */
+  /** 切换回合：仅 local 模式从 IndexedDB 加载；cloud 单回合不切换 */
   /** 清理云笔记播放状态：清空 source/noteId/replay/frames，用于切到本地库时不再保留 cloud 后台播放 */
   const clearCloudPlaybackState = () => {
     if (replayerSource.value !== 'cloud') return;
@@ -392,7 +392,7 @@ function createReplayData() {
       return;
     }
     try {
-      const storage = await getOPFSStorage();
+      const storage = await getReplayStorage();
       const roundBytes = await storage.loadRound(uuid, roundNumber);
       if (!roundBytes) {
         replayRouteError.value = 'not_found';
@@ -409,13 +409,13 @@ function createReplayData() {
     console.log('[DeleteReplayById] 删除 UUID:', uuid);
     
     const metaStorage = await getMetaStorage();
-    const opfsStorage = await getOPFSStorage();
+    const replayStorage = await getReplayStorage();
     
     // 从 IndexedDB 删除 meta
     await metaStorage.deleteMeta(uuid);
     
-    // 从 OPFS 删除 rounds
-    await opfsStorage.deleteReplay(uuid);
+    // 从 IndexedDB 删除 rounds
+    await replayStorage.deleteReplay(uuid);
     
     // 刷新列表
     await loadAllReplays();
@@ -469,18 +469,17 @@ function createReplayData() {
     }, { timeout: 100 });
   };
 
-  // Save single round to OPFS
-  const saveRoundToOPFS = async (round: ReplayRound) => {
-    console.log(`[SaveRoundToOPFS] 📦 Starting round ${round.round} save:`, {
+  const saveRoundToStorage = async (round: ReplayRound) => {
+    console.log(`[SaveRoundToStorage] 📦 Starting round ${round.round} save:`, {
       uuid: round.uuid,
       round: round.round,
       frameCount: round.frames?.length || 0
     });
-    const storage = await getOPFSStorage();
+    const storage = await getReplayStorage();
     const roundBytes = await encodeReplayRound(round);
-    console.log(`[SaveRoundToOPFS] 🔄 Encoded to protobuf, size: ${roundBytes.byteLength} bytes`);
+    console.log(`[SaveRoundToStorage] 🔄 Encoded to protobuf, size: ${roundBytes.byteLength} bytes`);
     await storage.saveRound(round.uuid, round.round, roundBytes);
-    console.log(`[SaveRoundToOPFS] ✅ Round ${round.round} saved successfully`);
+    console.log(`[SaveRoundToStorage] ✅ Round ${round.round} saved successfully`);
   };
 
   const updateParsingProgress = (progress: number, status: string) => {
@@ -570,14 +569,14 @@ function createReplayData() {
         } else if (e.data.type === 'ROUND_COMPLETE') {
           const round: ReplayRound = e.data.round;
           
-          // Save round to OPFS immediately
-          await saveRoundToOPFS(round);
+          // Save round to IndexedDB immediately
+          await saveRoundToStorage(round);
           savedRoundsCount++;
           
-          console.log(`[ParseDemo] Round ${savedRoundsCount} saved to OPFS (${round.frames.length} frames)`);
+          console.log(`[ParseDemo] Round ${savedRoundsCount} saved to IndexedDB (${round.frames.length} frames)`);
           
           // ⚠️ DO NOT keep round in memory - let it be garbage collected
-          // The round data is now safely stored in OPFS
+          // The round data is now safely stored in IndexedDB
           
         } else if (e.data.type === 'PARSING_COMPLETE') {
           if (!meta) return;

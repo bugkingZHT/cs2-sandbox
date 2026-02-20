@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue';
 import { getMetaStorage } from './indexdb-storage';
 import { CLOUD_ARCHIVE_STORE } from './indexdb-storage';
-import { getOPFSStorage } from './opfs-storage';
+import { getReplayStorage } from './indexdb-storage';
 import { useAuth } from './useAuth';
 import { resolveTeamDisplayName } from './teamDisplay';
 import type { PlayerInfo } from '@/types/replay';
@@ -241,8 +241,11 @@ export function useNote() {
       return;
     }
 
-    // 新增：仅登录用户需要 quota 校验（离线本地存档不受 quota 限制）
-    if (currentUser.value && isQuotaFull.value) {
+    if (!currentUser.value) {
+      showNoteToast('请先登录后查看和管理战术笔记', 'warning');
+      return;
+    }
+    if (isQuotaFull.value) {
       showQuotaExceededModal.value = true;
       return;
     }
@@ -250,28 +253,8 @@ export function useNote() {
     if (!ctx) return;
     const { demoId, roundNumber } = ctx;
 
-    // 未登录：本地存档（IndexedDB）——复用同一表单，直接写入
-    if (!currentUser.value) {
-      const item: CloudArchiveItem = {
-        id: crypto.randomUUID(),
-        title,
-        content: uploadFormContent.value,
-        permission: uploadFormPermission.value,
-        demo_uuid: demoId,
-        demo_round: roundNumber,
-        add_time: Date.now(),
-        mapName: ctx.replay.mapName,
-        teamCT: ctx.replay.teamCT,
-        teamT: ctx.replay.teamT,
-      };
-      await addItem(item);
-      showNoteToast('已保存到本地笔记', 'info');
-      closeUploadModal();
-      return;
-    }
-
-    const opfs = await getOPFSStorage();
-    const roundBytes = await opfs.loadRound(demoId, roundNumber);
+    const replay = await getReplayStorage();
+    const roundBytes = await replay.loadRound(demoId, roundNumber);
     if (!roundBytes || roundBytes.length === 0) {
       uploadError.value = '请先加载该回合';
       uploadModalStep.value = 'error';

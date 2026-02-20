@@ -9,7 +9,7 @@
 - [概述](#概述)
 - [配置文件](#配置文件)
 - [Frame Data Viewer（帧数据查看器）](#frame-data-viewer帧数据查看器)
-- [OPFS Storage Viewer（存储查看器）](#opfs-storage-viewer存储查看器)
+- [Replay Storage Viewer（存储查看器）](#replay-storage-viewer存储查看器)
 - [控制台调试工具](#控制台调试工具)
 - [生产环境配置](#生产环境配置)
 
@@ -20,7 +20,7 @@
 为了便于开发调试和问题排查，项目内置了两个可配置的调试工具：
 
 1. **Frame Data Viewer** - 查看当前帧的完整数据结构
-2. **OPFS Storage Viewer** - 查看浏览器存储中的所有回放文件
+2. **Replay Storage Viewer** - 查看 IndexedDB 中存储的回放 round 数据
 
 这些工具可以通过配置文件统一管理，支持在生产环境中关闭。
 
@@ -39,10 +39,10 @@ export const DEBUG_CONFIG = {
   enableFrameDataViewer: true,
 
   /**
-   * 启用 OPFS 存储查看器
-   * 在 Demo Library 头部显示 OPFS 按钮，点击后查看存储详情
+   * 启用 Replay 存储查看器
+   * 在设置/调试面板显示 Storage Viewer 按钮，点击后查看 IndexedDB 存储详情
    */
-  enableOPFSStorageViewer: true,
+  enableStorageViewer: true,
 };
 ```
 
@@ -124,11 +124,11 @@ if (DEBUG_CONFIG.enableFrameDataViewer) {
 
 ---
 
-## OPFS Storage Viewer（存储查看器）
+## Replay Storage Viewer（存储查看器）
 
 ### 功能说明
 
-查看浏览器 OPFS（Origin Private File System）中存储的所有回放文件详情。
+查看 IndexedDB 中存储的回放 round（pb）数据详情。
 
 ### 使用位置
 
@@ -136,7 +136,7 @@ if (DEBUG_CONFIG.enableFrameDataViewer) {
 
 ### 触发方式
 
-点击 **📁 OPFS** 按钮（黄色，文件夹图标）
+点击 **Storage Viewer** 按钮（设置 → 调试）
 
 ### 显示内容
 
@@ -152,7 +152,7 @@ Usage: 1.42%
 
 #### 2. 📍 Physical Storage Path（物理存储路径）
 
-根据浏览器和操作系统自动识别，显示 OPFS 数据的可能存储位置。
+根据浏览器和操作系统自动识别，显示 IndexedDB 数据的可能存储位置。
 
 **macOS + Chrome 示例：**
 ```
@@ -168,7 +168,7 @@ Path: ~/Library/Application Support/Google/Chrome/Default/File System/
 
 **⚠️ 注意：** 路径为估算值，OPFS 数据以索引/加密格式存储。
 
-#### 3. 📁 OPFS File Structure（文件结构）
+#### 3. 📁 Round Data（IndexedDB）
 
 ```
 Total: 2 replay(s)
@@ -190,7 +190,7 @@ Total: 2 replay(s)
 
 ```javascript
 await window.debugOPFS.listFiles()
-await window.debugOPFS.downloadFile(uuid, 'meta.pb')
+await window.debugOPFS.downloadFile(uuid, 'round_1.pb')
 await window.debugOPFS.downloadFile(uuid, 'round_1.pb')
 await window.debugOPFS.getStorageUsage()
 window.debugOPFS.showStoragePath()
@@ -202,7 +202,7 @@ window.debugOPFS.showStoragePath()
 ✅ 检查文件大小是否正常  
 ✅ 排查存储相关 bug  
 ✅ 监控存储空间使用  
-✅ 开发时快速查看 OPFS 状态  
+✅ 开发时快速查看 IndexedDB 回放存储状态  
 ✅ 下载 protobuf 文件进行分析  
 
 ### 界面样式
@@ -307,7 +307,7 @@ window.debugOPFS.showStoragePath()
 
 **控制台输出：**
 ```
-📍 OPFS Physical Storage Location (Estimated):
+📍 Physical Storage Location (Estimated):
 ======================================================================
 Browser: Chrome
 OS: macOS
@@ -318,7 +318,7 @@ Probable Path:
 
 ⚠️  WARNING:
    - This path is an ESTIMATION based on browser defaults
-   - OPFS data is stored in indexed/encrypted format
+   - IndexedDB data is stored in indexed/encrypted format
    - Direct file access is NOT recommended
    - Use window.debugOPFS.downloadFile() instead!
 ======================================================================
@@ -344,7 +344,7 @@ const files = await window.debugOPFS.listFiles()
 const uuid = files[0].uuid
 
 // 3. 下载该回放的所有文件
-await window.debugOPFS.downloadFile(uuid, 'meta.pb')
+await window.debugOPFS.downloadFile(uuid, 'round_1.pb')
 await window.debugOPFS.downloadFile(uuid, 'round_1.pb')
 await window.debugOPFS.downloadFile(uuid, 'round_2.pb')
 
@@ -363,7 +363,7 @@ await window.debugOPFS.getStorageUsage()
 ```typescript
 export const DEBUG_CONFIG = {
   enableFrameDataViewer: false,      // 关闭帧数据查看器
-  enableOPFSStorageViewer: false,    // 关闭存储查看器
+  enableStorageViewer: false,    // 关闭存储查看器
 };
 ```
 
@@ -373,7 +373,7 @@ export const DEBUG_CONFIG = {
 export const DEBUG_CONFIG = {
   // 仅在开发环境启用
   enableFrameDataViewer: import.meta.env.DEV,
-  enableOPFSStorageViewer: import.meta.env.DEV,
+  enableStorageViewer: import.meta.env.DEV,
 };
 ```
 
@@ -409,7 +409,7 @@ export const DEBUG_CONFIG = {
     │         │
     ▼         ▼
 ┌───────┐ ┌─────────┐
-│ Frame │ │  OPFS   │
+│ Frame │ │ Storage │
 │ Debug │ │  Debug  │
 └───────┘ └─────────┘
 ```
@@ -421,7 +421,7 @@ export const DEBUG_CONFIG = {
    - 数据体积减少 40-60%
    - 解析速度提升 2-3 倍
 
-2. **OPFS 文件系统**
+2. **IndexedDB replay-rounds**
    - 浏览器私有文件系统
    - 支持大文件存储
    - 性能优于 IndexedDB
@@ -440,10 +440,10 @@ export const DEBUG_CONFIG = {
 
 ## 常见问题
 
-### Q1: 为什么 OPFS 按钮不显示？
+### Q1: 为什么 Storage Viewer 按钮不显示？
 
 **A**: 检查以下配置：
-1. `debug.ts` 中 `enableOPFSStorageViewer` 是否为 `true`
+1. `debug.ts` 中 `enableStorageViewer` 是否为 `true`
 2. 确保已重新构建前端：`npm run build`
 3. 刷新浏览器页面（Ctrl/Cmd + Shift + R 强制刷新）
 
@@ -464,15 +464,15 @@ protoc --decode=entity.ReplayRoundPB \
 
 **A**: 播放回放时，在时间轴进度条的右侧区域，显示为 `⚡ Frame 1234` 的按钮。
 
-### Q4: OPFS 数据能直接在文件系统中看到吗？
+### Q4: IndexedDB 数据能直接在文件系统中看到吗？
 
-**A**: 不能。OPFS 数据以加密索引格式存储，无法直接访问。建议使用 `window.debugOPFS.downloadFile()` 导出文件。
+**A**: 不能。IndexedDB 数据以加密索引格式存储，无法直接访问。建议使用 `window.debugOPFS.downloadFile()` 导出文件。
 
 ### Q5: 控制台提示找不到 window.debugOPFS？
 
 **A**: 确保：
 1. 页面已完全加载
-2. 已导入 `opfs-storage.ts` 模块
+2. 已加载 `indexdb-storage.ts`（会自动挂载 `window.debugOPFS`）
 3. 在正确的域名/端口下运行（不是 file:// 协议）
 
 ---
@@ -487,11 +487,11 @@ frontend/
 │   │   └── DEBUG_README.md          # 本文档
 │   ├── components/
 │   │   ├── DemoLibrary/
-│   │   │   └── DemoLibrary.vue      # OPFS 调试按钮实现
+│   │   │   └── DemoLibrary.vue      # Demo Library 列表
 │   │   └── ReplayPlayer/
 │   │       └── TimelineControl.vue  # Frame 调试按钮实现
 │   └── composables/
-│       └── opfs-storage.ts          # OPFS 存储和调试工具
+│       ├── indexdb-storage.ts       # IndexedDB 存储（meta + rounds）和调试工具
 ```
 
 ---
@@ -499,7 +499,7 @@ frontend/
 ## 版本历史
 
 - **v1.1.0** (2026-01-31)
-  - 新增 OPFS Storage Viewer
+  - 新增 Replay Storage Viewer（IndexedDB）
   - 新增物理路径显示
   - 优化控制台调试 API
 

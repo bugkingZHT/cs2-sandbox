@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue';
 import type { Ref } from 'vue';
 import type { Frame, ReplayData, ReplayRound, PlayerInfo, ClipRoundConfig, ProjectileState } from '@/types/replay';
-import { getOPFSStorage } from './opfs-storage';
+import { getReplayStorage } from './indexdb-storage';
 import { decodeReplayRound } from './proto-converters';
 import { adaptRound } from './replayDataAdapter';
 
@@ -20,7 +20,7 @@ function frameIndexAtOrBefore(frames: Frame[], targetMs: number): number {
 }
 
 /**
- * 导演剪辑：从 OPFS 加载多回合，按选中顺序构成有序结构，以最先选中的回合为 baseRound；
+ * 导演剪辑：从 IndexedDB 加载多回合，按选中顺序构成有序结构，以最先选中的回合为 baseRound；
  * 各回合用 timeMs - startMs 对齐后按时间点合并为一条并行时间线。
  */
 export function useClipMerge(
@@ -44,7 +44,7 @@ export function useClipMerge(
     loading.value = true;
     error.value = null;
     try {
-      const opfs = await getOPFSStorage();
+      const storage = await getReplayStorage();
       const engineVersion = replay.value?.engineVersion;
       const serverPlayer = replay.value?.serverPlayer ?? [];
 
@@ -57,7 +57,7 @@ export function useClipMerge(
       for (let roundIdx = 0; roundIdx < rounds.length; roundIdx++) {
         const cfg = rounds[roundIdx];
         const isBaseRound = roundIdx === 0;
-        const roundBytes = await opfs.loadRound(uuid, cfg.round);
+        const roundBytes = await storage.loadRound(uuid, cfg.round);
         if (!roundBytes) {
           error.value = `回合 ${cfg.round} 未找到，请先加载该回合`;
           mergedFrames.value = [];
