@@ -255,6 +255,9 @@
                   <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                 </button>
+                <button v-if="isClipMode" type="button" class="player-card-action clip-delete" title="从拼接结果中移除该玩家" @click.stop="removePlayerFromClip(p.id!)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
               </div>
               <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
             </div>
@@ -262,7 +265,7 @@
           <div v-else class="team-cards-container ct">
             <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
               <div class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
-              <!-- Column 1: Player Info -->
+              <!-- Column 1: Player Info (first half CT) -->
               <div class="card-col col-info">
                 <div class="player-id">{{ p.name || 'UNKNOWN' }}</div>
                 <div class="player-stats">
@@ -333,6 +336,9 @@
                 <button type="button" class="player-card-action toggle-vis" :class="{ active: isPlayerHidden(p.id!) }" :title="isPlayerHidden(p.id!) ? '显示该玩家' : '隐藏该玩家'" @click.stop="togglePlayerVisibility(p.id!)">
                   <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+                <button v-if="isClipMode" type="button" class="player-card-action clip-delete" title="从拼接结果中移除该玩家" @click.stop="removePlayerFromClip(p.id!)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                 </button>
               </div>
               <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
@@ -443,6 +449,9 @@
                   <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                 </button>
+                <button v-if="isClipMode" type="button" class="player-card-action clip-delete" title="从拼接结果中移除该玩家" @click.stop="removePlayerFromClip(p.id!)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
               </div>
               <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
             </div>
@@ -520,6 +529,9 @@
                 <button type="button" class="player-card-action toggle-vis" :class="{ active: isPlayerHidden(p.id!) }" :title="isPlayerHidden(p.id!) ? '显示该玩家' : '隐藏该玩家'" @click.stop="togglePlayerVisibility(p.id!)">
                   <svg v-if="!isPlayerHidden(p.id!)" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   <svg v-else class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+                <button v-if="isClipMode" type="button" class="player-card-action clip-delete" title="从拼接结果中移除该玩家" @click.stop="removePlayerFromClip(p.id!)">
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                 </button>
               </div>
               <div v-if="isPlayerHidden(p.id!)" class="player-card-hidden-cover" aria-hidden="true"></div>
@@ -664,6 +676,10 @@
         :cloud-replay="replayerSource === 'cloud'"
         :can-play="effectiveFrames.length > 0"
         :hide-round-selector="true"
+        :clip-mode="isClipMode"
+        :clip-range-start="clipRangeStartIndex"
+        :clip-range-end="clipRangeEndIndex"
+        @update-clip-range="onClipRangeUpdate"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -725,6 +741,16 @@ const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
 /** 剪辑 fork 为 round_0 进行中，发布按钮短暂禁用 */
 const clipForking = ref(false);
+/** 剪辑模式下点击垃圾桶移除的玩家 ID，从 frames 与 meta 中直接剔除 */
+const clipDeletedPlayerIds = ref<Set<number>>(new Set());
+/** 剪辑模式下时间范围选中：左/右拖柄对应的帧索引（闭区间 [start, end]） */
+const clipRangeStartIndex = ref(0);
+const clipRangeEndIndex = ref(0);
+
+function onClipRangeUpdate(payload: { start: number; end: number }) {
+  clipRangeStartIndex.value = payload.start;
+  clipRangeEndIndex.value = payload.end;
+}
 // 大卡上点击小眼睛隐藏的玩家 ID：不在地图绘制，大卡持续深色蒙层
 const hiddenPlayerIds = ref<Set<number>>(new Set());
 /** 进入道具解析前保存的隐藏状态，退出时恢复 */
@@ -741,6 +767,12 @@ function togglePlayerVisibility(playerId: number) {
 
 function isPlayerHidden(playerId: number) {
   return hiddenPlayerIds.value.has(playerId);
+}
+
+function removePlayerFromClip(playerId: number) {
+  const next = new Set(clipDeletedPlayerIds.value);
+  next.add(playerId);
+  clipDeletedPlayerIds.value = next;
 }
 
 async function copyPlayerPosition(p: PlayerState) {
@@ -812,13 +844,57 @@ const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFrom
 const { mergedFrames, mergedServerPlayer, loading: clipMergeLoading, error: clipMergeError } = useClipMerge(replay, clipRounds);
 
 const effectiveFrames = computed<Frame[]>(() => {
-  if (isClipMode.value && clipRounds.value.length > 0 && mergedFrames.value.length > 0) return mergedFrames.value;
-  return frames.value ?? [];
+  if (!isClipMode.value || clipRounds.value.length === 0 || mergedFrames.value.length === 0) {
+    return frames.value ?? [];
+  }
+  const del = clipDeletedPlayerIds.value;
+  if (del.size === 0) return mergedFrames.value;
+  return mergedFrames.value.map((frame) => {
+    const players: Record<number, NonNullable<Frame['players']>[number]> = {};
+    if (frame.players) {
+      for (const [idStr, p] of Object.entries(frame.players)) {
+        const id = Number(idStr);
+        if (!del.has(id)) players[id] = p;
+      }
+    }
+    let killEvents = frame.killEvents;
+    if (frame.killEvents && Object.keys(frame.killEvents).length > 0) {
+      const filtered: Record<number, NonNullable<Frame['killEvents']>[number]> = {};
+      for (const [vidStr, ev] of Object.entries(frame.killEvents)) {
+        const vid = Number(vidStr);
+        if (!del.has(vid) && !del.has(ev.killerId)) filtered[vid] = ev;
+      }
+      killEvents = Object.keys(filtered).length > 0 ? filtered : undefined;
+    }
+    let projectiles = frame.projectiles;
+    if (frame.projectiles && Object.keys(frame.projectiles).length > 0) {
+      const filtered: Record<number, ProjectileState> = {};
+      for (const [eidStr, proj] of Object.entries(frame.projectiles)) {
+        if (!del.has(proj.throwerID)) filtered[Number(eidStr)] = proj;
+      }
+      projectiles = Object.keys(filtered).length > 0 ? filtered : undefined;
+    }
+    let sortedProjs = frame.sortedProjs;
+    if (projectiles && sortedProjs?.length) {
+      const projSet = new Set(Object.keys(projectiles).map(Number));
+      sortedProjs = sortedProjs.filter((eid) => projSet.has(eid));
+    }
+    return {
+      ...frame,
+      players: Object.keys(players).length > 0 ? players : ({} as Record<number, PlayerState>),
+      killEvents,
+      projectiles,
+      sortedProjs: sortedProjs?.length ? sortedProjs : undefined,
+    };
+  });
 });
 const effectiveReplay = computed<ReplayData | null>(() => {
   const r = replay.value ?? null;
   if (isClipMode.value && clipRounds.value.length > 0 && mergedServerPlayer.value.length > 0 && r) {
-    return { ...r, serverPlayer: mergedServerPlayer.value };
+    const del = clipDeletedPlayerIds.value;
+    const serverPlayer =
+      del.size > 0 ? mergedServerPlayer.value.filter((p) => !del.has(p.id)) : mergedServerPlayer.value;
+    return { ...r, serverPlayer };
   }
   return r;
 });
@@ -830,6 +906,17 @@ watch(
   },
   { immediate: true }
 );
+
+watch([isClipMode, clipRounds], () => {
+  clipDeletedPlayerIds.value = new Set();
+}, { deep: true });
+
+watch([isClipMode, () => effectiveFrames.value.length], () => {
+  if (!isClipMode.value || effectiveFrames.value.length === 0) return;
+  const maxIdx = effectiveFrames.value.length - 1;
+  clipRangeStartIndex.value = 0;
+  clipRangeEndIndex.value = maxIdx;
+}, { immediate: true });
 
 // 播放笔记时应用 meta 中保存的 replaySettings（玩家可见性、地图投掷物/掉落/C4）
 watch(
@@ -1668,8 +1755,14 @@ async function onPublishClick() {
     return;
   }
   if (!props.canAddToNote) return;
-  const framesToSave =
-    isClipMode.value && mergedFrames.value.length > 0 ? mergedFrames.value : (frames.value ?? []);
+  // 剪辑模式下用 effectiveFrames，并只保留 clipRange 范围内的帧
+  let framesToSave =
+    isClipMode.value && effectiveFrames.value.length > 0 ? effectiveFrames.value : (frames.value ?? []);
+  if (isClipMode.value && framesToSave.length > 0) {
+    const start = Math.max(0, Math.min(clipRangeStartIndex.value, framesToSave.length - 1));
+    const end = Math.max(start, Math.min(clipRangeEndIndex.value, framesToSave.length - 1));
+    framesToSave = framesToSave.slice(start, end + 1);
+  }
   const sourceReplay = effectiveReplay.value ?? replay.value;
   if (!sourceReplay || framesToSave.length === 0) {
     window.dispatchEvent(
@@ -2099,6 +2192,7 @@ onBeforeUnmount(() => {
   margin: 0 0 10px;
   font-size: 13px;
   font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--gh-text);
 }
 
@@ -2110,10 +2204,6 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: #f5f5f0;
   cursor: pointer;
-}
-
-.settings-option:not(:last-child) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .settings-option input[type="checkbox"] {

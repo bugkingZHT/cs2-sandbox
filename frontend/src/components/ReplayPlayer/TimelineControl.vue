@@ -132,6 +132,30 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             ></div>
           </template>
         </div>
+
+        <!-- 剪辑模式：时间范围选中（左/右拖柄） -->
+        <div
+          v-if="clipMode && totalFrames > 0"
+          class="clip-range-overlay"
+          @mousedown.stop
+        >
+          <div
+            class="clip-range-highlight"
+            :style="clipRangeHighlightStyle"
+          ></div>
+          <div
+            class="clip-range-handle clip-range-handle-left"
+            :style="{ left: clipRangeLeftPercent + '%' }"
+            title="拖拽调整范围起点"
+            @mousedown.stop="onClipHandleMouseDown('left', $event)"
+          ></div>
+          <div
+            class="clip-range-handle clip-range-handle-right"
+            :style="{ left: clipRangeRightPercent + '%' }"
+            title="拖拽调整范围终点"
+            @mousedown.stop="onClipHandleMouseDown('right', $event)"
+          ></div>
+        </div>
       </div>
 
       <!-- 右侧：时间显示 + 保存当前回合到云存档 -->
@@ -197,6 +221,10 @@ const props = defineProps<{
   canPlay?: boolean;
   /** 隐藏回合选择器（已移至左侧面板展示） */
   hideRoundSelector?: boolean;
+  /** 剪辑模式：显示左右拖柄用于选中时间范围 */
+  clipMode?: boolean;
+  clipRangeStart?: number;
+  clipRangeEnd?: number;
 }>();
 
 const canPlay = computed(() => props.canPlay ?? true);
@@ -207,6 +235,7 @@ const emit = defineEmits<{
   (e: 'update-speed', value: number): void;
   (e: 'dragging-change', value: boolean): void;
   (e: 'load-round', roundNumber: number): void;
+  (e: 'update-clip-range', payload: { start: number; end: number }): void;
 }>();
 
 // Log roundResults when they change
@@ -469,6 +498,59 @@ const formatMs = (ms: number) => {
   const s = (totalSeconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 };
+
+// 剪辑模式：时间范围拖柄
+const clipRangeLeftPercent = computed(() => {
+  if (!props.clipMode || props.totalFrames <= 1) return 0;
+  const start = Math.max(0, Math.min(props.clipRangeStart ?? 0, props.totalFrames - 1));
+  return (start / (props.totalFrames - 1)) * 100;
+});
+const clipRangeRightPercent = computed(() => {
+  if (!props.clipMode || props.totalFrames <= 1) return 100;
+  const end = Math.max(0, Math.min(props.clipRangeEnd ?? props.totalFrames - 1, props.totalFrames - 1));
+  return (end / (props.totalFrames - 1)) * 100;
+});
+const clipRangeHighlightStyle = computed(() => ({
+  left: clipRangeLeftPercent.value + '%',
+  width: (clipRangeRightPercent.value - clipRangeLeftPercent.value) + '%',
+}));
+
+function clientXToFrameIndex(clientX: number, el: HTMLElement): number {
+  const rect = el.getBoundingClientRect();
+  const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  return Math.round(pos * (props.totalFrames - 1));
+}
+
+function onClipHandleMouseDown(which: 'left' | 'right', e: MouseEvent) {
+  const el = (e.target as HTMLElement).closest('.timeline-track-main') as HTMLElement;
+  if (!el || props.totalFrames <= 0) return;
+
+  isDragging.value = true;
+  emit('dragging-change', true);
+  handleInteraction(e.clientX, el);
+
+  const onMove = (me: MouseEvent) => {
+    const idx = clientXToFrameIndex(me.clientX, el);
+    const start = props.clipRangeStart ?? 0;
+    const end = props.clipRangeEnd ?? props.totalFrames - 1;
+    if (which === 'left') {
+      const newStart = Math.max(0, Math.min(idx, end));
+      emit('update-clip-range', { start: newStart, end });
+    } else {
+      const newEnd = Math.max(start, Math.min(idx, props.totalFrames - 1));
+      emit('update-clip-range', { start, end: newEnd });
+    }
+    handleInteraction(me.clientX, el);
+  };
+  const onUp = () => {
+    isDragging.value = false;
+    emit('dragging-change', false);
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
 
 const speedOptions = [0.5, 1, 2] as const;
 </script>
@@ -920,6 +1002,45 @@ const speedOptions = [0.5, 1, 2] as const;
 
 .throw-marker.t {
   border-bottom-color: var(--ds-team-t);
+}
+
+/* === 剪辑模式：时间范围选中 === */
+.clip-range-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.clip-range-overlay > * {
+  pointer-events: auto;
+}
+
+.clip-range-highlight {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 200, 100, 0.25);
+  pointer-events: none;
+}
+
+.clip-range-handle {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  transform: translateX(-50%);
+  background: rgba(255, 200, 100, 0.9);
+  cursor: ew-resize;
+  border-radius: 2px;
+  z-index: 11;
+}
+
+.clip-range-handle:hover {
+  background: rgba(255, 220, 120, 1);
 }
 
 .mark-line {
