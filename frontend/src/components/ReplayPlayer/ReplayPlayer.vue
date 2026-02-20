@@ -2033,7 +2033,6 @@ onBeforeUnmount(() => {
   gap: 6px;
   margin-top: 8px;
   padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .left-panel-collapsed {

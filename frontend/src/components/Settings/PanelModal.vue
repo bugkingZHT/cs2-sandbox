@@ -308,6 +308,7 @@
                 <span class="version-value">{{ COMPATIBLE_ENGINE_VERSIONS.join(', ') }}</span>
               </div>
             </div>
+            <div class="title-divider"></div>
             <div class="social-section">
               <h4 class="social-title">关注我们 & 意见反馈</h4>
               <ul class="social-list">

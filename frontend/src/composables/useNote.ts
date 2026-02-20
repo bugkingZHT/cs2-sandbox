@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue';
 import { getMetaStorage } from './indexdb-storage';
-import { CLOUD_ARCHIVE_STORE } from './indexdb-storage';
 import { getReplayStorage } from './indexdb-storage';
 import { useAuth } from './useAuth';
 import { resolveTeamDisplayName } from './teamDisplay';
@@ -16,8 +15,6 @@ export interface UploadReplayContext {
 export type NoteToastType = 'info' | 'warning' | 'error';
 export type UploadModalStep = 'form' | 'uploading' | 'success' | 'error';
 
-const ARCHIVE_LIST_KEY = 'list';
-
 export interface CloudArchiveItem {
   id: string;
   title: string;
@@ -29,11 +26,6 @@ export interface CloudArchiveItem {
   mapName?: string;
   teamCT?: string;
   teamT?: string;
-}
-
-interface CloudArchiveRecord {
-  id: string;
-  items: CloudArchiveItem[];
 }
 
 /** API item shape from GET /api/note/items */
@@ -80,18 +72,6 @@ function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
     teamCT,
     teamT,
   };
-}
-
-async function getDb(): Promise<IDBDatabase> {
-  const storage = await getMetaStorage();
-  const db = storage.getDb();
-  if (!db) throw new Error('IndexedDB not initialized');
-  return db;
-}
-
-function getStore(db: IDBDatabase, mode: IDBTransactionMode = 'readonly') {
-  const tx = db.transaction(CLOUD_ARCHIVE_STORE, mode);
-  return tx.objectStore(CLOUD_ARCHIVE_STORE);
 }
 
 /** 共享的笔记列表，保证 App 与 NoteLibrary 等使用同一份数据，loadNotes 后都能看到更新 */
@@ -418,14 +398,7 @@ export function useNote() {
         }
         return;
       }
-      const db = await getDb();
-      const record = await new Promise<CloudArchiveRecord | undefined>((resolve, reject) => {
-        const store = getStore(db);
-        const request = store.get(ARCHIVE_LIST_KEY);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-      noteList.value = record?.items ?? [];
+      noteList.value = [];
     } catch (e) {
       console.warn('[useCloudNote] loadNotes failed:', e);
       noteList.value = [];
@@ -434,42 +407,9 @@ export function useNote() {
     }
   }
 
-  /** Build a plain object so IndexedDB put() does not hit DataCloneError (e.g. Vue proxies). */
-  function toPlainRecord(items: CloudArchiveItem[]): CloudArchiveRecord {
-    return {
-      id: ARCHIVE_LIST_KEY,
-      items: items.map((item) => ({
-        id: String(item.id),
-        title: String(item.title),
-        content: item.content != null ? String(item.content) : undefined,
-        permission: item.permission != null ? String(item.permission) : undefined,
-        demo_uuid: String(item.demo_uuid),
-        demo_round: Number(item.demo_round),
-        add_time: Number(item.add_time),
-        mapName: item.mapName != null ? String(item.mapName) : undefined,
-        teamCT: item.teamCT != null ? String(item.teamCT) : undefined,
-        teamT: item.teamT != null ? String(item.teamT) : undefined,
-      })),
-    };
-  }
-
-  async function persistItems(items: CloudArchiveItem[]): Promise<void> {
-    const db = await getDb();
-    const plain = toPlainRecord(items);
-    await new Promise<void>((resolve, reject) => {
-      const store = getStore(db, 'readwrite');
-      const request = store.put(plain);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-    noteList.value = plain.items;
-  }
-
-  /** When logged in, adding is done via upload + loadNotes; this is no-op. */
+  /** When logged in, adding is done via upload + loadNotes; when not logged in, no persistence. */
   async function addItem(item: CloudArchiveItem): Promise<void> {
     if (currentUser.value) return;
-    const next = [...noteList.value, item];
-    await persistItems(next);
   }
 
   async function removeItem(id: string): Promise<void> {
@@ -491,8 +431,7 @@ export function useNote() {
       }
       return;
     }
-    const next = noteList.value.filter((i) => i.id !== id);
-    await persistItems(next);
+    noteList.value = noteList.value.filter((i) => i.id !== id);
   }
 
   async function reorderItems(fromIndex: number, toIndex: number): Promise<void> {
@@ -521,16 +460,16 @@ export function useNote() {
       }
       return;
     }
-    await persistItems(items);
+    noteList.value = items;
   }
 
   /** When logged in, setItems is no-op (use updateItem for single-field updates). */
   async function setItems(items: CloudArchiveItem[]): Promise<void> {
     if (currentUser.value) return;
-    await persistItems(items);
+    noteList.value = items;
   }
 
-  /** Update title (and optionally permission). When logged in calls PATCH; else updates local + IndexedDB. */
+  /** Update title (and optionally permission). When logged in calls PATCH; else updates local state only. */
   async function updateItem(
     id: string,
     payload: { title?: string; permission?: string; content?: string }
@@ -567,7 +506,7 @@ export function useNote() {
     if (payload.title !== undefined) next[idx] = { ...next[idx], title: payload.title };
     if (payload.permission !== undefined) next[idx] = { ...next[idx], permission: payload.permission };
     if (payload.content !== undefined) next[idx] = { ...next[idx], content: payload.content };
-    await persistItems(next);
+    noteList.value = next;
   }
 
   return {
