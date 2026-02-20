@@ -600,7 +600,7 @@
                       class="left-panel-note-content left-panel-note-content-rich"
                       v-html="props.cloudNote.content"
                     ></div>
-                    <div v-else class="left-panel-note-content">{{ props.cloudNote.content || '—' }}</div>
+                    <div v-else class="left-panel-note-content">{{ props.cloudNote.content || '-' }}</div>
                   </div>
                 </template>
                 <template v-else>

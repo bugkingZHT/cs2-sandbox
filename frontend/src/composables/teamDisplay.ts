@@ -18,5 +18,5 @@ export function resolveTeamDisplayName(
   const first = serverPlayer?.find((p) => p.team === teamId);
   const playerName = first?.name?.trim();
   if (playerName) return 'Team ' + playerName;
-  return '—';
+  return '-';
 }

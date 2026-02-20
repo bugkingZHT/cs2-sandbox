@@ -172,11 +172,12 @@ export class IndexedDBMetaStorage {
         const metas = request.result || [];
         const teamNamesSet = new Set<string>();
         
-        metas.forEach((meta: ReplayMeta) => {
+        // Only include metas where fork is not true
+        metas.filter((meta: ReplayMeta) => !meta.fork).forEach((meta: ReplayMeta) => {
           const ctName = resolveTeamDisplayName(meta.teamCT ?? '', 3, meta.serverPlayer);
           const tName = resolveTeamDisplayName(meta.teamT ?? '', 2, meta.serverPlayer);
-          if (ctName !== '—') teamNamesSet.add(ctName);
-          if (tName !== '—') teamNamesSet.add(tName);
+          if (ctName !== '-') teamNamesSet.add(ctName);
+          if (tName !== '-') teamNamesSet.add(tName);
         });
         
         // Convert to sorted array
@@ -203,7 +204,8 @@ export class IndexedDBMetaStorage {
         const metas = request.result || [];
         const playerNamesSet = new Set<string>();
         
-        metas.forEach((meta: ReplayMeta) => {
+        // Only include metas where fork is not true
+        metas.filter((meta: ReplayMeta) => !meta.fork).forEach((meta: ReplayMeta) => {
           if (meta.serverPlayer && Array.isArray(meta.serverPlayer)) {
             meta.serverPlayer.forEach(player => {
               if (player.name && player.name.trim()) {

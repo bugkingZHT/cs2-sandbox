@@ -53,8 +53,8 @@ function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
       const serverPlayer = Array.isArray(meta.serverPlayer) ? (meta.serverPlayer as PlayerInfo[]) : undefined;
       teamCT = resolveTeamDisplayName(rawCT, 3, serverPlayer);
       teamT = resolveTeamDisplayName(rawT, 2, serverPlayer);
-      if (teamCT === '—') teamCT = undefined;
-      if (teamT === '—') teamT = undefined;
+      if (teamCT === '-') teamCT = undefined;
+      if (teamT === '-') teamT = undefined;
     } catch {
       // ignore
     }
@@ -129,7 +129,7 @@ export function useNote() {
     const dateStr = `${month}.${day}`;
     const rawName = r.mapName?.startsWith('de_') ? r.mapName.substring(3) : r.mapName;
     const cleanMapName = rawName ? rawName.toUpperCase() : rawName;
-    const defaultTitle = cleanMapName ? `${cleanMapName} - ${dateStr} - 回合${round}` : `${dateStr} - 回合${round}`;
+    const defaultTitle = cleanMapName ? `${cleanMapName} - ${dateStr}` : dateStr;
     uploadFormTitle.value = defaultTitle.slice(0, 64);
     uploadFormContent.value = '';
     uploadFormPermission.value = 'private';

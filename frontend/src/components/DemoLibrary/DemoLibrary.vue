@@ -342,8 +342,8 @@
               </template>
             </span>
             <div class="demo-bar-spacer" aria-hidden="true"></div>
-            <span class="demo-bar-file">{{ demo.fileName || '—' }}</span>
-            <span class="demo-bar-time">{{ demo.uploadTime ? formatAbsoluteTime(demo.uploadTime) : '—' }}</span>
+            <span class="demo-bar-file">{{ demo.fileName || '-' }}</span>
+            <span class="demo-bar-time">{{ demo.uploadTime ? formatAbsoluteTime(demo.uploadTime) : '-' }}</span>
           </div>
           <!-- Parsing progress on bar -->
           <div v-if="demo.status === 0" class="demo-bar-parsing">
@@ -506,7 +506,7 @@ import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
-import { resolveTeamDisplayName } from '@/composables/teamDisplay';
+// Removed import for resolveTeamDisplayName to avoid fallback to player names
 import { navigate, getQuery, replaceLocation, pathRef, searchRef, saveReplayerReturnUrl } from '@/location';
 
 const props = defineProps<{
@@ -600,7 +600,8 @@ const allPlayerNames = ref<string[]>([]);
 // Filtered map options based on input (derived from demoList)
 const filteredMapOptions = computed(() => {
   const mapCounts = new Map<string, number>();
-  props.demoList.forEach(demo => {
+  // Only count demos where fork is not true
+  props.demoList.filter(demo => !demo.fork).forEach(demo => {
     const mapName = (demo.mapName || '').trim();
     if (mapName) {
       mapCounts.set(mapName, (mapCounts.get(mapName) || 0) + 1);
@@ -623,10 +624,11 @@ const filteredTeamOptions = computed(() => {
   // Count demos for each team (use resolved display names)
   const teamCounts = new Map<string, number>();
   props.demoList.forEach(demo => {
+    if (demo.fork) return;
     const ctName = getTeamDisplayName(demo, 'ct');
     const tName = getTeamDisplayName(demo, 't');
-    if (ctName !== '—') teamCounts.set(ctName, (teamCounts.get(ctName) || 0) + 1);
-    if (tName !== '—') teamCounts.set(tName, (teamCounts.get(tName) || 0) + 1);
+    if (ctName !== '') teamCounts.set(ctName, (teamCounts.get(ctName) || 0) + 1);
+    if (tName !== '') teamCounts.set(tName, (teamCounts.get(tName) || 0) + 1);
   });
   
   let teams = allTeamNames.value;
@@ -650,6 +652,7 @@ const filteredPlayerOptions = computed(() => {
   // Count demos for each player
   const playerCounts = new Map<string, number>();
   props.demoList.forEach(demo => {
+    if (demo.fork) return;
     if (demo.serverPlayer && Array.isArray(demo.serverPlayer)) {
       demo.serverPlayer.forEach(player => {
         if (player.name && player.name.trim()) {
@@ -680,7 +683,7 @@ const filteredPlayerOptions = computed(() => {
 const getMapDemoCount = (mapName: string): number => {
   let count = 0;
   props.demoList.forEach(demo => {
-    if ((demo.mapName || '').trim() === mapName) count++;
+    if (!demo.fork && (demo.mapName || '').trim() === mapName) count++;
   });
   return count;
 };
@@ -689,7 +692,7 @@ const getMapDemoCount = (mapName: string): number => {
 const getTeamDemoCount = (teamName: string): number => {
   let count = 0;
   props.demoList.forEach(demo => {
-    if (getTeamDisplayName(demo, 'ct') === teamName || getTeamDisplayName(demo, 't') === teamName) {
+    if (!demo.fork && (getTeamDisplayName(demo, 'ct') === teamName || getTeamDisplayName(demo, 't') === teamName)) {
       count++;
     }
   });
@@ -700,7 +703,7 @@ const getTeamDemoCount = (teamName: string): number => {
 const getPlayerDemoCount = (playerName: string): number => {
   let count = 0;
   props.demoList.forEach(demo => {
-    if (demo.serverPlayer && Array.isArray(demo.serverPlayer)) {
+    if (!demo.fork && demo.serverPlayer && Array.isArray(demo.serverPlayer)) {
       const hasPlayer = demo.serverPlayer.some(player => 
         player.name && player.name.trim() === playerName
       );
@@ -960,7 +963,8 @@ watch(() => props.demoList.map(d => ({ id: d.id, status: d.status })), (newList,
 }, { deep: true });
 
 const sortedDemoList = computed(() => {
-  let filteredList = [...props.demoList];
+  // Filter out demos where fork is true
+  let filteredList = [...props.demoList].filter(demo => !demo.fork);
   
   // Filter by map names (support multiple)
   if (filterMapNames.value.length > 0) {
@@ -1198,12 +1202,10 @@ const formatAbsoluteTime = (timestamp: number | undefined) => {
   });
 };
 
-const getTeamDisplayName = (demo: ReplayData, side: 'ct' | 't') =>
-  resolveTeamDisplayName(
-    side === 'ct' ? (demo.teamCT ?? '') : (demo.teamT ?? ''),
-    side === 'ct' ? 3 : 2,
-    demo.serverPlayer
-  );
+const getTeamDisplayName = (demo: ReplayData, side: 'ct' | 't') => {
+  const teamName = side === 'ct' ? (demo.teamCT ?? '') : (demo.teamT ?? '');
+  return (teamName != null && String(teamName).trim() !== '') ? String(teamName).trim() : '-';
+};
 
 const getWinnerTeam = (demo: ReplayData) => {
   return (demo.scoreCT || 0) > (demo.scoreT || 0)
@@ -1674,7 +1676,7 @@ const scoreLeftRightMap = computed(() => {
   white-space: nowrap;
 }
 
-/* 队伍列：icon + teamA / teamB，亮白底，mono */
+/* 队伍列：icon + teamA / teamB，Montserrat */
 .demo-bar-teams-col {
   justify-self: start;
   display: inline-flex;
@@ -1682,8 +1684,6 @@ const scoreLeftRightMap = computed(() => {
   gap: 6px;
   font-size: 14px;
   font-weight: 600;
-  font-family: var(--ds-font-mono);
-  font-variant-numeric: tabular-nums;
   letter-spacing: 0.03em;
   color: var(--gh-text);
   border-radius: 6px;
