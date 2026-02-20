@@ -74,6 +74,19 @@
               </div>
             </div>
           </div>
+          
+          <!-- 新建笔记按钮 -->
+          <button 
+            type="button" 
+            class="new-note-btn"
+            @click="openCreateNoteModal"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>新建笔记</span>
+          </button>
         </div>
       </div>
     </Teleport>
@@ -129,12 +142,6 @@
                   </div>
                 </div>
                 <div class="card-hero-actions" @click.stop>
-                  <button type="button" class="card-action-btn card-go-btn" title="进入播放" @click.stop="goToItem(item)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    <span>播放</span>
-                  </button>
                   <div class="card-more-wrap">
                     <button
                       type="button"
@@ -162,14 +169,54 @@
             </div>
           </div>
 
-          <!-- Body: 全文 content（富文本用 v-html，纯文本保留换行） -->
-          <div v-if="item.content" class="card-body">
-            <div
-              v-if="isContentHtml(item.content)"
-              class="card-content card-content-rich"
-              v-html="item.content"
-            ></div>
-            <div v-else class="card-content card-content-plain">{{ item.content }}</div>
+          <!-- Body: 全文 content（富文本用 v-html，纯文本保留换行） + demo attachments -->
+          <div class="card-body">
+            <!-- Content section -->
+            <div v-if="item.content" class="card-content-section">
+              <div
+                v-if="isContentHtml(item.content)"
+                class="card-content card-content-rich"
+                v-html="item.content"
+              ></div>
+              <div v-else class="card-content card-content-plain">{{ item.content }}</div>
+            </div>
+            
+            <!-- Demo attachments section -->
+            <div v-if="item.demos?.length" class="card-attachments-section">
+              <div class="attachments-header">
+                <span class="attachments-title">附件</span>
+                <span class="attachments-count">({{ item.demos.length }})</span>
+              </div>
+              <div class="attachments-list">
+                <div 
+                  v-for="demo in item.demos" 
+                  :key="demo.id"
+                  class="attachment-item"
+                >
+                  <div class="attachment-info">
+                    <span class="demo-map-name">
+                      <img src="/icons/map.svg" alt="" class="demo-icon" />
+                      {{ getDemoMapName(demo) || 'Unknown Map' }}
+                    </span>
+                    <span class="demo-teams">
+                      {{ getDemoTeamCT(demo) || 'CT' }} vs {{ getDemoTeamT(demo) || 'T' }}
+                    </span>
+                    <span class="demo-time">{{ formatNoteTime(getDemoAddTime(demo)) }}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    class="attachment-play-btn" 
+                    title="播放回合"
+                    @click.stop="goToDemo(item, demo)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <span>播放</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -231,7 +278,7 @@ const emit = defineEmits<{
   (e: 'share', item: CloudArchiveItem): void;
   (e: 'edit', item: CloudArchiveItem): void;
   (e: 'delete', item: CloudArchiveItem): void;
-  (e: 'go', item: CloudArchiveItem): void;
+  (e: 'go', item: CloudArchiveItem | { noteId: string; demoId: number }): void;
   (e: 'reorder', fromIndex: number, toIndex: number): void;
 }>();
 
@@ -304,6 +351,8 @@ function onMapInputChange() {
 
 const filteredNoteList = computed(() => {
   let list = [...noteList.value];
+  // Filter out child items (items with parent_id)
+  list = list.filter((item) => !item.parent_id);
   if (filterMapNames.value.length > 0) {
     list = list.filter((item) => {
       const mapName = (item.mapName || '').trim();
@@ -311,6 +360,20 @@ const filteredNoteList = computed(() => {
     });
   }
   return list.sort((a, b) => b.add_time - a.add_time);
+});
+
+// Get child demos for a parent item
+const getChildDemos = computed(() => {
+  const childMap = new Map<string, CloudArchiveItem[]>();
+  noteList.value.forEach((item) => {
+    if (item.parent_id) {
+      if (!childMap.has(item.parent_id)) {
+        childMap.set(item.parent_id, []);
+      }
+      childMap.get(item.parent_id)?.push(item);
+    }
+  });
+  return childMap;
 });
 
 /** 判断是否为富文本 HTML（Editor 输出：含 img/span/strong 等），否则按纯文本展示 */
@@ -426,6 +489,69 @@ function openEdit(item: CloudArchiveItem) {
 function confirmDelete(item: CloudArchiveItem) {
   emit('delete', item);
 }
+
+function openCreateNoteModal() {
+  // Emit event to parent component to open create note modal
+  // This will be handled in App.vue
+  const event = new CustomEvent('open-create-note-modal');
+  window.dispatchEvent(event);
+}
+
+/** Extract map name from demo meta */
+function getDemoMapName(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      return meta.mapName || 'Unknown Map';
+    } catch {
+      return 'Unknown Map';
+    }
+  }
+  return 'Unknown Map';
+}
+
+/** Extract CT team name from demo meta */
+function getDemoTeamCT(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      return meta.teamCT || 'CT';
+    } catch {
+      return 'CT';
+    }
+  }
+  return 'CT';
+}
+
+/** Extract T team name from demo meta */
+function getDemoTeamT(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      return meta.teamT || 'T';
+    } catch {
+      return 'T';
+    }
+  }
+  return 'T';
+}
+
+/** Extract add time from demo */
+function getDemoAddTime(demo: any): number {
+  if (demo.created_at) {
+    return new Date(demo.created_at).getTime();
+  }
+  return Date.now();
+}
+
+/** Navigate to demo playback: replayer URL will use note_id and demo_id. */
+function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
+  const noteId = noteItem.id;
+  const demoId = demo.id;
+  if (noteId && demoId != null) {
+    emit('go', { noteId, demoId });
+  }
+}
 </script>
 
 <style scoped>
@@ -476,6 +602,39 @@ function confirmDelete(item: CloudArchiveItem) {
 .header-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 新建笔记按钮 */
+.new-note-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--ds-primary);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-primary);
+  color: white;
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  height: 26px; /* 符合按钮高度规范 */
+  box-sizing: border-box;
+}
+
+.new-note-btn:hover {
+  background: var(--ds-primary-dark);
+  border-color: var(--ds-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.new-note-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .filter-controls {
@@ -1175,5 +1334,116 @@ function confirmDelete(item: CloudArchiveItem) {
 .more-menu-item-delete:hover {
   color: var(--ds-error, #ef4444);
   background: rgba(239, 68, 68, 0.08);
+}
+
+/* Card attachments styles */
+.card-attachments-section {
+  border-top: 1px solid var(--ds-border-subtle);
+  padding-top: var(--ds-space-md);
+  margin-top: var(--ds-space-md);
+}
+
+.attachments-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-xs);
+  margin-bottom: var(--ds-space-sm);
+}
+
+.attachments-title {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.attachments-count {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  font-weight: 500;
+}
+
+.attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-xs);
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-sm);
+  transition: all var(--ds-transition-base);
+}
+
+.attachment-item:hover {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-default);
+}
+
+.attachment-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.demo-icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
+.demo-map-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+}
+
+.demo-teams {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.demo-time {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  margin-left: auto;
+}
+
+.attachment-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-xs);
+  background: var(--ds-surface-base);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  flex-shrink: 0;
+}
+
+.attachment-play-btn:hover {
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: white;
+}
+
+.attachment-play-btn svg {
+  flex-shrink: 0;
 }
 </style>

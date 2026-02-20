@@ -119,7 +119,6 @@
             @edit="onRequestEditNote"
             @delete="onRequestDeleteNote"
             @go="goToNoteItem"
-            @reorder="(from, to) => reorderNoteItems(from, to)"
           />
         </main>
       </div>
@@ -133,9 +132,7 @@
           :can-add-to-note="canAddToNote"
           :note-uploading="noteUploading"
           :cloud-note="cloudNoteForReplayer"
-          :published-note-for-round="publishedNoteForCurrentRound"
           @save-current-round="handleAddToNote"
-          @edit-note="onRequestEditNote"
           @clip-publish-available="onClipPublishAvailable"
         />
       </main>
@@ -279,7 +276,180 @@
       </div>
     </div>
 
-    <!-- 云存档上传弹窗 -->
+    <!-- 编辑笔记弹窗 -->
+    <div
+      v-if="editModalOpen"
+      class="beta-modal-overlay"
+      @click="closeEditModal()"
+    >
+      <div class="beta-modal beta-modal--note-form" @click.stop>
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="modal-icon-svg">
+            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">编辑笔记</h3>
+        
+        <div class="form-group">
+          <label class="form-label">标题</label>
+          <input 
+            type="text" 
+            v-model="editFormTitle" 
+            class="form-input" 
+            placeholder="请输入笔记标题"
+            maxlength="64"
+          />
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">内容</label>
+          <textarea 
+            v-model="editFormContent" 
+            class="form-textarea" 
+            placeholder="请输入笔记内容"
+            rows="6"
+          ></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">可见性</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input 
+                type="radio" 
+                v-model="editFormPermission" 
+                value="private" 
+                class="radio-input"
+              />
+              <span class="radio-label">仅自己可见</span>
+            </label>
+            <label class="radio-option">
+              <input 
+                type="radio" 
+                v-model="editFormPermission" 
+                value="public" 
+                class="radio-input"
+              />
+              <span class="radio-label">公开可见</span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- Demo Items Section -->
+        <div v-if="editDemoItems.length > 0" class="demo-items-section">
+          <h4 class="section-title">附件 ({{ editDemoItems.length }} 个)</h4>
+          <div class="demo-items-list">
+            <div 
+              v-for="demo in editDemoItems" 
+              :key="demo.id"
+              class="demo-item-card"
+              :class="{ 'marked-for-deletion': demo.markedForDeletion }"
+            >
+              <div class="demo-item-info">
+                <div class="demo-meta-line">
+                  <span class="demo-map-name">
+                    <img src="/icons/map.svg" alt="" class="demo-icon" />
+                    {{ getDemoMapName(demo) }}
+                  </span>
+                  <span class="demo-teams">
+                    {{ getDemoTeamCT(demo) }} vs {{ getDemoTeamT(demo) }}
+                  </span>
+                  <span class="demo-time">{{ formatDemoTime(getDemoAddTime(demo)) }}</span>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                class="demo-delete-btn"
+                :class="{ 'delete-marked': demo.markedForDeletion }"
+                @click="toggleDemoDeletion(demo.id)"
+                :title="demo.markedForDeletion ? '取消删除' : '标记删除'"
+              >
+                <svg v-if="!demo.markedForDeletion" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button type="button" class="ds-btn-secondary" @click="closeEditModal">取消</button>
+          <button type="button" class="ds-btn-primary" @click="saveEditNote">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新建笔记弹窗 -->
+    <div
+      v-if="createNoteModalOpen"
+      class="beta-modal-overlay"
+      @click="closeCreateNoteModal()"
+    >
+      <div class="beta-modal beta-modal--note-form" @click.stop>
+        <div class="modal-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="modal-icon-svg">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">新建笔记</h3>
+        
+        <div class="form-group">
+          <label class="form-label">标题</label>
+          <input 
+            type="text" 
+            v-model="createNoteFormTitle" 
+            class="form-input" 
+            placeholder="请输入笔记标题"
+            maxlength="64"
+          />
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">内容</label>
+          <textarea 
+            v-model="createNoteFormContent" 
+            class="form-textarea" 
+            placeholder="请输入笔记内容"
+            rows="6"
+          ></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">可见性</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input 
+                type="radio" 
+                v-model="createNoteFormPermission" 
+                value="private" 
+                class="radio-input"
+              />
+              <span class="radio-label">仅自己可见</span>
+            </label>
+            <label class="radio-option">
+              <input 
+                type="radio" 
+                v-model="createNoteFormPermission" 
+                value="public" 
+                class="radio-input"
+              />
+              <span class="radio-label">公开可见</span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button type="button" class="ds-btn-secondary" @click="closeCreateNoteModal">取消</button>
+          <button type="button" class="ds-btn-primary" @click="submitCreateNote">创建</button>
+        </div>
+      </div>
+    </div>
     <div
       v-if="uploadModalOpen"
       class="beta-modal-overlay"
@@ -296,35 +466,104 @@
             </svg>
           </div>
           <h3 class="modal-title">{{ editingNoteId ? '修改笔记' : '发布笔记' }}</h3>
+          
+          <!-- Tab selection for new note vs existing note -->
+          <div v-if="!editingNoteId" class="modal-tabs">
+            <button 
+              type="button" 
+              class="modal-tab" 
+              :class="{ active: uploadTab === 'new' }"
+              @click="uploadTab = 'new'"
+            >
+              新建笔记
+            </button>
+            <button 
+              type="button" 
+              class="modal-tab" 
+              :class="{ active: uploadTab === 'existing' }"
+              @click="uploadTab = 'existing'"
+            >
+              归档到已有笔记
+            </button>
+          </div>
           <div class="modal-form">
-            <div class="form-group">
-              <input
-                v-model="uploadFormTitle"
-                type="text"
-                class="form-input"
-                maxlength="64"
-                placeholder="笔记名称"
-              />
-            </div>
-            <div class="form-group note-form-editor-wrap">
-              <Editor v-model="uploadFormContent" />
-            </div>
-            <div class="form-group">
-              <div class="form-radios">
-                <label class="form-radio">
-                  <input v-model="uploadFormPermission" type="radio" value="private" />
-                  <span>仅自己可见</span>
-                </label>
-                <label class="form-radio">
-                  <input v-model="uploadFormPermission" type="radio" value="public" />
-                  <span>公开链接</span>
-                </label>
+            <!-- New note tab -->
+            <template v-if="uploadTab === 'new'">
+              <div class="form-group">
+                <input
+                  v-model="uploadFormTitle"
+                  type="text"
+                  class="form-input"
+                  maxlength="64"
+                  placeholder="笔记名称"
+                />
               </div>
-            </div>
+              <div class="form-group note-form-editor-wrap">
+                <Editor v-model="uploadFormContent" />
+              </div>
+              <div class="form-group">
+                <div class="form-radios">
+                  <label class="form-radio">
+                    <input v-model="uploadFormPermission" type="radio" value="private" />
+                    <span>仅自己可见</span>
+                  </label>
+                  <label class="form-radio">
+                    <input v-model="uploadFormPermission" type="radio" value="public" />
+                    <span>公开链接</span>
+                  </label>
+                </div>
+              </div>
+            </template>
+            
+            <!-- Existing note tab -->
+            <template v-else-if="uploadTab === 'existing'">
+              <div class="form-group">
+                <label class="form-label">选择要归档的笔记</label>
+                <div class="filter-dropdown-wrapper">
+                  <div
+                    class="filter-tags-input"
+                    :class="{ 'has-selection': selectedNoteId }"
+                    @click="showNoteDropdown = true"
+                  >
+                    <span v-if="selectedNoteId && selectedNote" class="filter-selection-text">
+                      {{ selectedNote.title || '无标题' }}
+                    </span>
+                    <span v-else class="filter-placeholder">请选择笔记</span>
+                    <span class="filter-icon" @click.stop="handleNoteIconClick">
+                      <svg v-if="selectedNoteId" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                      <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </span>
+                  </div>
+                  <div v-if="showNoteDropdown" class="filter-dropdown ds-scrollbar">
+                    <div
+                      v-for="note in noteList"
+                      :key="note.id"
+                      class="filter-dropdown-item"
+                      :class="{ selected: selectedNoteId === note.id }"
+                      @click="selectNote(note.id)"
+                    >
+                      <span class="dropdown-item-name">{{ note.title || '无标题' }}</span>
+                      <span class="dropdown-item-count">({{ getNoteDemoCount(note) }})</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="form-info">
+                <p>将当前回合归档到选中的笔记中，不会创建新的笔记条目</p>
+              </div>
+            </template>
           </div>
           <div class="modal-actions">
             <button type="button" class="ds-btn-secondary" @click="closeUploadModal">取消</button>
-            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">{{ editingNoteId ? '保存修改' : '发布' }}</button>
+            <button type="button" class="ds-btn-primary" @click="submitUploadFromModal">
+              {{ editingNoteId ? '保存修改' : (uploadTab === 'existing' ? '归档' : '发布') }}
+            </button>
           </div>
         </template>
         <!-- 上传中 -->
@@ -354,8 +593,8 @@
           </div>
           <h3 class="modal-title">上传成功</h3>
           <p class="modal-message success">已保存到战术笔记</p>
-          <div class="share-link-row" @click="copyShareLink">
-            <code class="share-link-url">{{ getShareUrl() }}</code>
+          <div class="share-link-row" v-if="createdNoteId" @click="copyShareLinkInShareModal">
+            <code class="share-link-url">{{ getShareUrlForNoteId(createdNoteId) }}</code>
             <span class="share-link-copy" :class="{ copied: copyLinkCopied }" title="复制链接">
               <svg v-if="!copyLinkCopied" class="share-link-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -382,7 +621,6 @@
           <h3 class="modal-title">上传失败</h3>
           <p class="modal-message error">{{ uploadError }}</p>
           <div class="modal-actions">
-            <button type="button" class="ds-btn-secondary" @click="retryUploadForm">重试</button>
             <button type="button" class="ds-btn-primary" @click="closeUploadModal">关闭</button>
           </div>
         </template>
@@ -426,6 +664,7 @@ const {
   replayRouteError,
   replayerSource,
   replayerNoteId,
+  replayerDemoId,
   cloudNoteDetailFromApi,
 } = useReplayData();
 
@@ -458,7 +697,6 @@ const {
   loadNotes,
   addItem: addNoteItem,
   removeItem: removeNoteItemById,
-  reorderItems: reorderNoteItems,
   setItems,
   updateItem: updateNoteItem,
   quotaUsed,
@@ -478,16 +716,20 @@ const {
   uploadError,
   createdNoteId,
   copyLinkCopied,
+  uploadContext,
   openUploadModal,
   openEditModal,
+  openEditNoteModal,
   closeUploadModal,
-  retryUploadForm,
+  closeEditModal,
   submitUploadFromModal,
-  getShareUrl,
-  copyShareLink,
+  submitArchiveToExistingNote,
+  saveEditNote,
+  toggleDemoDeletion,
   confirmDeleteNoteId,
   confirmDeleteNoteConfirm,
   showQuotaExceededModal,
+  shareModalOpen,
   shareModalNoteId,
   shareModalPermission,
   shareModalCopyCopied,
@@ -497,6 +739,23 @@ const {
   saveShareModalPermission,
   copyShareLinkInShareModal,
   editingNoteId,
+  uploadTab,
+  selectedNoteId,
+  // Edit modal state
+  editModalOpen,
+  editNoteItem,
+  editDemoItems,
+  editFormTitle,
+  editFormContent,
+  editFormPermission,
+  // Create note modal state
+  createNoteModalOpen,
+  createNoteFormTitle,
+  createNoteFormContent,
+  createNoteFormPermission,
+  openCreateNoteModal,
+  closeCreateNoteModal,
+  submitCreateNote,
 } = useNote();
 
 const canPublishClip = ref(false);
@@ -519,26 +778,19 @@ const cloudNoteForReplayer = computed(() => {
   return cloudNoteDetailFromApi.value;
 });
 
-/** 当前回合是否已有发布的笔记（有则按钮绿色、点击为编辑）。仅 cloud 时辨识；local 永远视为发布新笔记 */
-const publishedNoteForCurrentRound = computed(() => {
-  if (replayerSource.value === 'cloud' && replayerNoteId.value) {
-    return noteList.value.find((n) => n.id === replayerNoteId.value) ?? null;
-  }
-  return null;
-});
-
 function openShareModal(item: CloudArchiveItem) {
   openNoteMenuId.value = null;
   openShareModalFromNote(item);
 }
 
-function onRequestDeleteNote(item: CloudArchiveItem) {
-  confirmDeleteNoteId.value = item.id;
+function onRequestEditNote(item: CloudArchiveItem) {
+  openEditNoteModal(item);
   openNoteMenuId.value = null;
 }
 
-function onRequestEditNote(item: CloudArchiveItem) {
-  openEditModal(item);
+function onRequestDeleteNote(item: CloudArchiveItem) {
+  confirmDeleteNoteId.value = item.id;
+  openNoteMenuId.value = null;
 }
 
 function onCloseShareModal() {
@@ -574,9 +826,21 @@ function formatNoteTime(ms: number): string {
   return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-function goToNoteItem(item: CloudArchiveItem) {
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function goToNoteItem(payload: CloudArchiveItem | { noteId: string; demoId: number }) {
   saveReplayerReturnUrl();
-  navigate('/replayer', `source=cloud&note_id=${encodeURIComponent(item.id)}&tab=note`);
+  const noteId = 'noteId' in payload ? payload.noteId : payload.id;
+  const demoId = 'demoId' in payload ? payload.demoId : undefined;
+  const params = new URLSearchParams({ source: 'cloud', note_id: noteId, tab: 'note' });
+  if (demoId != null) params.set('demo_id', String(demoId));
+  navigate('/replayer', params.toString());
 }
 
 /** 侧边栏使用刷新跳转，保证完整加载目标页 */
@@ -719,12 +983,15 @@ function handleAppToast(e: CustomEvent<{ message: string; type?: NoteToastType }
 // 监听全局点击事件、session 过期、全局 toast
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
+  document.addEventListener('click', handleNoteDropdownClickOutside);
+  window.addEventListener('open-create-note-modal', handleOpenCreateNoteModal);
   window.addEventListener('session-expired', handleSessionExpired);
   window.addEventListener('app:toast', handleAppToast as EventListener);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener('click', handleNoteDropdownClickOutside);
   window.removeEventListener('session-expired', handleSessionExpired);
   window.removeEventListener('app:toast', handleAppToast as EventListener);
 });
@@ -736,6 +1003,120 @@ const showDragIndicator = ref(false);
 const openNoteMenuId = ref<string | null>(null);
 const renamingNoteId = ref<string | null>(null);
 const renamingTitle = ref('');
+
+// Computed properties for selected note preview
+const selectedNote = computed(() => {
+  if (!selectedNoteId.value) return null;
+  return noteList.value.find(note => note.id === selectedNoteId.value) || null;
+});
+
+const selectedNoteDemos = computed(() => {
+  if (!selectedNote.value) return [];
+  return selectedNote.value.demos || [];
+});
+
+// State for note dropdown
+const showNoteDropdown = ref(false);
+
+/** 判断是否为富文本 HTML（Editor 输出：含 img/span/strong 等），否则按纯文本展示 */
+function isContentHtml(content: string): boolean {
+  const t = content || '';
+  return t.includes('<') && t.includes('>');
+}
+
+/** 格式化 demo 时间显示 */
+function formatDemoTime(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  if (sameDay) {
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Extract map name from demo meta */
+function getDemoMapName(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      return meta.mapName || 'Unknown Map';
+    } catch {
+      return 'Unknown Map';
+    }
+  }
+  return 'Unknown Map';
+}
+
+/** Extract CT team name from demo meta */
+function getDemoTeamCT(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      return meta.teamCT || 'CT';
+    } catch {
+      return 'CT';
+    }
+  }
+  return 'CT';
+}
+
+/** Extract T team name from demo meta */
+function getDemoTeamT(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      return meta.teamT || 'T';
+    } catch {
+      return 'T';
+    }
+  }
+  return 'T';
+}
+
+/** Extract add time from demo */
+function getDemoAddTime(demo: any): number {
+  if (demo.created_at) {
+    return new Date(demo.created_at).getTime();
+  }
+  return Date.now();
+}
+
+/** Handle note dropdown icon click (clear selection or toggle dropdown) */
+function handleNoteIconClick() {
+  if (selectedNoteId.value) {
+    // Clear selection
+    selectedNoteId.value = null;
+    showNoteDropdown.value = false;
+  } else {
+    // Toggle dropdown
+    showNoteDropdown.value = !showNoteDropdown.value;
+  }
+}
+
+/** Select a note from dropdown */
+function selectNote(noteId: string) {
+  selectedNoteId.value = noteId;
+  showNoteDropdown.value = false;
+}
+
+/** Get demo count for a note */
+function getNoteDemoCount(note: CloudArchiveItem): number {
+  return note.demos?.length || 0;
+}
+
+/** Close note dropdown when clicking outside */
+function handleNoteDropdownClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  if (!target.closest('.filter-dropdown-wrapper')) {
+    showNoteDropdown.value = false;
+  }
+}
+
+/** Handle open create note modal event from NoteLibrary */
+function handleOpenCreateNoteModal() {
+  openCreateNoteModal();
+}
 const dropdownPosition = ref({});
 
 function onNoteDragStart(e: DragEvent, index: number) {
@@ -778,7 +1159,6 @@ function onNoteDrop(toIndex: number) {
     targetIndex = toIndex + 1;
   }
   
-  reorderNoteItems(from, targetIndex);
   onNoteDragEnd();
 }
 
@@ -794,6 +1174,8 @@ async function ensureReplayerRouteData() {
   const uuid = query.uuid ?? null;
   const roundNum = parseInt(query.round || '', 10) || 1;
   const noteId = query.note_id ?? null;
+  const demoIdRaw = query.demo_id != null ? parseInt(String(query.demo_id), 10) : undefined;
+  const demoIdValid = demoIdRaw != null && !Number.isNaN(demoIdRaw) ? demoIdRaw : undefined;
 
   if (path === '/replayer') {
     replayerPureMode.value = (query.pure === '1' || query.pure === 'true');
@@ -825,7 +1207,11 @@ async function ensureReplayerRouteData() {
       replayerRouteLoading.value = false;
       return;
     }
-    const needLoad = !replay.value || replayerSource.value !== 'cloud' || replayerNoteId.value !== noteId;
+    const needLoad =
+      !replay.value ||
+      replayerSource.value !== 'cloud' ||
+      replayerNoteId.value !== noteId ||
+      (demoIdValid !== undefined && replayerDemoId.value !== demoIdValid);
     if (!needLoad) {
       replayerRouteLoading.value = false;
       currentDemoId.value = replay.value?.uuid ?? null;
@@ -835,7 +1221,7 @@ async function ensureReplayerRouteData() {
     currentDemoId.value = null;
     try {
       await waitForInitialLoad();
-      await loadReplayByCloud(noteId);
+      await loadReplayByCloud(noteId, demoIdValid);
       currentDemoId.value = replay.value?.uuid ?? null;
     } finally {
       replayerRouteLoading.value = false;
@@ -1732,6 +2118,81 @@ const showBetaWarning = () => {
   border-color: #dc2626;
 }
 
+/* === Modal Tabs === */
+.modal-tabs {
+  display: flex;
+  gap: var(--ds-space-sm);
+  margin: var(--ds-space-xl) 0;
+  border-bottom: 1px solid var(--ds-border-default);
+  padding-bottom: var(--ds-space-md);
+}
+
+.modal-tab {
+  padding: var(--ds-space-md) var(--ds-space-xl);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  flex: 1;
+  text-align: center;
+}
+
+.modal-tab:hover {
+  color: var(--ds-text-primary);
+  background: var(--ds-surface-hover);
+}
+
+.modal-tab.active {
+  color: var(--ds-primary);
+  border-bottom-color: var(--ds-primary);
+  background: var(--ds-surface-hover);
+}
+
+.form-label {
+  display: block;
+  margin-bottom: var(--ds-space-sm);
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  color: var(--ds-text-primary);
+}
+
+.form-select {
+  width: 100%;
+  padding: var(--ds-space-md);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-base);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.form-info {
+  margin-top: var(--ds-space-lg);
+  padding: var(--ds-space-md);
+  background: var(--ds-surface-subtle);
+  border-radius: var(--ds-radius-md);
+  border-left: 3px solid var(--ds-primary);
+}
+
+.form-info p {
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  line-height: 1.5;
+}
+
 .modal-close-btn {
   position: absolute;
   top: var(--ds-space-lg);
@@ -1778,5 +2239,572 @@ const showBetaWarning = () => {
   color: var(--ds-text-secondary);
   font-size: var(--ds-text-base);
   line-height: 1.6;
+}
+
+/* Demo attachments list */
+.demo-attachments-list {
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  background: var(--ds-bg-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.demo-attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--ds-border-default);
+  transition: background-color 0.2s;
+}
+
+.demo-attachment-item:last-child {
+  border-bottom: none;
+}
+
+.demo-attachment-item:hover {
+  background: var(--ds-bg-hover);
+}
+
+.demo-attachment-item.marked-for-deletion {
+  background: var(--ds-bg-danger-subtle);
+  opacity: 0.7;
+}
+
+.demo-attachment-item.marked-for-deletion .demo-uuid,
+.demo-attachment-item.marked-for-deletion .demo-round {
+  text-decoration: line-through;
+  color: var(--ds-text-danger);
+}
+
+.demo-attachment-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.demo-attachment-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.demo-uuid {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.demo-round {
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  font-weight: 500;
+}
+
+.demo-attachment-size {
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+}
+
+.demo-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  background: var(--ds-bg-primary);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.demo-delete-btn:hover {
+  border-color: var(--ds-border-danger);
+  color: var(--ds-text-danger);
+  background: var(--ds-bg-danger-subtle);
+}
+
+.demo-delete-btn.marked {
+  border-color: var(--ds-border-danger);
+  background: var(--ds-bg-danger);
+  color: var(--ds-text-on-danger);
+}
+
+.demo-delete-btn.marked:hover {
+  background: var(--ds-bg-danger-emphasis);
+}
+
+/* Existing content preview */
+.existing-content-preview {
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.existing-title {
+  margin-bottom: 12px;
+  color: var(--ds-text-primary);
+}
+
+.existing-content {
+  margin-bottom: 16px;
+  color: var(--ds-text-primary);
+}
+
+.content-preview {
+  background: var(--ds-bg-tertiary);
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ds-text-secondary);
+  white-space: pre-wrap;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.existing-demos {
+  color: var(--ds-text-primary);
+}
+
+.demo-list-preview {
+  margin-top: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.demo-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.demo-preview-item:last-child {
+  margin-bottom: 0;
+}
+
+.demo-preview-item .demo-uuid {
+  font-family: monospace;
+  background: var(--ds-bg-input);
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.demo-preview-item .demo-round {
+  color: var(--ds-text-primary);
+  font-weight: 500;
+}
+
+.demo-preview-item .demo-size {
+  margin-left: auto;
+  color: var(--ds-text-secondary);
+}
+
+/* New attachment preview */
+.new-attachment-preview {
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.new-attachment-header {
+  margin-bottom: 12px;
+  color: var(--ds-text-primary);
+}
+
+.new-attachment-item {
+  background: var(--ds-bg-tertiary);
+  border-radius: 6px;
+  padding: 16px;
+  border: 2px solid transparent;
+}
+
+.new-item-highlight {
+  border-bottom: 3px solid var(--ds-success);
+  background: linear-gradient(to bottom, var(--ds-bg-tertiary), rgba(63, 185, 80, 0.05));
+}
+
+.demo-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+/* Selected Note Preview Styles */
+.selected-note-preview {
+  margin: 20px 0;
+  padding: 16px;
+  background: var(--ds-bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--ds-border-default);
+}
+
+.preview-section {
+  margin-bottom: 16px;
+}
+
+.preview-section:last-child {
+  margin-bottom: 0;
+}
+
+.preview-title {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  margin: 0 0 8px 0;
+}
+
+.preview-content {
+  padding: 12px;
+  background: var(--ds-bg-primary-solid);
+  border-radius: 6px;
+  border: 1px solid var(--ds-border-default);
+  min-height: 60px;
+}
+
+.content-text {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.content-text.content-html {
+  white-space: normal;
+}
+
+.content-empty {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
+  font-style: italic;
+}
+
+.demo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.demo-item {
+  padding: 12px;
+  background: var(--ds-bg-primary-solid);
+  border-radius: 6px;
+  border: 1px solid var(--ds-border-default);
+}
+
+.demo-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: var(--ds-text-xs);
+}
+
+.demo-map {
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.demo-teams {
+  color: var(--ds-text-secondary);
+}
+
+.demo-time {
+  color: var(--ds-text-tertiary);
+  margin-left: auto;
+}
+
+/* Edit Modal Styles */
+.demo-items-section {
+  margin-top: var(--ds-space-xl);
+  padding-top: var(--ds-space-lg);
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.section-title {
+  margin: 0 0 var(--ds-space-md) 0;
+  font-size: var(--ds-text-lg);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.demo-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+}
+
+.demo-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ds-space-md);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  transition: all var(--ds-transition-base);
+}
+
+.demo-item-card:hover {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-default);
+}
+
+.demo-item-card.marked-for-deletion {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.demo-item-card.marked-for-deletion .demo-meta-line {
+  text-decoration: line-through;
+  color: var(--ds-text-danger, #dc2626);
+  opacity: 0.9;
+}
+
+.demo-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.demo-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-sm);
+}
+
+.demo-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+.demo-map-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ds-text-sm);
+  font-weight: 500;
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+}
+
+.demo-teams {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.demo-time {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  margin-left: auto;
+}
+
+.demo-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-base);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  flex-shrink: 0;
+}
+
+.demo-delete-btn:hover {
+  background: var(--ds-error, #ef4444);
+  border-color: var(--ds-error, #ef4444);
+  color: white;
+}
+
+.demo-delete-btn.delete-marked {
+  background: var(--ds-error, #ef4444);
+  border-color: var(--ds-error, #ef4444);
+  color: white;
+}
+
+.demo-delete-btn.delete-marked:hover {
+  background: var(--ds-error-dark, #dc2626);
+  border-color: var(--ds-error-dark, #dc2626);
+}
+
+/* Note Archive Dropdown Styles (matching NoteLibrary map filter) */
+.filter-dropdown-wrapper {
+  position: relative;
+}
+
+.filter-tags-input {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ds-surface-base);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  width: 100%;
+  min-height: 36px;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  box-sizing: border-box;
+}
+
+.filter-tags-input.has-selection {
+  background: rgba(var(--ds-primary-rgb), 0.15);
+  border-color: var(--ds-border-strong);
+}
+
+.filter-tags-input.has-selection:hover {
+  background: rgba(var(--ds-primary-rgb), 0.2);
+  border-color: var(--ds-border-strong);
+}
+
+.filter-tags-input:hover {
+  border-color: var(--ds-border-strong);
+}
+
+.filter-tags-input:focus-within {
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(var(--ds-primary-rgb), 0.12);
+}
+
+.filter-selection-text {
+  flex: 1;
+  color: var(--ds-primary);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-placeholder {
+  flex: 1;
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ds-text-tertiary);
+  transition: color var(--ds-transition-base);
+}
+
+.filter-icon:hover {
+  color: var(--ds-text-primary);
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-xl);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.filter-dropdown-item {
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  border-bottom: 1px solid var(--ds-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filter-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.filter-dropdown-item:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.filter-dropdown-item.selected {
+  background: rgba(var(--ds-primary-rgb), 0.15);
+  color: var(--ds-primary);
+  font-weight: 600;
+}
+
+.dropdown-item-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-item-count {
+  font-size: var(--ds-text-xs);
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-map {
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-success-subtle);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.demo-teams {
+  color: var(--ds-text-secondary);
+}
+
+.demo-round {
+  font-weight: 500;
+  color: var(--ds-text-primary);
+}
+
+.demo-source {
+  font-size: 12px;
+  color: var(--ds-text-success);
+  font-style: italic;
 }
 </style>

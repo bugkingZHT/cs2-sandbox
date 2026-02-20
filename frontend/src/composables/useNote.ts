@@ -26,35 +26,60 @@ export interface CloudArchiveItem {
   mapName?: string;
   teamCT?: string;
   teamT?: string;
+  parent_id?: string;
+  demos?: Array<{
+    id: number;
+    demo_uuid: string;
+    demo_round: number;
+    demo_meta?: string;
+    file_path?: string;
+    file_size: number;
+    created_at: string;
+    mapName?: string;
+    teamCT?: string;
+    teamT?: string;
+  }>;
 }
 
-/** API item shape from GET /api/note/items */
+/** API item shape from GET /api/note/items (note with optional demos array from backend) */
 interface ApiNoteItem {
   id: string;
   title: string;
   content?: string;
   permission?: string;
-  demo_uuid: string;
-  demo_round: number;
-  demo_meta?: string;
   created_at?: string;
+  mapName?: string;
+  teamCT?: string;
+  teamT?: string;
+  demo_uuid?: string;
+  demo_round?: number;
+  demo_meta?: string;
+  parent_id?: string;
+  demos?: Array<{
+    id: number;
+    demo_uuid: string;
+    demo_round: number;
+    demo_meta?: string;
+    file_size: number;
+    created_at: string;
+  }>;
 }
 
 function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
-  let mapName: string | undefined;
-  let teamCT: string | undefined;
-  let teamT: string | undefined;
-  if (item.demo_meta) {
+  let mapName: string | undefined = item.mapName;
+  let teamCT: string | undefined = item.teamCT;
+  let teamT: string | undefined = item.teamT;
+  if ((!mapName || !teamCT || !teamT) && item.demo_meta) {
     try {
       const meta = JSON.parse(item.demo_meta) as Record<string, unknown>;
-      if (typeof meta.mapName === 'string') mapName = meta.mapName;
+      if (typeof meta.mapName === 'string') mapName = mapName ?? meta.mapName;
       const rawCT = typeof meta.teamCT === 'string' ? meta.teamCT : '';
       const rawT = typeof meta.teamT === 'string' ? meta.teamT : '';
       const serverPlayer = Array.isArray(meta.serverPlayer) ? (meta.serverPlayer as PlayerInfo[]) : undefined;
-      teamCT = resolveTeamDisplayName(rawCT, 3, serverPlayer);
-      teamT = resolveTeamDisplayName(rawT, 2, serverPlayer);
-      if (teamCT === '-') teamCT = undefined;
-      if (teamT === '-') teamT = undefined;
+      const resolvedCT = resolveTeamDisplayName(rawCT, 3, serverPlayer);
+      const resolvedT = resolveTeamDisplayName(rawT, 2, serverPlayer);
+      if (teamCT === undefined) teamCT = resolvedCT === '-' ? undefined : resolvedCT;
+      if (teamT === undefined) teamT = resolvedT === '-' ? undefined : resolvedT;
     } catch {
       // ignore
     }
@@ -65,12 +90,13 @@ function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
     title: item.title,
     content: item.content,
     permission: item.permission,
-    demo_uuid: item.demo_uuid,
-    demo_round: item.demo_round,
+    demo_uuid: item.demo_uuid ?? '',
+    demo_round: item.demo_round ?? 0,
     add_time,
     mapName,
     teamCT,
     teamT,
+    demos: item.demos,
   };
 }
 
@@ -117,10 +143,37 @@ export function useNote() {
   let copyLinkCopiedTimer: ReturnType<typeof setTimeout> | null = null;
   const uploadContext = ref<UploadReplayContext | null>(null);
   const editingNoteId = ref<string | null>(null);
+  const uploadTab = ref<'new' | 'existing'>('new');
+  const selectedNoteId = ref<string | null>(null);
+  
+  // Edit modal state
+  const editModalOpen = ref(false);
+  const editNoteItem = ref<CloudArchiveItem | null>(null);
+  const editDemoItems = ref<Array<{
+    id: number;
+    demo_uuid: string;
+    demo_round: number;
+    demo_meta?: string;
+    file_path?: string;
+    file_size: number;
+    created_at: string;
+    markedForDeletion: boolean;
+  }>>([]);
+  const editFormTitle = ref('');
+  const editFormContent = ref('');
+  const editFormPermission = ref<'private' | 'public'>('private');
+  
+  // Create note modal state
+  const createNoteModalOpen = ref(false);
+  const createNoteFormTitle = ref('');
+  const createNoteFormContent = ref('');
+  const createNoteFormPermission = ref<'private' | 'public'>('private');
 
   function openUploadModal(ctx: UploadReplayContext) {
     uploadContext.value = ctx;
     editingNoteId.value = null;
+    uploadTab.value = 'new';
+    selectedNoteId.value = null;
     const r = ctx.replay;
     const round = ctx.roundNumber;
     const now = new Date();
@@ -161,6 +214,51 @@ export function useNote() {
     uploadModalOpen.value = true;
   }
 
+  async function openEditNoteModal(item: CloudArchiveItem) {
+    editNoteItem.value = item;
+    editFormTitle.value = (item.title ?? '').slice(0, 64);
+    editFormContent.value = item.content ?? '';
+    editFormPermission.value = (item.permission === 'public' ? 'public' : 'private');
+    
+    // Fetch demo items for this note
+    try {
+      const res = await fetch(`/api/note/items/${encodeURIComponent(item.id)}`, { 
+        credentials: 'include' 
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const data = json.data;
+        if (data?.demos && Array.isArray(data.demos)) {
+          editDemoItems.value = data.demos.map((demo: any) => ({
+            ...demo,
+            markedForDeletion: false
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('[Note] Failed to fetch demo items:', err);
+      editDemoItems.value = [];
+    }
+    
+    editModalOpen.value = true;
+  }
+
+  function closeEditModal() {
+    editModalOpen.value = false;
+    editNoteItem.value = null;
+    editDemoItems.value = [];
+    editFormTitle.value = '';
+    editFormContent.value = '';
+    editFormPermission.value = 'private';
+  }
+
+  function toggleDemoDeletion(demoId: number) {
+    const demo = editDemoItems.value.find(d => d.id === demoId);
+    if (demo) {
+      demo.markedForDeletion = !demo.markedForDeletion;
+    }
+  }
+
   function closeUploadModal() {
     uploadModalOpen.value = false;
     uploadModalStep.value = 'form';
@@ -168,6 +266,8 @@ export function useNote() {
     createdNoteId.value = null;
     uploadContext.value = null;
     editingNoteId.value = null;
+    uploadTab.value = 'new';
+    selectedNoteId.value = null;
     if (copyLinkCopiedTimer) {
       clearTimeout(copyLinkCopiedTimer);
       copyLinkCopiedTimer = null;
@@ -200,8 +300,187 @@ export function useNote() {
       showNoteToast('复制失败', 'error');
     }
   }
+  
+  // Create note functions
+  function openCreateNoteModal() {
+    createNoteFormTitle.value = '';
+    createNoteFormContent.value = '';
+    createNoteFormPermission.value = 'private';
+    createNoteModalOpen.value = true;
+  }
+  
+  function closeCreateNoteModal() {
+    createNoteModalOpen.value = false;
+    createNoteFormTitle.value = '';
+    createNoteFormContent.value = '';
+    createNoteFormPermission.value = 'private';
+  }
+  
+  async function submitCreateNote() {
+    const title = createNoteFormTitle.value.trim();
+    if (!title) {
+      showNoteToast('请输入笔记标题', 'warning');
+      return;
+    }
+    
+    try {
+      const form = new FormData();
+      form.append('title', title);
+      if (createNoteFormContent.value) {
+        form.append('content', createNoteFormContent.value);
+      }
+      form.append('permission', createNoteFormPermission.value);
+      // Empty demo data for pure note creation
+      form.append('demo_uuid', '');
+      form.append('demo_round', '0');
+      
+      const result = await new Promise<{ id: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/note/items');
+        xhr.withCredentials = true;
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const j = JSON.parse(xhr.responseText);
+              const id = j?.data?.id;
+              if (id) resolve({ id });
+              else reject(new Error('Invalid response'));
+            } catch {
+              reject(new Error('Invalid response'));
+            }
+          } else {
+            try {
+              const j = JSON.parse(xhr.responseText || '{}');
+              reject(new Error(j?.error || `HTTP ${xhr.status}`));
+            } catch {
+              reject(new Error(`HTTP ${xhr.status}`));
+            }
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Network error')));
+        xhr.send(form);
+      });
+      
+      showNoteToast('笔记创建成功', 'info');
+      await loadNotes();
+      closeCreateNoteModal();
+    } catch (err) {
+      showNoteToast(err instanceof Error ? err.message : '创建失败', 'error');
+    }
+  }
+
+  async function submitArchiveToExistingNote() {
+    if (!currentUser.value) {
+      showNoteToast('请先登录后查看和管理战术笔记', 'warning');
+      return;
+    }
+    if (isQuotaFull.value) {
+      showQuotaExceededModal.value = true;
+      return;
+    }
+    const ctx = uploadContext.value;
+    if (!ctx) return;
+    const { demoId, roundNumber } = ctx;
+    const noteId = selectedNoteId.value;
+    if (!noteId) return;
+
+    const replay = await getReplayStorage();
+    const roundBytes = await replay.loadRound(demoId, roundNumber);
+    if (!roundBytes || roundBytes.length === 0) {
+      uploadError.value = '请先加载该回合';
+      uploadModalStep.value = 'error';
+      return;
+    }
+    const form = new FormData();
+    form.append('file', new Blob([roundBytes as BlobPart], { type: 'application/octet-stream' }), 'round.pb');
+    form.append('demo_uuid', demoId);
+    form.append('demo_round', String(roundNumber));
+    form.append('parent_id', noteId); // Link to existing note
+    const metaStorage = await getMetaStorage();
+    const fullMeta = await metaStorage.loadMeta(demoId);
+    if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
+
+    uploadModalStep.value = 'uploading';
+    noteUploading.value = true;
+    uploadProgress.value = 0;
+    uploadError.value = '';
+    try {
+      const result = await new Promise<{ id: string | number; note_id?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/note/items');
+        xhr.withCredentials = true;
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            uploadProgress.value = Math.round((e.loaded / e.total) * 100);
+          }
+        });
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const j = JSON.parse(xhr.responseText);
+              const data = j?.data;
+              if (data) {
+                // For archiving to existing note, we get demo item ID
+                // For creating new note, we get note item ID
+                const id = data.id;
+                const returnedNoteId = data.note_id || noteId; // Use returned note_id if provided
+                if (id) resolve({ id, note_id: returnedNoteId });
+                else reject(new Error('Invalid response'));
+              } else {
+                reject(new Error('Invalid response'));
+              }
+            } catch {
+              reject(new Error('Invalid response'));
+            }
+          } else {
+            try {
+              const j = JSON.parse(xhr.responseText || '{}');
+              if (xhr.status === 403 && (j?.error === 'note_quota_exceeded' || j?.code === 'QUOTA_EXCEEDED')) {
+                reject({ status: 403, code: 'QUOTA_EXCEEDED', quota: j?.quota });
+              } else {
+                reject(new Error(j?.error || `HTTP ${xhr.status}`));
+              }
+            } catch {
+              reject(new Error(`HTTP ${xhr.status}`));
+            }
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Network error')));
+        xhr.send(form);
+      });
+      // For archive to existing note, id is demo item id; use note_id for share link
+      createdNoteId.value = (result.note_id ?? result.id) != null ? String(result.note_id ?? result.id) : null;
+      await loadNotes();
+      uploadModalStep.value = 'success';
+      await fetchAuthMe();
+      showNoteToast('已归档到笔记', 'info');
+    } catch (err) {
+      const quotaErr = err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'QUOTA_EXCEEDED';
+      if (quotaErr) {
+        closeUploadModal();
+        showQuotaExceededModal.value = true;
+      } else {
+        uploadError.value = err instanceof Error ? err.message : '上传失败';
+        uploadModalStep.value = 'error';
+      }
+    } finally {
+      noteUploading.value = false;
+      uploadProgress.value = 0;
+    }
+  }
 
   async function submitUploadFromModal() {
+    // Handle existing note tab
+    if (uploadTab.value === 'existing') {
+      if (!selectedNoteId.value) {
+        showNoteToast('请选择要归档的笔记', 'warning');
+        return;
+      }
+      await submitArchiveToExistingNote();
+      return;
+    }
+    
+    // Handle new note tab (existing logic)
     const title = uploadFormTitle.value.trim();
     if (!title) {
       showNoteToast('请输入存档名称', 'warning');
@@ -315,10 +594,8 @@ export function useNote() {
   async function confirmDeleteNoteConfirm() {
     if (confirmDeleteNoteId.value !== null) {
       const id = confirmDeleteNoteId.value;
-      await removeItem(id);
-      showNoteToast('已删除战术笔记', 'info');
-      await loadNotes();
       confirmDeleteNoteId.value = null;
+      await removeItem(id);
     }
   }
 
@@ -326,6 +603,7 @@ export function useNote() {
   const showQuotaExceededModal = ref(false);
 
   // Share modal
+  const shareModalOpen = ref(false);
   const shareModalNoteId = ref<string | null>(null);
   const shareModalPermission = ref<'private' | 'public'>('private');
   const shareModalCopyCopied = ref(false);
@@ -424,43 +702,30 @@ export function useNote() {
           return;
         }
         if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const deletedChildren = data?.data?.deleted_children || 0;
+
+          // Remove the parent item and all its children from the list
           noteList.value = noteList.value.filter((i) => i.id !== id);
+          await loadNotes();
+
+          // Show appropriate toast message
+          if (deletedChildren > 0) {
+            showNoteToast(`已删除笔记及 ${deletedChildren} 个关联笔记`, 'info');
+          } else {
+            showNoteToast('已删除笔记', 'info');
+          }
+        } else {
+          const json = await res.json().catch(() => ({}));
+          showNoteToast(json?.error || `删除失败 (${res.status})`, 'error');
         }
       } catch (e) {
         console.warn('[useCloudNote] removeItem API failed:', e);
+        showNoteToast('删除失败', 'error');
       }
       return;
     }
     noteList.value = noteList.value.filter((i) => i.id !== id);
-  }
-
-  async function reorderItems(fromIndex: number, toIndex: number): Promise<void> {
-    if (fromIndex === toIndex) return;
-    const items = [...noteList.value];
-    const [removed] = items.splice(fromIndex, 1);
-    items.splice(toIndex, 0, removed);
-    const order = items.map((i) => i.id);
-    if (currentUser.value) {
-      try {
-        const res = await fetch('/api/note/tree', {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order }),
-        });
-        if (res.status === 401) {
-          handleSessionExpired();
-          return;
-        }
-        if (res.ok) {
-          noteList.value = items;
-        }
-      } catch (e) {
-        console.warn('[useCloudNote] reorderItems API failed:', e);
-      }
-      return;
-    }
-    noteList.value = items;
   }
 
   /** When logged in, setItems is no-op (use updateItem for single-field updates). */
@@ -509,13 +774,59 @@ export function useNote() {
     noteList.value = next;
   }
 
+  async function deleteDemoItem(demoId: number): Promise<void> {
+    const res = await fetch(`/api/note/demo/${demoId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      throw new Error('删除失败');
+    }
+  }
+
+  async function saveEditNote() {
+    if (!editNoteItem.value) return;
+    
+    const title = editFormTitle.value.trim();
+    if (!title) {
+      showNoteToast('请输入笔记标题', 'warning');
+      return;
+    }
+    
+    try {
+      // Update note metadata
+      const payload: { title?: string; permission?: string; content?: string } = {
+        title,
+        permission: editFormPermission.value,
+        content: editFormContent.value,
+      };
+      
+      await updateItem(editNoteItem.value.id, payload);
+      
+      // Delete marked demo items
+      const itemsToDelete = editDemoItems.value.filter(d => d.markedForDeletion);
+      for (const demo of itemsToDelete) {
+        try {
+          await deleteDemoItem(demo.id);
+        } catch (err) {
+          console.error(`[Note] Failed to delete demo item ${demo.id}:`, err);
+        }
+      }
+      
+      showNoteToast('笔记已更新', 'info');
+      await loadNotes();
+      closeEditModal();
+    } catch (err) {
+      showNoteToast(err instanceof Error ? err.message : '更新失败', 'error');
+    }
+  }
+
   return {
     noteList,
     itemsLoading,
     loadNotes,
     addItem,
     removeItem,
-    reorderItems,
     setItems,
     updateItem,
     // Quota
@@ -538,20 +849,21 @@ export function useNote() {
     uploadError,
     createdNoteId,
     copyLinkCopied,
+    uploadContext,
+    editingNoteId,
+    uploadTab,
+    selectedNoteId,
     openUploadModal,
     openEditModal,
+    openEditNoteModal,
     closeUploadModal,
-    retryUploadForm,
+    closeEditModal,
     submitUploadFromModal,
-    editingNoteId,
-    getShareUrl,
-    copyShareLink,
-    // Delete confirm
-    confirmDeleteNoteId,
-    confirmDeleteNoteConfirm,
-    // Quota exceeded
-    showQuotaExceededModal,
+    submitArchiveToExistingNote,
+    saveEditNote,
+    toggleDemoDeletion,
     // Share modal
+    shareModalOpen,
     shareModalNoteId,
     shareModalPermission,
     shareModalCopyCopied,
@@ -560,5 +872,25 @@ export function useNote() {
     closeShareModal,
     saveShareModalPermission,
     copyShareLinkInShareModal,
+    // Delete confirm modal
+    confirmDeleteNoteId,
+    confirmDeleteNoteConfirm,
+    // Quota exceeded modal
+    showQuotaExceededModal,
+    // Edit modal state
+    editModalOpen,
+    editNoteItem,
+    editDemoItems,
+    editFormTitle,
+    editFormContent,
+    editFormPermission,
+    // Create note modal (note-only, no demo)
+    createNoteModalOpen,
+    createNoteFormTitle,
+    createNoteFormContent,
+    createNoteFormPermission,
+    openCreateNoteModal,
+    closeCreateNoteModal,
+    submitCreateNote,
   };
 }

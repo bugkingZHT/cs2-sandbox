@@ -112,7 +112,7 @@ func openDBAndMigrate(dbCfg database.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 	log.Println("[DB] Connected")
-	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &note.NoteItem{}, &note.UserNoteTree{}, &role.Role{}, &role.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &note.NoteItem{}, &note.DemoItem{}, &role.Role{}, &role.Subscription{}); err != nil {
 		log.Printf("[DB] Migrate failed: %v", err)
 	}
 	return db, nil
@@ -154,7 +154,6 @@ func registerNoteRoutes(mux *http.ServeMux, sessionStore *session.Store, noteSto
 	if storageRoot == "" {
 		log.Printf("[Note] %s not set; /api/note/* will return 503", constants.EnvSnowboStorageRootPath)
 		note503 := noteUnavailableHandler()
-		mux.HandleFunc("/api/note/tree", note503)
 		mux.HandleFunc("/api/note/item", note503)
 		mux.HandleFunc("/api/note/file", note503)
 		mux.HandleFunc("/api/note/items", note503)
@@ -165,8 +164,8 @@ func registerNoteRoutes(mux *http.ServeMux, sessionStore *session.Store, noteSto
 	noteHandlers := &note.Handlers{Store: noteStore, Storage: noteStorage, RoleStore: roleStore}
 	mux.HandleFunc("/api/note/item", session.OptionalAuth(sessionStore, noteHandlers.GetItemByDemo))
 	mux.HandleFunc("/api/note/file", session.OptionalAuth(sessionStore, noteHandlers.GetFileByDemo))
+	mux.HandleFunc("/api/note/demo/", session.RequireAuth(sessionStore, noteHandlers.DeleteDemoItem))
 	mux.HandleFunc("/api/note/items/", session.OptionalAuth(sessionStore, noteHandlers.ItemByID))
-	mux.HandleFunc("/api/note/tree", session.RequireAuth(sessionStore, noteHandlers.PutTree))
 	mux.HandleFunc("/api/note/items", session.RequireAuth(sessionStore, noteHandlers.ItemsIndex))
 	log.Printf("[Note] %s set to %s", constants.EnvSnowboStorageRootPath, storageRoot)
 }

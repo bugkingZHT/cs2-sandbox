@@ -149,17 +149,16 @@
         </button>
       </div>
       <div class="zoom-pure-column">
-        <div v-if="!pureMode && !hideSaveToNote" class="save-to-note-wrap">
+        <div v-if="!pureMode && !hideSaveToNote && replayerSource !== 'cloud'" class="save-to-note-wrap">
           <button
             type="button"
             class="save-to-note-btn zoom-column-btn"
-            :class="{ 'is-published': !!publishedNote }"
-            :title="publishedNote ? '编辑已发布的笔记' : (canAddToNote ? '发布笔记' : '当前回合可发布到笔记')"
-            :disabled="(!publishedNote && !canAddToNote) || noteUploading"
-            @click="publishedNote ? emit('edit-note', publishedNote) : emit('save-current-round')"
+            :title="canAddToNote ? '发布笔记' : '当前回合可发布到笔记'"
+            :disabled="!canAddToNote || noteUploading"
+            @click="emit('save-current-round')"
           >
             <img src="/icons/upload.svg" alt="" class="save-to-note-icon" width="18" height="18" />
-            <span class="save-to-note-label">{{ publishedNote ? '编辑笔记' : '保存到笔记' }}</span>
+            <span class="save-to-note-label">保存到笔记</span>
           </button>
         </div>
         <div class="zoom-reset-group">

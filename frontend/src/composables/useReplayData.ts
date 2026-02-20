@@ -40,10 +40,12 @@ interface UseReplayResult {
   replayerSource: ReturnType<typeof ref<'local' | 'cloud' | null>>;
   /** 当前云笔记 id（source=cloud 时），用于避免重复加载同一 note */
   replayerNoteId: ReturnType<typeof ref<string | null>>;
+  /** 当前云附件 demo id（URL demo_id），用于 needLoad 判断 */
+  replayerDemoId: ReturnType<typeof ref<number | null>>;
   /** GET item 返回的笔记 title/content，公开笔记未登录或他人查看时用于 replayer 展示 */
   cloudNoteDetailFromApi: ReturnType<typeof ref<{ title: string; content?: string } | null>>;
   loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
-  loadReplayByCloud: (noteId: string) => Promise<void>;
+  loadReplayByCloud: (noteId: string, demoId?: number) => Promise<void>;
   /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
   clearCloudPlaybackState: () => void;
   /** 只读加载某 demo 某回合的帧数据，用于列表页预览 timeline，不写入全局 replay/frames */
@@ -72,6 +74,7 @@ function createReplayData() {
   const cloudDownloadProgress = ref<{ active: boolean; progress: number; lengthComputable: boolean | null }>({ active: false, progress: 0, lengthComputable: null });
   const replayerSource = ref<'local' | 'cloud' | null>(null);
   const replayerNoteId = ref<string | null>(null);
+  const replayerDemoId = ref<number | null>(null);
   /** 公开笔记：GET item 返回的 title/content，供未登录或他人查看时 replayer 展示 */
   const cloudNoteDetailFromApi = ref<{ title: string; content?: string } | null>(null);
 
@@ -229,10 +232,10 @@ function createReplayData() {
     }
   };
 
-  // Fetch round file from cloud with progress; returns arraybuffer on 2xx, throws on error.
-  const fetchRoundFileFromCloud = (demoUuid: string, demoRound: number): Promise<ArrayBuffer> => {
+  // Fetch round file from cloud by note_id + demo_id (permission + file in one API). Returns arraybuffer on 2xx, throws on error.
+  const fetchRoundFileByNoteAndDemo = (noteId: string, demoId: number): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
-      const url = `/api/note/file?demo_uuid=${encodeURIComponent(demoUuid)}&demo_round=${demoRound}`;
+      const url = `/api/note/file?note_id=${encodeURIComponent(noteId)}&demo_id=${demoId}`;
       const xhr = new XMLHttpRequest();
       xhr.open('GET', url);
       xhr.withCredentials = true;
@@ -271,6 +274,7 @@ function createReplayData() {
     replayRouteError.value = null;
     replayerSource.value = 'local';
     replayerNoteId.value = null;
+    replayerDemoId.value = null;
     try {
       const metaStorage = await getMetaStorage();
       const replayStorage = await getReplayStorage();
@@ -293,14 +297,14 @@ function createReplayData() {
     }
   };
 
-  /** 云录像：GET item 拿 meta，用返回的 demo_uuid/demo_round 查 IndexedDB；有则复用，无则从服务器拉取并写入 IndexedDB */
-  const loadReplayByCloud = async (noteId: string) => {
+  /** 云录像：GET item 拿 note + demos，按 note_id + demo_id 用统一接口下载文件（权限+文件一体） */
+  const loadReplayByCloud = async (noteId: string, demoId?: number) => {
     replayRouteError.value = null;
     cloudNoteDetailFromApi.value = null;
     replayerSource.value = 'cloud';
     replayerNoteId.value = noteId;
+    replayerDemoId.value = demoId ?? null;
     try {
-      const replayStorage = await getReplayStorage();
       const res = await fetch(`/api/note/items/${encodeURIComponent(noteId)}`, { credentials: 'include' });
       if (res.status === 403) {
         replayRouteError.value = 'forbidden';
@@ -315,22 +319,33 @@ function createReplayData() {
         return;
       }
       const json = await res.json().catch(() => ({}));
-      const data = (json as { data?: { demo_uuid: string; demo_round: number; demo_meta?: string; title?: string; content?: string } }).data;
-      if (!data?.demo_uuid) {
+      const data = (json as {
+        data?: {
+          title?: string;
+          content?: string;
+          demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string }>;
+        };
+      }).data;
+      const demos = data?.demos ?? [];
+      const targetDemo = demoId != null
+        ? demos.find((d) => d.id === demoId)
+        : demos[0];
+      if (!targetDemo) {
         replayRouteError.value = 'not_found';
         return;
       }
+      const resolvedDemoId = targetDemo.id;
+      replayerDemoId.value = resolvedDemoId;
       cloudNoteDetailFromApi.value = {
-        title: data.title ?? '',
-        content: data.content,
+        title: data?.title ?? '',
+        content: data?.content,
       };
-      const demoUuid = data.demo_uuid;
-      const demoRound = data.demo_round ?? 1;
+      const demoRound = targetDemo.demo_round ?? 1;
       let meta: ReplayMeta;
       try {
-        const parsed = data.demo_meta ? (JSON.parse(data.demo_meta) as ReplayMeta) : null;
+        const parsed = targetDemo.demo_meta ? (JSON.parse(targetDemo.demo_meta) as ReplayMeta) : null;
         meta = parsed ? adaptMeta(parsed) : {
-          uuid: demoUuid,
+          uuid: targetDemo.demo_uuid,
           uploaderUid: '',
           uploadTime: 0,
           mapName: '',
@@ -345,7 +360,7 @@ function createReplayData() {
         };
       } catch {
         meta = {
-          uuid: demoUuid,
+          uuid: targetDemo.demo_uuid,
           uploaderUid: '',
           uploadTime: 0,
           mapName: '',
@@ -360,16 +375,10 @@ function createReplayData() {
         };
       }
       setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
-      const roundBytes = await replayStorage.loadRound(demoUuid, demoRound);
-      if (roundBytes) {
-        await applyRoundBytes(roundBytes, demoRound);
-        return;
-      }
       cloudDownloadProgress.value = { active: true, progress: 0, lengthComputable: null };
       try {
-        const buf = await fetchRoundFileFromCloud(demoUuid, demoRound);
+        const buf = await fetchRoundFileByNoteAndDemo(noteId, resolvedDemoId);
         const roundBytesFetched = new Uint8Array(buf);
-        await replayStorage.saveRound(demoUuid, demoRound, roundBytesFetched);
         await applyRoundBytes(roundBytesFetched, demoRound);
       } catch (e) {
         console.warn('[LoadReplayByCloud] file fetch failed:', e);
@@ -387,6 +396,7 @@ function createReplayData() {
     if (replayerSource.value !== 'cloud') return;
     replayerSource.value = null;
     replayerNoteId.value = null;
+    replayerDemoId.value = null;
     cloudNoteDetailFromApi.value = null;
     replayRouteError.value = null;
     cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
@@ -757,6 +767,7 @@ function createReplayData() {
     cloudDownloadProgress,
     replayerSource,
     replayerNoteId,
+    replayerDemoId,
     cloudNoteDetailFromApi,
     loadReplayByLocal,
     loadReplayByCloud,

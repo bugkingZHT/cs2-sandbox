@@ -74,12 +74,10 @@
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
           :can-add-to-note="props.canAddToNote"
-          :show-save-to-note="replayerSource !== 'cloud' || !!props.publishedNoteForRound"
+          :show-save-to-note="replayerSource !== 'cloud'"
           :hide-save-to-note="true"
           :note-uploading="props.noteUploading"
-          :published-note="props.publishedNoteForRound ?? null"
           @save-current-round="emit('save-current-round')"
-          @edit-note="emit('edit-note', $event)"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
@@ -648,15 +646,15 @@
               <img src="/icons/slip.svg" class="left-panel-footer-btn-icon" alt="" />
             </button>
             <button
+              v-if="!pureMode && replayerSource !== 'cloud'"
               type="button"
               class="left-panel-footer-btn publish-note-btn"
-              :class="{ 'is-published': !!props.publishedNoteForRound }"
-              :title="props.publishedNoteForRound ? '编辑已发布的笔记' : (props.canAddToNote ? '发布笔记' : '当前回合可发布到笔记')"
-              :disabled="(!props.publishedNoteForRound && !props.canAddToNote) || props.noteUploading || clipForking"
+              :title="props.canAddToNote ? '发布笔记' : '当前回合可发布到笔记'"
+              :disabled="!props.canAddToNote || props.noteUploading || clipForking"
               @click="onPublishClick"
             >
               <img src="/icons/upload.svg" alt="" class="left-panel-footer-btn-icon" width="18" height="18" />
-              <span class="left-panel-footer-btn-text">{{ replayerSource === 'cloud' ? '编辑' : '发布' }}</span>
+              <span class="left-panel-footer-btn-text">笔记</span>
             </button>
           </div>
         </div>
@@ -727,15 +725,12 @@ const props = withDefaults(
     noteUploading?: boolean;
     /** 当前云笔记（source=cloud 时用于左侧「笔记」tab 展示 title + content） */
     cloudNote?: { title: string; content?: string } | null;
-    /** 当前回合已发布的笔记（有则按钮绿色、点击为编辑） */
-    publishedNoteForRound?: CloudArchiveItem | null;
   }>(),
-  { publishedNoteForRound: null }
+  {}
 );
 
 const emit = defineEmits<{
   (e: 'save-current-round', forkContext?: UploadReplayContext): void;
-  (e: 'edit-note', item: CloudArchiveItem): void;
   (e: 'clip-publish-available', payload: { available: boolean }): void;
 }>();
 
@@ -1766,10 +1761,6 @@ function toggleClipRound(roundNumber: number) {
 
 /** 发布笔记点击：不论是否剪辑模式，都 fork 一份 demo meta 并生成新 round_0.pb，再交给父级打开上传弹窗 */
 async function onPublishClick() {
-  if (props.publishedNoteForRound) {
-    emit('edit-note', props.publishedNoteForRound);
-    return;
-  }
   if (!props.canAddToNote) return;
   // 剪辑模式下用 effectiveFrames，并只保留 clipRange 范围内的帧
   let framesToSave =
