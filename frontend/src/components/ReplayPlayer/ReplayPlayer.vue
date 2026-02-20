@@ -152,30 +152,32 @@
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'players' }"
-                @click="leftPanelTab = 'players'"
+                @click="toggleLeftPanelTab('players')"
               >玩家</button>
               <button
                 v-if="replayerSource !== 'cloud'"
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
-                @click="leftPanelTab = 'rounds'"
+                @click="toggleLeftPanelTab('rounds')"
               >回合</button>
               <button
                 v-if="replayerSource === 'cloud'"
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'note' }"
-                @click="leftPanelTab = 'note'"
+                @click="toggleLeftPanelTab('note')"
               >笔记</button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'settings' }"
-                @click="leftPanelTab = 'settings'"
+                @click="toggleLeftPanelTab('settings')"
               >设置</button>
             </div>
           </div>
+          <!-- 无 tab 选中时占位，保持面板高度 -->
+          <div v-show="leftPanelTab === null" class="left-panel-content left-panel-content-empty" aria-hidden="true"></div>
           <div v-show="leftPanelTab === 'players'" class="left-panel-content left-panel-players">
             <div class="left-panel-players-inner">
           <!-- First Half (1-12): T on top, Second Half (13+): CT on top. left-team-score-eye 控制上侧 -->
@@ -586,20 +588,29 @@
             </div>
             </div>
           </div>
-          <!-- Note tab (cloud only): title + content（支持富文本） -->
+          <!-- Note tab (cloud only): 半透明 card 包裹，title 与 content 间有分割线 -->
           <div v-show="leftPanelTab === 'note'" class="left-panel-content left-panel-note">
-            <template v-if="props.cloudNote">
-              <h3 class="left-panel-note-title">{{ props.cloudNote.title }}</h3>
-              <div
-                v-if="isNoteContentHtml(props.cloudNote.content)"
-                class="left-panel-note-content left-panel-note-content-rich"
-                v-html="props.cloudNote.content"
-              ></div>
-              <div v-else class="left-panel-note-content">{{ props.cloudNote.content || '—' }}</div>
-            </template>
-            <template v-else>
-              <p class="left-panel-note-empty">暂无笔记内容</p>
-            </template>
+            <div class="left-panel-note-inner">
+              <div class="note-card">
+                <template v-if="props.cloudNote">
+                  <div class="note-card-title">{{ props.cloudNote.title }}</div>
+                  <div class="note-card-body">
+                    <div
+                      v-if="isNoteContentHtml(props.cloudNote.content)"
+                      class="left-panel-note-content left-panel-note-content-rich"
+                      v-html="props.cloudNote.content"
+                    ></div>
+                    <div v-else class="left-panel-note-content">{{ props.cloudNote.content || '—' }}</div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="note-card-title">笔记</div>
+                  <div class="note-card-body">
+                    <p class="left-panel-note-empty">暂无笔记内容</p>
+                  </div>
+                </template>
+              </div>
+            </div>
           </div>
           <!-- 设置 tab：地图上展示哪些元素，卡片布局与回合 tab 同宽 -->
           <div v-show="leftPanelTab === 'settings'" class="left-panel-content left-panel-settings">
@@ -731,7 +742,11 @@ const emit = defineEmits<{
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
 // 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
-const leftPanelTab = ref<'players' | 'rounds' | 'note' | 'settings'>('players');
+const leftPanelTab = ref<'players' | 'rounds' | 'note' | 'settings' | null>('players');
+
+function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'note' | 'settings') {
+  leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
+}
 // 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
 const showMapProjectiles = ref(true);
 const showMapDropped = ref(true);
@@ -822,7 +837,8 @@ function syncReplayerUrl() {
     q.tab = 'disable';
   } else {
     delete q.pure;
-    q.tab = leftPanelTab.value;
+    if (leftPanelTab.value != null) q.tab = leftPanelTab.value;
+    else delete q.tab;
   }
   const search = new URLSearchParams(q).toString();
   replaceLocation(pathRef.value, search);
@@ -1824,7 +1840,7 @@ const loadRoundData = async (roundNumber: number) => {
       q.uuid = replay.value.uuid;
       q.round = String(roundNumber);
     }
-    if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; q.tab = leftPanelTab.value; }
+    if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; if (leftPanelTab.value != null) q.tab = leftPanelTab.value; else delete q.tab; }
     replaceLocation('/replayer', new URLSearchParams(q).toString());
     
     // Resume playback if it was playing before
@@ -2113,7 +2129,34 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  padding: var(--ds-space-sm) 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.left-panel-note-inner {
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 笔记 card：与设置 card 同风格半透明 */
+.note-card {
+  background: var(--ds-bg-tertiary, #21262d);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--ds-radius-sm);
+  padding: 12px 14px;
+}
+
+.note-card-title {
+  padding: 0 0 var(--ds-space-md) 0;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--gh-text);
+}
+
+.note-card-body {
+  padding-top: var(--ds-space-md);
 }
 
 .left-panel-note-title {
@@ -2189,7 +2232,7 @@ onBeforeUnmount(() => {
 }
 
 .settings-card-title {
-  padding: 0 0 var(--ds-space-md) 0;
+  padding: 0 0 var(--ds-space-sm) 0;
   font-size: 13px;
   font-weight: 600;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);

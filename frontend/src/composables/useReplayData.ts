@@ -40,6 +40,8 @@ interface UseReplayResult {
   replayerSource: ReturnType<typeof ref<'local' | 'cloud' | null>>;
   /** 当前云笔记 id（source=cloud 时），用于避免重复加载同一 note */
   replayerNoteId: ReturnType<typeof ref<string | null>>;
+  /** GET item 返回的笔记 title/content，公开笔记未登录或他人查看时用于 replayer 展示 */
+  cloudNoteDetailFromApi: ReturnType<typeof ref<{ title: string; content?: string } | null>>;
   loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
   loadReplayByCloud: (noteId: string) => Promise<void>;
   /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
@@ -70,6 +72,8 @@ function createReplayData() {
   const cloudDownloadProgress = ref<{ active: boolean; progress: number; lengthComputable: boolean | null }>({ active: false, progress: 0, lengthComputable: null });
   const replayerSource = ref<'local' | 'cloud' | null>(null);
   const replayerNoteId = ref<string | null>(null);
+  /** 公开笔记：GET item 返回的 title/content，供未登录或他人查看时 replayer 展示 */
+  const cloudNoteDetailFromApi = ref<{ title: string; content?: string } | null>(null);
 
   const abortController = new AbortController();
   let initialLoadPromise: Promise<void> | null = null;
@@ -292,6 +296,7 @@ function createReplayData() {
   /** 云录像：GET item 拿 meta，用返回的 demo_uuid/demo_round 查 IndexedDB；有则复用，无则从服务器拉取并写入 IndexedDB */
   const loadReplayByCloud = async (noteId: string) => {
     replayRouteError.value = null;
+    cloudNoteDetailFromApi.value = null;
     replayerSource.value = 'cloud';
     replayerNoteId.value = noteId;
     try {
@@ -310,11 +315,15 @@ function createReplayData() {
         return;
       }
       const json = await res.json().catch(() => ({}));
-      const data = (json as { data?: { demo_uuid: string; demo_round: number; demo_meta?: string; title?: string } }).data;
+      const data = (json as { data?: { demo_uuid: string; demo_round: number; demo_meta?: string; title?: string; content?: string } }).data;
       if (!data?.demo_uuid) {
         replayRouteError.value = 'not_found';
         return;
       }
+      cloudNoteDetailFromApi.value = {
+        title: data.title ?? '',
+        content: data.content,
+      };
       const demoUuid = data.demo_uuid;
       const demoRound = data.demo_round ?? 1;
       let meta: ReplayMeta;
@@ -378,6 +387,7 @@ function createReplayData() {
     if (replayerSource.value !== 'cloud') return;
     replayerSource.value = null;
     replayerNoteId.value = null;
+    cloudNoteDetailFromApi.value = null;
     replayRouteError.value = null;
     cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
     replay.value = null;
@@ -747,6 +757,7 @@ function createReplayData() {
     cloudDownloadProgress,
     replayerSource,
     replayerNoteId,
+    cloudNoteDetailFromApi,
     loadReplayByLocal,
     loadReplayByCloud,
     clearCloudPlaybackState,

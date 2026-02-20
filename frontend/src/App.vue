@@ -426,6 +426,7 @@ const {
   replayRouteError,
   replayerSource,
   replayerNoteId,
+  cloudNoteDetailFromApi,
 } = useReplayData();
 
 const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
@@ -509,12 +510,13 @@ const canAddToNote = computed(
     ((!!currentDemoId.value && !!currentRoundNumber.value && !!replay.value) || canPublishClip.value)
 );
 
-/** 当前播放的云笔记（source=cloud 时用于 ReplayPlayer 左侧「笔记」tab） */
+/** 当前播放的云笔记（source=cloud 时用于 ReplayPlayer 左侧「笔记」tab）。本人笔记用 noteList；公开笔记未登录或他人查看用 GET item 返回的 cloudNoteDetailFromApi */
 const cloudNoteForReplayer = computed(() => {
   const id = replayerNoteId.value;
   if (!id) return null;
   const item = noteList.value.find((n) => n.id === id);
-  return item ? { title: item.title, content: item.content ?? '' } : null;
+  if (item) return { title: item.title, content: item.content ?? '' };
+  return cloudNoteDetailFromApi.value;
 });
 
 /** 当前回合是否已有发布的笔记（有则按钮绿色、点击为编辑）。仅 cloud 时辨识；local 永远视为发布新笔记 */
@@ -1436,6 +1438,7 @@ const showBetaWarning = () => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 

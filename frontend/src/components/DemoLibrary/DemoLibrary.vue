@@ -1364,12 +1364,13 @@ const scoreLeftRightMap = computed(() => {
   --gh-text-muted: #8b949e;
 }
 
-/* === Page Layout === */
+/* === Page Layout：固定高度，列表超出时内部滚动（与 NoteLibrary 一致）=== */
 .demo-library-page {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   background: var(--gh-bg);
   overflow: hidden;
 }
@@ -1522,9 +1523,10 @@ const scoreLeftRightMap = computed(() => {
   margin: 0;
 }
 
-/* === Demo Bar List (GitHub dark) === */
+/* === Demo Bar List：固定高度区域，超出出现滚动条，样式参考 NoteLibrary .note-library-body === */
 .demo-bar-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0;
   display: flex;
@@ -1534,6 +1536,7 @@ const scoreLeftRightMap = computed(() => {
 
 .demo-bar-card {
   width: 100%;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
