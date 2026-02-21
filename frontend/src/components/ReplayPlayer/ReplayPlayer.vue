@@ -715,7 +715,7 @@ import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
 import { replaceLocation, pathRef, searchRef, getQuery, REPLAYER_RETURN_URL_KEY } from '@/location';
 import type { CloudArchiveItem, UploadReplayContext } from '@/composables/useNote';
-import { forkClipToNewDemo } from '@/composables/clipForkForNote';
+import { forkClipToNewDemo, prepareCurrentRoundForUpload } from '@/composables/clipForkForNote';
 
 const props = withDefaults(
   defineProps<{
@@ -1759,33 +1759,54 @@ function toggleClipRound(roundNumber: number) {
   }
 }
 
-/** 发布笔记点击：不论是否剪辑模式，都 fork 一份 demo meta 并生成新 round_0.pb，再交给父级打开上传弹窗 */
+/** 发布笔记点击：剪辑模式 fork 新 demo；非剪辑模式直接追加 settings 到当前 meta，使用原始回合 */
 async function onPublishClick() {
   if (!props.canAddToNote) return;
-  // 剪辑模式下用 effectiveFrames，并只保留 clipRange 范围内的帧
-  let framesToSave =
-    isClipMode.value && effectiveFrames.value.length > 0 ? effectiveFrames.value : (frames.value ?? []);
-  if (isClipMode.value && framesToSave.length > 0) {
-    const start = Math.max(0, Math.min(clipRangeStartIndex.value, framesToSave.length - 1));
-    const end = Math.max(start, Math.min(clipRangeEndIndex.value, framesToSave.length - 1));
-    framesToSave = framesToSave.slice(start, end + 1);
-  }
   const sourceReplay = effectiveReplay.value ?? replay.value;
-  if (!sourceReplay || framesToSave.length === 0) {
+  if (!sourceReplay) {
     window.dispatchEvent(
       new CustomEvent('app:toast', { detail: { message: '请先加载回合或选择剪辑内容', type: 'warning' } })
     );
     return;
   }
+  const settings = {
+    hiddenPlayerIds: hiddenPlayerIdsArray.value,
+    showMapProjectiles: showMapProjectiles.value,
+    showMapDropped: showMapDropped.value,
+    showMapBomb: showMapBomb.value,
+  };
   clipForking.value = true;
   try {
-    const settings = {
-      hiddenPlayerIds: hiddenPlayerIdsArray.value,
-      showMapProjectiles: showMapProjectiles.value,
-      showMapDropped: showMapDropped.value,
-      showMapBomb: showMapBomb.value,
-    };
-    const ctx = await forkClipToNewDemo(framesToSave, sourceReplay, settings);
+    let ctx: UploadReplayContext;
+    if (isClipMode.value) {
+      let framesToSave = effectiveFrames.value;
+      if (framesToSave.length > 0) {
+        const start = Math.max(0, Math.min(clipRangeStartIndex.value, framesToSave.length - 1));
+        const end = Math.max(start, Math.min(clipRangeEndIndex.value, framesToSave.length - 1));
+        framesToSave = framesToSave.slice(start, end + 1);
+      }
+      if (framesToSave.length === 0) {
+        window.dispatchEvent(
+          new CustomEvent('app:toast', { detail: { message: '请先选择剪辑内容', type: 'warning' } })
+        );
+        return;
+      }
+      ctx = await forkClipToNewDemo(framesToSave, sourceReplay, settings);
+    } else {
+      const roundNum = currentRound.value || 0;
+      if (!sourceReplay.uuid || roundNum === 0) {
+        window.dispatchEvent(
+          new CustomEvent('app:toast', { detail: { message: '请先加载回合', type: 'warning' } })
+        );
+        return;
+      }
+      ctx = await prepareCurrentRoundForUpload(
+        sourceReplay.uuid,
+        roundNum,
+        sourceReplay,
+        settings
+      );
+    }
     emit('save-current-round', ctx);
   } catch (e) {
     const msg = e instanceof Error ? e.message : '导出失败';

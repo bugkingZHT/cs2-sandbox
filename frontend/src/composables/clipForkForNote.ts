@@ -1,6 +1,7 @@
 /**
  * 剪辑模式发布笔记：将当前拼接的 merged 回合 fork 成新 demo（新 UUID + round_0.pb），
  * 供上传流程使用。
+ * 非剪辑模式：直接使用当前 meta 和回合数据，仅追加 settings 到 meta。
  */
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ReplaySettings } from '@/types/replay';
 import { getReplayStorage } from './indexdb-storage';
@@ -8,6 +9,40 @@ import { getMetaStorage } from './indexdb-storage';
 import { encodeReplayRound } from './proto-converters';
 import { resolveTeamDisplayName } from './teamDisplay';
 import type { UploadReplayContext } from './useNote';
+
+/**
+ * 非剪辑模式发布：将 replaySettings 追加到当前 meta，使用原始 demo 和回合数据，
+ * 不 fork 新 meta、不生成新 round 文件。
+ */
+export async function prepareCurrentRoundForUpload(
+  demoId: string,
+  roundNumber: number,
+  sourceReplay: ReplayData | null,
+  replaySettings?: ReplaySettings
+): Promise<UploadReplayContext> {
+  if (!sourceReplay) {
+    throw new Error('缺少源回放信息');
+  }
+  const metaStorage = await getMetaStorage();
+  const rawMeta = await metaStorage.loadMeta(demoId);
+  if (rawMeta) {
+    const meta = { ...rawMeta } as ReplayMeta;
+    meta.replaySettings = {
+      ...(meta.replaySettings ?? {}),
+      ...(replaySettings ?? {}),
+    };
+    await metaStorage.saveMeta(meta);
+  }
+  return {
+    demoId,
+    roundNumber,
+    replay: {
+      mapName: sourceReplay.mapName,
+      teamCT: resolveTeamDisplayName(sourceReplay.teamCT ?? '', 3, sourceReplay.serverPlayer),
+      teamT: resolveTeamDisplayName(sourceReplay.teamT ?? '', 2, sourceReplay.serverPlayer),
+    },
+  };
+}
 
 /**
  * Fork 剪辑结果为新 demo：生成新 UUID，写入 meta 到 IndexedDB（含 replaySettings），将 merged 帧写入 IndexedDB round_0.pb，

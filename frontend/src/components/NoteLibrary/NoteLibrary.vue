@@ -73,20 +73,15 @@
                 ></div>
               </div>
             </div>
+            <!-- 新建笔记按钮（与 DemoLibrary 上传按钮样式一致） -->
+            <button type="button" class="ds-btn ds-btn-primary" @click="openCreateNoteModal">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span>新建笔记</span>
+            </button>
           </div>
-          
-          <!-- 新建笔记按钮 -->
-          <button 
-            type="button" 
-            class="new-note-btn"
-            @click="openCreateNoteModal"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>新建笔记</span>
-          </button>
         </div>
       </div>
     </Teleport>
@@ -607,34 +602,34 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
   justify-content: space-between;
 }
 
-/* 新建笔记按钮 */
-.new-note-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: 1px solid var(--ds-primary);
-  border-radius: var(--ds-radius-sm);
-  background: var(--ds-primary);
-  color: white;
+/* 新建笔记按钮（与 DemoLibrary 上传按钮一致） */
+.library-actions .ds-btn {
+  padding: var(--ds-space-sm) var(--ds-space-lg);
   font-size: var(--ds-text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  height: 26px; /* 符合按钮高度规范 */
-  box-sizing: border-box;
+  height: 38px;
 }
 
-.new-note-btn:hover {
-  background: var(--ds-primary-dark);
-  border-color: var(--ds-primary-dark);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.library-actions .ds-btn-primary {
+  background: #238636;
+  color: #fff;
+  border-color: #238636;
 }
 
-.new-note-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+.library-actions .ds-btn-primary:hover:not(:disabled) {
+  background: #2ea043;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+.library-actions .ds-btn-primary:active:not(:disabled) {
+  background: #26a641;
+  border-color: #26a641;
+  color: #fff;
+}
+
+.library-actions .ds-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .filter-controls {

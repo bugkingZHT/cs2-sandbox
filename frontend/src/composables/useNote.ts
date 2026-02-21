@@ -104,6 +104,49 @@ function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
 const sharedNoteList = ref<CloudArchiveItem[]>([]);
 const sharedItemsLoading = ref(false);
 
+/** 共享的弹窗/模态状态，保证 App 与 NoteModal 等使用同一份数据 */
+const sharedNoteUploading = ref(false);
+const sharedUploadModalOpen = ref(false);
+const sharedUploadModalStep = ref<UploadModalStep>('form');
+const sharedUploadFormTitle = ref('');
+const sharedUploadFormContent = ref('');
+const sharedUploadFormPermission = ref<'private' | 'public'>('private');
+const sharedUploadProgress = ref(0);
+const sharedUploadError = ref('');
+const sharedCreatedNoteId = ref<string | null>(null);
+const sharedCopyLinkCopied = ref(false);
+let sharedCopyLinkCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+const sharedUploadContext = ref<UploadReplayContext | null>(null);
+const sharedEditingNoteId = ref<string | null>(null);
+const sharedUploadTab = ref<'new' | 'existing'>('new');
+const sharedSelectedNoteId = ref<string | null>(null);
+const sharedEditModalOpen = ref(false);
+const sharedEditNoteItem = ref<CloudArchiveItem | null>(null);
+const sharedEditDemoItems = ref<Array<{
+  id: number;
+  demo_uuid: string;
+  demo_round: number;
+  demo_meta?: string;
+  file_path?: string;
+  file_size: number;
+  created_at: string;
+  markedForDeletion: boolean;
+}>>([]);
+const sharedEditFormTitle = ref('');
+const sharedEditFormContent = ref('');
+const sharedEditFormPermission = ref<'private' | 'public'>('private');
+const sharedCreateNoteModalOpen = ref(false);
+const sharedCreateNoteFormTitle = ref('');
+const sharedCreateNoteFormContent = ref('');
+const sharedCreateNoteFormPermission = ref<'private' | 'public'>('private');
+const sharedConfirmDeleteNoteId = ref<string | null>(null);
+const sharedShowQuotaExceededModal = ref(false);
+const sharedShareModalOpen = ref(false);
+const sharedShareModalNoteId = ref<string | null>(null);
+const sharedShareModalPermission = ref<'private' | 'public'>('private');
+const sharedShareModalCopyCopied = ref(false);
+let sharedShareModalCopyCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function useNote() {
   const { currentUser, handleSessionExpired, fetchAuthMe } = useAuth();
   const noteList = sharedNoteList;
@@ -129,45 +172,35 @@ export function useNote() {
     }, 2000);
   }
 
-  // Upload modal
-  const noteUploading = ref(false);
-  const uploadModalOpen = ref(false);
-  const uploadModalStep = ref<UploadModalStep>('form');
-  const uploadFormTitle = ref('');
-  const uploadFormContent = ref('');
-  const uploadFormPermission = ref<'private' | 'public'>('private');
-  const uploadProgress = ref(0);
-  const uploadError = ref('');
-  const createdNoteId = ref<string | null>(null);
-  const copyLinkCopied = ref(false);
-  let copyLinkCopiedTimer: ReturnType<typeof setTimeout> | null = null;
-  const uploadContext = ref<UploadReplayContext | null>(null);
-  const editingNoteId = ref<string | null>(null);
-  const uploadTab = ref<'new' | 'existing'>('new');
-  const selectedNoteId = ref<string | null>(null);
+  // Upload modal - use shared refs
+  const noteUploading = sharedNoteUploading;
+  const uploadModalOpen = sharedUploadModalOpen;
+  const uploadModalStep = sharedUploadModalStep;
+  const uploadFormTitle = sharedUploadFormTitle;
+  const uploadFormContent = sharedUploadFormContent;
+  const uploadFormPermission = sharedUploadFormPermission;
+  const uploadProgress = sharedUploadProgress;
+  const uploadError = sharedUploadError;
+  const createdNoteId = sharedCreatedNoteId;
+  const copyLinkCopied = sharedCopyLinkCopied;
+  const uploadContext = sharedUploadContext;
+  const editingNoteId = sharedEditingNoteId;
+  const uploadTab = sharedUploadTab;
+  const selectedNoteId = sharedSelectedNoteId;
   
-  // Edit modal state
-  const editModalOpen = ref(false);
-  const editNoteItem = ref<CloudArchiveItem | null>(null);
-  const editDemoItems = ref<Array<{
-    id: number;
-    demo_uuid: string;
-    demo_round: number;
-    demo_meta?: string;
-    file_path?: string;
-    file_size: number;
-    created_at: string;
-    markedForDeletion: boolean;
-  }>>([]);
-  const editFormTitle = ref('');
-  const editFormContent = ref('');
-  const editFormPermission = ref<'private' | 'public'>('private');
+  // Edit modal state - use shared refs
+  const editModalOpen = sharedEditModalOpen;
+  const editNoteItem = sharedEditNoteItem;
+  const editDemoItems = sharedEditDemoItems;
+  const editFormTitle = sharedEditFormTitle;
+  const editFormContent = sharedEditFormContent;
+  const editFormPermission = sharedEditFormPermission;
   
-  // Create note modal state
-  const createNoteModalOpen = ref(false);
-  const createNoteFormTitle = ref('');
-  const createNoteFormContent = ref('');
-  const createNoteFormPermission = ref<'private' | 'public'>('private');
+  // Create note modal state - use shared refs
+  const createNoteModalOpen = sharedCreateNoteModalOpen;
+  const createNoteFormTitle = sharedCreateNoteFormTitle;
+  const createNoteFormContent = sharedCreateNoteFormContent;
+  const createNoteFormPermission = sharedCreateNoteFormPermission;
 
   function openUploadModal(ctx: UploadReplayContext) {
     uploadContext.value = ctx;
@@ -190,9 +223,9 @@ export function useNote() {
     uploadError.value = '';
     createdNoteId.value = null;
     copyLinkCopied.value = false;
-    if (copyLinkCopiedTimer) {
-      clearTimeout(copyLinkCopiedTimer);
-      copyLinkCopiedTimer = null;
+    if (sharedCopyLinkCopiedTimer) {
+      clearTimeout(sharedCopyLinkCopiedTimer);
+      sharedCopyLinkCopiedTimer = null;
     }
     uploadModalOpen.value = true;
   }
@@ -207,9 +240,9 @@ export function useNote() {
     uploadError.value = '';
     createdNoteId.value = null;
     copyLinkCopied.value = false;
-    if (copyLinkCopiedTimer) {
-      clearTimeout(copyLinkCopiedTimer);
-      copyLinkCopiedTimer = null;
+    if (sharedCopyLinkCopiedTimer) {
+      clearTimeout(sharedCopyLinkCopiedTimer);
+      sharedCopyLinkCopiedTimer = null;
     }
     uploadModalOpen.value = true;
   }
@@ -268,9 +301,9 @@ export function useNote() {
     editingNoteId.value = null;
     uploadTab.value = 'new';
     selectedNoteId.value = null;
-    if (copyLinkCopiedTimer) {
-      clearTimeout(copyLinkCopiedTimer);
-      copyLinkCopiedTimer = null;
+    if (sharedCopyLinkCopiedTimer) {
+      clearTimeout(sharedCopyLinkCopiedTimer);
+      sharedCopyLinkCopiedTimer = null;
     }
   }
 
@@ -291,10 +324,10 @@ export function useNote() {
     try {
       await navigator.clipboard.writeText(url);
       copyLinkCopied.value = true;
-      if (copyLinkCopiedTimer) clearTimeout(copyLinkCopiedTimer);
-      copyLinkCopiedTimer = setTimeout(() => {
+      if (sharedCopyLinkCopiedTimer) clearTimeout(sharedCopyLinkCopiedTimer);
+      sharedCopyLinkCopiedTimer = setTimeout(() => {
         copyLinkCopied.value = false;
-        copyLinkCopiedTimer = null;
+        sharedCopyLinkCopiedTimer = null;
       }, 2000);
     } catch {
       showNoteToast('复制失败', 'error');
@@ -589,8 +622,8 @@ export function useNote() {
     }
   }
 
-  // Delete confirm modal
-  const confirmDeleteNoteId = ref<string | null>(null);
+  // Delete confirm modal - use shared ref
+  const confirmDeleteNoteId = sharedConfirmDeleteNoteId;
   async function confirmDeleteNoteConfirm() {
     if (confirmDeleteNoteId.value !== null) {
       const id = confirmDeleteNoteId.value;
@@ -599,15 +632,14 @@ export function useNote() {
     }
   }
 
-  // Quota exceeded modal
-  const showQuotaExceededModal = ref(false);
+  // Quota exceeded modal - use shared ref
+  const showQuotaExceededModal = sharedShowQuotaExceededModal;
 
-  // Share modal
-  const shareModalOpen = ref(false);
-  const shareModalNoteId = ref<string | null>(null);
-  const shareModalPermission = ref<'private' | 'public'>('private');
-  const shareModalCopyCopied = ref(false);
-  let shareModalCopyCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+  // Share modal - use shared refs
+  const shareModalOpen = sharedShareModalOpen;
+  const shareModalNoteId = sharedShareModalNoteId;
+  const shareModalPermission = sharedShareModalPermission;
+  const shareModalCopyCopied = sharedShareModalCopyCopied;
 
   function getShareUrlForNoteId(noteId: string): string {
     return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&tab=note`;
@@ -617,17 +649,17 @@ export function useNote() {
     shareModalNoteId.value = item.id;
     shareModalPermission.value = (item.permission === 'public' ? 'public' : 'private');
     shareModalCopyCopied.value = false;
-    if (shareModalCopyCopiedTimer) {
-      clearTimeout(shareModalCopyCopiedTimer);
-      shareModalCopyCopiedTimer = null;
+    if (sharedShareModalCopyCopiedTimer) {
+      clearTimeout(sharedShareModalCopyCopiedTimer);
+      sharedShareModalCopyCopiedTimer = null;
     }
   }
 
   function closeShareModal() {
     shareModalNoteId.value = null;
-    if (shareModalCopyCopiedTimer) {
-      clearTimeout(shareModalCopyCopiedTimer);
-      shareModalCopyCopiedTimer = null;
+    if (sharedShareModalCopyCopiedTimer) {
+      clearTimeout(sharedShareModalCopyCopiedTimer);
+      sharedShareModalCopyCopiedTimer = null;
     }
   }
 
@@ -643,10 +675,10 @@ export function useNote() {
     try {
       await navigator.clipboard.writeText(url);
       shareModalCopyCopied.value = true;
-      if (shareModalCopyCopiedTimer) clearTimeout(shareModalCopyCopiedTimer);
-      shareModalCopyCopiedTimer = setTimeout(() => {
+      if (sharedShareModalCopyCopiedTimer) clearTimeout(sharedShareModalCopyCopiedTimer);
+      sharedShareModalCopyCopiedTimer = setTimeout(() => {
         shareModalCopyCopied.value = false;
-        shareModalCopyCopiedTimer = null;
+        sharedShareModalCopyCopiedTimer = null;
       }, 2000);
     } catch {
       showNoteToast('复制失败', 'error');
@@ -868,6 +900,8 @@ export function useNote() {
     shareModalPermission,
     shareModalCopyCopied,
     getShareUrlForNoteId,
+    getShareUrl,
+    copyShareLink,
     openShareModal,
     closeShareModal,
     saveShareModalPermission,
