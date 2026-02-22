@@ -1,5 +1,9 @@
 <template>
-  <div class="viewer-layout">
+  <div
+    class="viewer-layout"
+    :class="{ 'note-only-share': noteOnlyShare }"
+  >
+    <div v-show="!noteOnlyShare" class="viewer-main">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
       <!-- Cover：按优先级只显示一种，返回按钮在内容下方 -->
@@ -64,7 +68,8 @@
       <div v-else class="map-canvas-wrapper">
         <MapCanvas 
           :frames="effectiveFrames" 
-          :bounds="bounds" 
+          :bounds="bounds"
+          :has-right-sidebar="!!(replayerSource === 'cloud' && cloudNoteFull)"
           :current-frame-index="effectiveFrameIndex"
           :replay-meta="effectiveReplay"
           :is-playing="isPlaying"
@@ -159,13 +164,6 @@
                 :class="{ active: leftPanelTab === 'rounds' }"
                 @click="toggleLeftPanelTab('rounds')"
               >回合</button>
-              <button
-                v-if="replayerSource === 'cloud'"
-                type="button"
-                class="left-panel-tab"
-                :class="{ active: leftPanelTab === 'note' }"
-                @click="toggleLeftPanelTab('note')"
-              >笔记</button>
               <button
                 type="button"
                 class="left-panel-tab"
@@ -586,30 +584,6 @@
             </div>
             </div>
           </div>
-          <!-- Note tab (cloud only): 半透明 card 包裹，title 与 content 间有分割线 -->
-          <div v-show="leftPanelTab === 'note'" class="left-panel-content left-panel-note">
-            <div class="left-panel-note-inner">
-              <div class="note-card">
-                <template v-if="props.cloudNote">
-                  <div class="note-card-title">{{ props.cloudNote.title }}</div>
-                  <div class="note-card-body">
-                    <div
-                      v-if="isNoteContentHtml(props.cloudNote.content)"
-                      class="left-panel-note-content left-panel-note-content-rich"
-                      v-html="props.cloudNote.content"
-                    ></div>
-                    <div v-else class="left-panel-note-content">{{ props.cloudNote.content || '-' }}</div>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="note-card-title">笔记</div>
-                  <div class="note-card-body">
-                    <p class="left-panel-note-empty">暂无笔记内容</p>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </div>
           <!-- 设置 tab：地图上展示哪些元素，卡片布局与回合 tab 同宽 -->
           <div v-show="leftPanelTab === 'settings'" class="left-panel-content left-panel-settings">
             <div class="left-panel-settings-inner">
@@ -635,6 +609,20 @@
             </div>
           </div>
           <div class="left-panel-footer">
+            <div v-if="replayerSource === 'cloud' && replayerNoteId" class="embed-link-wrap">
+              <button
+                type="button"
+                class="left-panel-footer-btn embed-link-btn"
+                title="复制内嵌分享链接"
+                @click="copyEmbedLink"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <span class="left-panel-footer-btn-text">内嵌链接</span>
+              </button>
+            </div>
             <button
               v-if="replayerSource === 'local'"
               type="button"
@@ -696,6 +684,7 @@
         @load-round="loadRoundData"
       />
     </section>
+    </div>
   </div>
 </template>
 
@@ -723,23 +712,28 @@ const props = withDefaults(
     canAddToNote?: boolean;
     /** 云存档上传中 */
     noteUploading?: boolean;
-    /** 当前云笔记（source=cloud 时用于左侧「笔记」tab 展示 title + content） */
-    cloudNote?: { title: string; content?: string } | null;
+    /** 完整云笔记（source=cloud 时用于右侧边栏 note-card 展示） */
+    cloudNoteFull?: CloudArchiveItem | null;
+    /** 仅 note_id 的分享链接（无 demo_id）：只展示右侧笔记内容，不展示左侧播放页 */
+    noteOnlyShare?: boolean;
+    /** 当前云笔记是否为本人的（可显示编辑按钮） */
+    canEditNote?: boolean;
   }>(),
-  {}
+  { noteOnlyShare: false, canEditNote: false }
 );
 
 const emit = defineEmits<{
   (e: 'save-current-round', forkContext?: UploadReplayContext): void;
   (e: 'clip-publish-available', payload: { available: boolean }): void;
+  (e: 'go', payload: CloudArchiveItem | { noteId: string; demoId: number }): void;
 }>();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
-// 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 笔记（cloud）
-const leftPanelTab = ref<'players' | 'rounds' | 'note' | 'settings' | null>('players');
+// 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 设置
+const leftPanelTab = ref<'players' | 'rounds' | 'settings' | null>(null);
 
-function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'note' | 'settings') {
+function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'settings') {
   leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
 }
 // 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
@@ -807,6 +801,77 @@ function isNoteContentHtml(content: string | null | undefined): boolean {
   return t.includes('<') && t.includes('>');
 }
 
+function isContentHtml(content: string | null | undefined): boolean {
+  return isNoteContentHtml(content);
+}
+
+/** Display file name: prefer fileName from demo meta (original .dem name), else API file_name */
+function getDemoFileName(demo: { demo_meta?: string; file_name?: string }): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
+      const fn = meta.fileName;
+      if (typeof fn === 'string' && fn.trim()) return fn.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  return typeof demo.file_name === 'string' && demo.file_name.trim() ? demo.file_name.trim() : '';
+}
+
+function getDemoMapName(demo: { demo_meta?: string }): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
+      return (meta.mapName as string) || 'Unknown Map';
+    } catch {
+      return 'Unknown Map';
+    }
+  }
+  return 'Unknown Map';
+}
+
+function getDemoTeamCT(demo: { demo_meta?: string }): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
+      return (meta.teamCT as string) || 'CT';
+    } catch {
+      return 'CT';
+    }
+  }
+  return 'CT';
+}
+
+function getDemoTeamT(demo: { demo_meta?: string }): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
+      return (meta.teamT as string) || 'T';
+    } catch {
+      return 'T';
+    }
+  }
+  return 'T';
+}
+
+function getDemoAddTime(demo: { created_at?: string }): number {
+  if (demo.created_at) return new Date(demo.created_at).getTime();
+  return Date.now();
+}
+
+/** 时间格式 YYYY-MM-DD HH:mm:ss */
+function formatNoteTime(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}:${s}`;
+}
+
 function goBack() {
   const saved = sessionStorage.getItem(REPLAYER_RETURN_URL_KEY);
   if (saved) {
@@ -818,13 +883,30 @@ function goBack() {
   const path = replayerSource.value === 'cloud' ? '/notes' : '/demolib';
   window.location.href = base + path;
 }
+
+/** 复制内嵌分享链接（带 pure=1） */
+async function copyEmbedLink() {
+  const noteId = replayerNoteId.value;
+  if (!noteId) return;
+  const base = typeof window !== 'undefined' ? window.location.origin : '';
+  const pathBase = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
+  const prefix = pathBase && pathBase !== '/' ? pathBase : '';
+  const url = `${base}${prefix}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&demo_id=_&pure=1`;
+  try {
+    await navigator.clipboard.writeText(url);
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
+  } catch {
+    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
+  }
+}
+
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
 if (replayerPureMode) {
   watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
 }
 
-// 纯净模式 + 左侧 Tab 与 URL 同步：pure=1 / tab=players|rounds|note
+// 纯净模式 + 左侧 Tab 与 URL 同步：pure=1 / tab=players|rounds|settings
 function syncReplayerUrl() {
   const q = getQuery();
   if (pureMode.value) {
@@ -845,12 +927,14 @@ watch(leftPanelTab, syncReplayerUrl);
 onMounted(() => {
   const q = getQuery();
   if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
-  if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'note' || q.tab === 'settings') {
+  if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'settings') {
     leftPanelTab.value = q.tab;
+  } else {
+    leftPanelTab.value = null;
   }
 });
 
-const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource, replayerNoteId } = useReplayData();
+const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource, replayerNoteId, replayerDemoId } = useReplayData();
 
 const { mergedFrames, mergedServerPlayer, loading: clipMergeLoading, error: clipMergeError } = useClipMerge(replay, clipRounds);
 
@@ -970,10 +1054,9 @@ const showMapPlayers = computed({
   },
 });
 
-// source 切换时：cloud 下若当前是「回合」则切到「玩家」；local 下若当前是「笔记」则切到「玩家」
+// source 切换时：cloud 下若当前是「回合」则切到「玩家」
 watch(replayerSource, (source) => {
   if (source === 'cloud' && leftPanelTab.value === 'rounds') leftPanelTab.value = 'players';
-  if (source !== 'cloud' && leftPanelTab.value === 'note') leftPanelTab.value = 'players';
 });
 
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
@@ -1945,6 +2028,18 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.viewer-layout.has-cloud-sidebar {
+  flex-direction: row;
+}
+
+.viewer-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 /* === Map Panel === */
 .map-panel {
   flex: 1;
@@ -2148,26 +2243,6 @@ onBeforeUnmount(() => {
   padding: 8px;
   flex: 1;
   min-height: 0;
-}
-
-/* 笔记 card：与设置 card 同风格半透明 */
-.note-card {
-  background: var(--ds-bg-tertiary, #21262d);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--ds-radius-sm);
-  padding: 12px 14px;
-}
-
-.note-card-title {
-  padding: 0 0 var(--ds-space-md) 0;
-  font-size: 13px;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--gh-text);
-}
-
-.note-card-body {
-  padding-top: var(--ds-space-md);
 }
 
 .left-panel-note-title {
@@ -2790,7 +2865,13 @@ onBeforeUnmount(() => {
   transition: all var(--ds-transition-base);
 }
 
-/* === 左侧 footer：剪辑、发布（拉长+文字） === */
+/* === 左侧 footer：内嵌链接、剪辑、发布 === */
+.left-panel-footer .embed-link-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
 .left-panel-footer-btn {
   flex-shrink: 0;
   display: inline-flex;

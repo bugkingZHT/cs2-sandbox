@@ -96,46 +96,77 @@
       </div>
     </aside>
 
-    <!-- Library / Notes：header 浮于最上方（Teleport 目标），主内容在 app-main 内 -->
-    <template v-if="currentPage === 'library' || currentPage === 'notes'">
-      <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-        <header class="app-page-header" id="app-page-header"></header>
-        <main class="app-main">
-          <DemoLibrary
-            v-if="currentPage === 'library'"
-            :demo-list="replayList || []"
-            :loading="loading"
-            @select-demo="onSelectDemo"
-            @delete-demo="onDeleteDemo"
-            @upload-demo="onUploadDemo"
-          />
-          <NoteLibrary
-            v-if="currentPage === 'notes'"
-            :quota-used="quotaUsed"
-            :quota-limit="quotaLimit"
-            :replayer-source="replayerSource"
-            :replayer-note-id="replayerNoteId"
-            @share="openShareModal"
-            @edit="onRequestEditNote"
-            @delete="onRequestDeleteNote"
-            @go="goToNoteItem"
-          />
-        </main>
-      </div>
-    </template>
+    <!-- 主内容区与笔记边栏并列（同一层级，不嵌套）；note-only 分享时仅展示笔记 slot -->
+    <div class="app-main-and-note-row" :class="{ 'note-only-share': replayerNoteOnlyShare }">
+      <!-- Library / Notes -->
+      <template v-if="currentPage === 'library' || currentPage === 'notes'">
+        <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+          <header class="app-page-header" id="app-page-header"></header>
+          <div class="app-main-with-sidebar">
+            <main class="app-main">
+              <DemoLibrary
+                v-if="currentPage === 'library'"
+                :demo-list="replayList || []"
+                :loading="loading"
+                @select-demo="onSelectDemo"
+                @delete-demo="onDeleteDemo"
+                @upload-demo="onUploadDemo"
+              />
+              <NoteLibrary
+                v-if="currentPage === 'notes'"
+                :quota-used="quotaUsed"
+                :quota-limit="quotaLimit"
+                :replayer-source="replayerSource"
+                :replayer-note-id="replayerNoteId"
+                @share="openShareModal"
+                @edit="onRequestEditNote"
+                @delete="onRequestDeleteNote"
+                @go="goToNoteItem"
+              />
+            </main>
+          </div>
+        </div>
+      </template>
 
-    <!-- Player Page：与库页同布局，侧边栏 + 主区 -->
-    <div v-else-if="currentPage === 'player'" class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <header class="app-page-header" id="app-page-header"></header>
-      <main class="app-main">
-        <ReplayPlayer
-          :can-add-to-note="canAddToNote"
-          :note-uploading="noteUploading"
-          :cloud-note="cloudNoteForReplayer"
-          @save-current-round="handleAddToNote"
-          @clip-publish-available="onClipPublishAvailable"
-        />
-      </main>
+      <!-- Player Page -->
+      <template v-else-if="currentPage === 'player'">
+        <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+          <header class="app-page-header" id="app-page-header"></header>
+          <div class="app-main-with-sidebar">
+            <main class="app-main">
+              <ReplayPlayer
+                :can-add-to-note="canAddToNote"
+                :note-uploading="noteUploading"
+                :cloud-note-full="cloudNoteFullForReplayer"
+                :note-only-share="replayerNoteOnlyShare"
+                :can-edit-note="canEditReplayerNote"
+                @save-current-round="handleAddToNote"
+                @clip-publish-available="onClipPublishAvailable"
+                @go="goToNoteItem"
+              />
+            </main>
+          </div>
+        </div>
+      </template>
+
+      <!-- Note form sidebar（与 app-main-area 并列）：编辑/新建/上传 或 replayer 云笔记阅读 -->
+      <aside
+        v-show="noteFormOpen || (currentPage === 'player' && (cloudNoteFullForReplayer || replayerNoteOnlyShare))"
+        class="note-form-sidebar-slot"
+        :class="{ 'is-open': noteFormOpen || (currentPage === 'player' && (cloudNoteFullForReplayer || replayerNoteOnlyShare)) }"
+      >
+        <template v-if="noteFormOpen">
+          <NoteFormSidebar @go="goToNoteItem" />
+        </template>
+        <template v-else-if="currentPage === 'player' && replayerNoteId && !cloudNoteFullForReplayer">
+          <div class="note-sidebar-body cloud-note-loading">
+            <div class="cover-spinner-container">
+              <div class="cover-spinner"></div>
+            </div>
+            <p class="cover-status">正在加载笔记…</p>
+          </div>
+        </template>
+      </aside>
     </div>
 
     <!-- 解析进度弹窗（阻塞：先「等待解析器加载中」，再「解析中..」+ 进度条，解析完成后关闭） -->
@@ -209,6 +240,7 @@ const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlaye
 const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
 const NoteLibrary = defineAsyncComponent(() => import('@/components/NoteLibrary/NoteLibrary.vue'));
 import NoteModal from '@/components/NoteLibrary/NoteModal.vue';
+import NoteFormSidebar from '@/components/NoteLibrary/NoteFormSidebar.vue';
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
 import { useReplayData } from '@/composables/useReplayData';
 import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composables/useNote';
@@ -288,7 +320,13 @@ const {
   showQuotaExceededModal,
   openShareModal: openShareModalFromNote,
   openCreateNoteModal,
+  editModalOpen,
+  editNoteItem,
+  createNoteModalOpen,
+  uploadModalOpen,
 } = useNote();
+
+const noteFormOpen = computed(() => editModalOpen.value || createNoteModalOpen.value || uploadModalOpen.value);
 
 const canPublishClip = ref(false);
 function onClipPublishAvailable(payload: { available: boolean }) {
@@ -301,13 +339,42 @@ const canAddToNote = computed(
     ((!!currentDemoId.value && !!currentRoundNumber.value && !!replay.value) || canPublishClip.value)
 );
 
-/** 当前播放的云笔记（source=cloud 时用于 ReplayPlayer 左侧「笔记」tab）。本人笔记用 noteList；公开笔记未登录或他人查看用 GET item 返回的 cloudNoteDetailFromApi */
-const cloudNoteForReplayer = computed(() => {
+/** 完整云笔记（source=cloud 时用于右侧边栏 note-card 展示，仅本人笔记有 demos） */
+const cloudNoteFullForReplayer = computed<CloudArchiveItem | null>(() => {
   const id = replayerNoteId.value;
   if (!id) return null;
   const item = noteList.value.find((n) => n.id === id);
-  if (item) return { title: item.title, content: item.content ?? '' };
-  return cloudNoteDetailFromApi.value;
+  if (item) return item;
+  if (cloudNoteDetailFromApi.value) {
+    const d = cloudNoteDetailFromApi.value;
+    return {
+      id,
+      title: d.title,
+      content: d.content,
+      owner_id: d.owner_id,
+      demo_uuid: '',
+      demo_round: 1,
+      add_time: Date.now(),
+      demos: d.demos,
+    } as CloudArchiveItem;
+  }
+  return null;
+});
+
+/** 仅 note_id 的分享链接（无 demo_id）：只展示右侧笔记内容，不展示左侧播放页 */
+const replayerNoteOnlyShare = computed(() => {
+  if (currentPage.value !== 'player') return false;
+  const q = getQuery();
+  return q.source === 'cloud' && (q.note_id != null && q.note_id !== '') && (q.demo_id == null || q.demo_id === '');
+});
+
+/** 当前 replayer 云笔记是否为本人的（可编辑）；非 owner 禁用编辑并隐藏保存 */
+const canEditReplayerNote = computed(() => {
+  const full = cloudNoteFullForReplayer.value;
+  const user = currentUser.value;
+  if (!full) return false;
+  if (typeof full.owner_id === 'number' && user?.id !== undefined) return full.owner_id === user.id;
+  return noteList.value.some((n) => n.id === full.id);
 });
 
 function openShareModal(item: CloudArchiveItem) {
@@ -338,14 +405,16 @@ async function handleAddToNote(forkContext?: import('@/composables/useNote').Upl
   openUploadModal(forkContext);
 }
 
+/** 时间格式 YYYY-MM-DD HH:mm:ss */
 function formatNoteTime(ms: number): string {
   const d = new Date(ms);
-  const now = new Date();
-  const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  if (sameDay) {
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  }
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}:${s}`;
 }
 
 function formatFileSize(bytes: number): string {
@@ -360,7 +429,7 @@ function goToNoteItem(payload: CloudArchiveItem | { noteId: string; demoId: numb
   saveReplayerReturnUrl();
   const noteId = 'noteId' in payload ? payload.noteId : payload.id;
   const demoId = 'demoId' in payload ? payload.demoId : undefined;
-  const params = new URLSearchParams({ source: 'cloud', note_id: noteId, tab: 'note' });
+  const params = new URLSearchParams({ source: 'cloud', note_id: noteId });
   if (demoId != null) params.set('demo_id', String(demoId));
   navigate('/replayer', params.toString());
 }
@@ -525,10 +594,8 @@ const openNoteMenuId = ref<string | null>(null);
 const renamingNoteId = ref<string | null>(null);
 const renamingTitle = ref('');
 
-/** 判断是否为富文本 HTML（Editor 输出：含 img/span/strong 等），否则按纯文本展示 */
-function isContentHtml(content: string): boolean {
-  const t = content || '';
-  return t.includes('<') && t.includes('>');
+function getDemoAddTime(demo: { created_at?: string }): number {
+  return demo.created_at ? new Date(demo.created_at).getTime() : Date.now();
 }
 
 /** Handle open create note modal event from NoteLibrary */
@@ -614,7 +681,7 @@ async function ensureReplayerRouteData() {
       const q = getQuery();
       const base = `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`;
       const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
-      const tab = (q.tab && ['players', 'rounds', 'note', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '';
+      const tab = (q.tab && ['players', 'rounds', 'settings', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '';
       replaceLocation('/replayer', base + pure + tab);
     }
     return;
@@ -711,15 +778,20 @@ watch(currentPage, (newPage) => {
   document.title = newPage === 'player' ? 'Demo 回放 - Snowbo' : DEFAULT_PAGE_TITLE;
 }, { immediate: true });
 
-const goToPlayer = () => {
-  if (hasSelectedDemo.value) {
-    saveReplayerReturnUrl();
-    const q = getQuery();
-    const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
-    const tab = (q.tab && ['players', 'rounds', 'note', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '';
-    navigate('/replayer', `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}${pure}${tab}`);
-  }
-};
+/** Replayer 有云笔记时直接打开编辑页（无单独展示态） */
+watch(
+  () => ({ note: cloudNoteFullForReplayer.value, page: currentPage.value }),
+  ({ note, page }) => {
+    if (page !== 'player' || !note) return;
+    if (!editModalOpen.value || editNoteItem.value?.id !== note.id) openEditNoteModal(note);
+  },
+  { deep: true }
+);
+
+/** Replayer 下关闭编辑侧栏时回到战术笔记页 */
+watch(editModalOpen, (isOpen) => {
+  if (!isOpen && currentPage.value === 'player' && cloudNoteFullForReplayer.value) onNavigateToNotes();
+});
 
 const onLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement;
@@ -766,8 +838,8 @@ const showBetaWarning = () => {
 /* === App Layout === */
 .app {
   display: flex;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
   background: var(--ds-bg-primary-solid);
   color: var(--ds-text-secondary);
@@ -1085,9 +1157,19 @@ const showBetaWarning = () => {
   stroke: currentColor;
 }
 
-/* === Main Content === */
+/* === Main Content：与 note-form-sidebar-slot 并列 === */
+.app-main-and-note-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .app-main-area {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1096,8 +1178,17 @@ const showBetaWarning = () => {
 
 .app-page-header {
   width: 100%;
+  min-width: 0;
   flex-shrink: 0;
   box-sizing: border-box;
+}
+
+.app-main-with-sidebar {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-main {
@@ -1106,6 +1197,7 @@ const showBetaWarning = () => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  min-width: 0;
 }
 
 /* === Parsing Modal === */
@@ -1216,322 +1308,4 @@ const showBetaWarning = () => {
   }
 }
 
-/* Demo attachments list */
-.demo-attachments-list {
-  border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
-  background: var(--ds-bg-secondary);
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.demo-attachment-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  border-bottom: 1px solid var(--ds-border-default);
-  transition: background-color 0.2s;
-}
-
-.demo-attachment-item:last-child {
-  border-bottom: none;
-}
-
-.demo-attachment-item:hover {
-  background: var(--ds-bg-hover);
-}
-
-.demo-attachment-item.marked-for-deletion {
-  background: var(--ds-bg-danger-subtle);
-  opacity: 0.7;
-}
-
-.demo-attachment-item.marked-for-deletion .demo-uuid,
-.demo-attachment-item.marked-for-deletion .demo-round {
-  text-decoration: line-through;
-  color: var(--ds-text-danger);
-}
-
-.demo-attachment-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.demo-attachment-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-
-.demo-uuid {
-  font-family: monospace;
-  font-size: 12px;
-  color: var(--ds-text-secondary);
-  background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.demo-round {
-  font-size: 13px;
-  color: var(--ds-text-primary);
-  font-weight: 500;
-}
-
-.demo-attachment-size {
-  font-size: 12px;
-  color: var(--ds-text-secondary);
-}
-
-.demo-delete-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
-  background: var(--ds-bg-primary);
-  color: var(--ds-text-secondary);
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.demo-delete-btn:hover {
-  border-color: var(--ds-border-danger);
-  color: var(--ds-text-danger);
-  background: var(--ds-bg-danger-subtle);
-}
-
-.demo-delete-btn.marked {
-  border-color: var(--ds-border-danger);
-  background: var(--ds-bg-danger);
-  color: var(--ds-text-on-danger);
-}
-
-.demo-delete-btn.marked:hover {
-  background: var(--ds-bg-danger-emphasis);
-}
-
-/* Existing content preview */
-.existing-content-preview {
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
-  padding: 16px;
-  margin-bottom: 20px;
-  font-size: 14px;
-}
-
-.existing-title {
-  margin-bottom: 12px;
-  color: var(--ds-text-primary);
-}
-
-.existing-content {
-  margin-bottom: 16px;
-  color: var(--ds-text-primary);
-}
-
-.content-preview {
-  background: var(--ds-bg-tertiary);
-  border-radius: 4px;
-  padding: 12px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--ds-text-secondary);
-  white-space: pre-wrap;
-  max-height: 100px;
-  overflow-y: auto;
-}
-
-.existing-demos {
-  color: var(--ds-text-primary);
-}
-
-.demo-list-preview {
-  margin-top: 8px;
-  max-height: 120px;
-  overflow-y: auto;
-}
-
-.demo-preview-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: var(--ds-bg-tertiary);
-  border-radius: 4px;
-  margin-bottom: 6px;
-  font-size: 12px;
-}
-
-.demo-preview-item:last-child {
-  margin-bottom: 0;
-}
-
-.demo-preview-item .demo-uuid {
-  font-family: monospace;
-  background: var(--ds-bg-input);
-  padding: 2px 6px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-
-.demo-preview-item .demo-round {
-  color: var(--ds-text-primary);
-  font-weight: 500;
-}
-
-.demo-preview-item .demo-size {
-  margin-left: auto;
-  color: var(--ds-text-secondary);
-}
-
-/* New attachment preview */
-.new-attachment-preview {
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
-  padding: 16px;
-  margin-bottom: 20px;
-  font-size: 14px;
-}
-
-.new-attachment-header {
-  margin-bottom: 12px;
-  color: var(--ds-text-primary);
-}
-
-.new-attachment-item {
-  background: var(--ds-bg-tertiary);
-  border-radius: 6px;
-  padding: 16px;
-  border: 2px solid transparent;
-}
-
-.new-item-highlight {
-  border-bottom: 3px solid var(--ds-success);
-  background: linear-gradient(to bottom, var(--ds-bg-tertiary), rgba(63, 185, 80, 0.05));
-}
-
-.demo-meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-/* Selected Note Preview Styles */
-.selected-note-preview {
-  margin: 20px 0;
-  padding: 16px;
-  background: var(--ds-bg-secondary);
-  border-radius: 8px;
-  border: 1px solid var(--ds-border-default);
-}
-
-.preview-section {
-  margin-bottom: 16px;
-}
-
-.preview-section:last-child {
-  margin-bottom: 0;
-}
-
-.preview-title {
-  font-size: var(--ds-text-sm);
-  font-weight: 600;
-  color: var(--ds-text-primary);
-  margin: 0 0 8px 0;
-}
-
-.preview-content {
-  padding: 12px;
-  background: var(--ds-bg-primary-solid);
-  border-radius: 6px;
-  border: 1px solid var(--ds-border-default);
-  min-height: 60px;
-}
-
-.content-text {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-secondary);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.content-text.content-html {
-  white-space: normal;
-}
-
-.content-empty {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-tertiary);
-  font-style: italic;
-}
-
-.demo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.demo-item {
-  padding: 12px;
-  background: var(--ds-bg-primary-solid);
-  border-radius: 6px;
-  border: 1px solid var(--ds-border-default);
-}
-
-.demo-info {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  font-size: var(--ds-text-xs);
-}
-
-.demo-map {
-  font-weight: 600;
-  color: var(--ds-text-primary);
-}
-
-.demo-teams {
-  color: var(--ds-text-secondary);
-}
-
-.demo-time {
-  color: var(--ds-text-tertiary);
-  margin-left: auto;
-}
-
-.demo-map {
-  font-weight: 600;
-  color: var(--ds-text-primary);
-  background: var(--ds-bg-success-subtle);
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-
-.demo-teams {
-  color: var(--ds-text-secondary);
-}
-
-.demo-round {
-  font-weight: 500;
-  color: var(--ds-text-primary);
-}
-
-.demo-source {
-  font-size: 12px;
-  color: var(--ds-text-success);
-  font-style: italic;
-}
 </style>

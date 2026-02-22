@@ -43,6 +43,7 @@ type UserSummary struct {
 
 // MeResponse is returned by GET /api/auth/me (includes role and quota).
 type MeResponse struct {
+	ID         uint   `json:"id"`
 	UID        string `json:"uid"`
 	Username   string `json:"username"`
 	Role       string `json:"role"` // normal, pro, pro+
@@ -139,7 +140,7 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	resp := MeResponse{UID: u.UID, Username: u.Username, Role: role.RoleNormal, QuotaLimit: role.RoleQuotaLimit[role.RoleNormal], QuotaUsed: 0}
+	resp := MeResponse{ID: u.ID, UID: u.UID, Username: u.Username, Role: role.RoleNormal, QuotaLimit: role.RoleQuotaLimit[role.RoleNormal], QuotaUsed: 0}
 	if h.RoleStore != nil {
 		resp.Role, _, resp.QuotaLimit = h.RoleStore.GetEffectiveRole(u.ID)
 	}

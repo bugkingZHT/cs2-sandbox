@@ -110,57 +110,34 @@
           class="note-card cs2-tactics-card ds-card"
           :class="{ 'is-current': replayerSource === 'cloud' && replayerNoteId === item.id }"
         >
-          <!-- Hero: 固定高度背景图 + 底部渐变 + 标题 -->
-          <div class="card-hero">
-            <div class="card-background">
-              <img
-                v-if="getMapLeftSideImage(item.mapName)"
-                :src="getMapLeftSideImage(item.mapName)"
-                :alt="item.mapName || ''"
-                @error="onImageError"
-              />
-              <div v-else class="placeholder-bg">
-                <span>{{ item.mapName || 'Unknown' }}</span>
+          <!-- Card header: title only, no background image -->
+          <div class="card-title">
+            <div class="card-title-row">
+              <div class="card-title-text">{{ item.title }}</div>
+              <div class="card-title-actions" @click.stop>
+                <div class="card-more-wrap">
+                  <button
+                    type="button"
+                    class="card-action-btn card-more-btn"
+                    title="更多"
+                    aria-haspopup="true"
+                    :aria-expanded="openMenuNoteId === item.id"
+                    @click.stop="toggleMenu(item.id, $event)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
-            <div class="card-hero-cover"></div>
-            <div class="card-hero-overlay">
-              <div class="card-hero-row">
-                <div class="card-hero-left">
-                  <div class="card-hero-title">{{ item.title }}</div>
-                  <div class="card-hero-meta">
-                    <span v-if="item.mapName" class="card-hero-map">
-                      <img src="/icons/map.svg" alt="" class="card-hero-map-icon" />
-                      {{ item.mapName }}
-                    </span>
-                    <span v-if="item.add_time" class="card-hero-time">{{ formatNoteTime(item.add_time) }}</span>
-                  </div>
-                </div>
-                <div class="card-hero-actions" @click.stop>
-                  <div class="card-more-wrap">
-                    <button
-                      type="button"
-                      class="card-action-btn card-more-btn"
-                      title="更多"
-                      aria-haspopup="true"
-                      :aria-expanded="openMenuNoteId === item.id"
-                      @click.stop="toggleMenu(item.id, $event)"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="card-hero-badges">
-                <span v-if="replayerSource === 'cloud' && replayerNoteId === item.id" class="playing-badge">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                  <span>PLAYING</span>
-                </span>
-              </div>
+            <div v-if="replayerSource === 'cloud' && replayerNoteId === item.id" class="card-title-badges">
+              <span class="playing-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span>PLAYING</span>
+              </span>
             </div>
           </div>
 
@@ -179,7 +156,7 @@
             <!-- Demo attachments section -->
             <div v-if="item.demos?.length" class="card-attachments-section">
               <div class="attachments-header">
-                <span class="attachments-title">附件</span>
+                <span class="attachments-title">关联回放</span>
                 <span class="attachments-count">({{ item.demos.length }})</span>
               </div>
               <div class="attachments-list">
@@ -187,28 +164,15 @@
                   v-for="demo in item.demos" 
                   :key="demo.id"
                   class="attachment-item"
+                  role="button"
+                  tabindex="0"
+                  title="播放回合"
+                  @click="goToDemo(item, demo)"
+                  @keydown.enter.space.prevent="goToDemo(item, demo)"
                 >
-                  <div class="attachment-info">
-                    <span class="demo-map-name">
-                      <img src="/icons/map.svg" alt="" class="demo-icon" />
-                      {{ getDemoMapName(demo) || 'Unknown Map' }}
-                    </span>
-                    <span class="demo-teams">
-                      {{ getDemoTeamCT(demo) || 'CT' }} vs {{ getDemoTeamT(demo) || 'T' }}
-                    </span>
-                    <span class="demo-time">{{ formatNoteTime(getDemoAddTime(demo)) }}</span>
-                  </div>
-                  <button 
-                    type="button" 
-                    class="attachment-play-btn" 
-                    title="播放回合"
-                    @click.stop="goToDemo(item, demo)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    <span>播放</span>
-                  </button>
+                  <span class="demo-map-name">{{ getDemoMapName(demo) || 'Unknown Map' }}</span>
+                  <span class="demo-teams">{{ getDemoTeamCT(demo) || 'CT' }} vs {{ getDemoTeamT(demo) || 'T' }}</span>
+                  <span v-if="getDemoFileName(demo)" class="demo-file-name">{{ getDemoFileName(demo) }}</span>
                 </div>
               </div>
             </div>
@@ -406,15 +370,16 @@ function onImageError(e: Event) {
   if (img) img.style.display = 'none';
 }
 
-/** 与 App.vue 一致：今日显示时间，否则日期+时间 */
+/** 时间格式 YYYY-MM-DD HH:mm:ss */
 function formatNoteTime(ms: number): string {
   const d = new Date(ms);
-  const now = new Date();
-  const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  if (sameDay) {
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  }
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}:${s}`;
 }
 
 function toggleMenu(noteId: string, e?: Event) {
@@ -490,6 +455,19 @@ function openCreateNoteModal() {
   // This will be handled in App.vue
   const event = new CustomEvent('open-create-note-modal');
   window.dispatchEvent(event);
+}
+
+/** Display file name: prefer fileName from demo meta (original .dem name), else API file_name */
+function getDemoFileName(demo: any): string {
+  if (demo.demo_meta) {
+    try {
+      const meta = JSON.parse(demo.demo_meta);
+      if (typeof meta.fileName === 'string' && meta.fileName.trim()) return meta.fileName.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  return typeof demo.file_name === 'string' && demo.file_name.trim() ? demo.file_name.trim() : '';
 }
 
 /** Extract map name from demo meta */
@@ -963,7 +941,7 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
   flex-direction: column;
   min-height: 0;
   padding: 0;
-  border: none;
+  border: 1px solid var(--ds-border-default);
   border-radius: 12px;
   overflow: visible;
   transition: all var(--ds-transition-base);
@@ -974,161 +952,56 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
   box-shadow: 0 0 32px rgba(16, 185, 129, 0.5);
 }
 
-/* === Card Hero：固定高度背景 + 遮罩 + 标题 === */
-.card-hero {
-  position: relative;
-  height: 140px;
+/* === Card title：现代博客卡片标题，无背景图、secondary 色 === */
+.card-title {
   flex-shrink: 0;
-  overflow: hidden;
+  padding: var(--ds-space-lg) var(--ds-space-xl);
   border-radius: 12px 12px 0 0;
+  background-color: var(--ds-bg-secondary);
 }
 
-.card-background {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-
-/* 两层遮罩；过渡在 100% 位置才变化到目标色；增强遮罩使头图更模糊 */
-.card-background::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: linear-gradient(
-    to bottom,
-    rgba(22, 27, 34, 0.70) 0%,
-    rgba(22, 27, 34, 0.70) 60%,
-    rgba(22, 27, 34, 0.70) 100%
-  );
-  pointer-events: none;
-}
-
-.card-background::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    transparent 99%,
-    var(--ds-bg-secondary) 100%
-  );
-  pointer-events: none;
-}
-
-.card-background img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform var(--ds-transition-base);
-  opacity: 0.5;
-  filter: brightness(0.85) saturate(0.95);
-}
-
-.card-hero-cover {
-  position: absolute;
-  inset: 0;
-  background: none;
-  z-index: 3;
-  pointer-events: none;
-}
-
-.card-hero-overlay {
-  position: absolute;
-  inset: 0;
-  background: none;
+.card-title-row {
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: var(--ds-space-md) var(--ds-space-xl);
-  z-index: 4;
-}
-
-.card-hero-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 6px 12px;
+  gap: 12px;
 }
 
-.card-hero-left {
-  flex: 1;
+.card-title-text {
+  flex: 1 1 0%;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-/* 宽度不足时 title 占满第一行、meta 换行到下方 */
-.card-hero-title {
-  font-size: var(--ds-text-lg);
+  font-size: var(--ds-text-base);
   font-weight: 600;
-  color: #fff;
-  line-height: 1.3;
+  color: var(--ds-text-secondary);
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-width: 0;
 }
 
-.card-hero-meta {
+.card-title-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.card-hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   flex-shrink: 0;
 }
 
-.card-hero-actions .card-action-btn {
-
-  color: rgba(255, 255, 255, 0.95);
+.card-title-actions .card-action-btn {
+  color: var(--ds-text-tertiary);
 }
 
-.card-hero-actions .card-action-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.5);
-  color: #fff;
+.card-title-actions .card-action-btn:hover {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text-primary);
 }
 
-.card-hero-map {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.9);
-  padding: 2px 8px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-}
-
-.card-hero-map-icon {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-
-.card-hero-time {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.card-hero-badges {
+.card-title-badges {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: var(--ds-space-sm);
   flex-wrap: wrap;
 }
 
@@ -1161,14 +1034,14 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
   50% { transform: scale(1.2); }
 }
 
-/* === Card Body：全文 content，阅读友好（1.5rem 内边距、1.6 行高） === */
+/* === Card Body：全文 content，标准背景 === */
 .card-body {
   flex: 1;
   padding: var(--ds-space-2xl) var(--ds-space-3xl);
-  background: var(--ds-bg-secondary);
+  background: var(--ds-bg-primary);
+  border-radius: 0 0 12px 12px;
   display: flex;
   flex-direction: column;
-  border-radius: 0 0 12px 12px;
   gap: var(--ds-space-sm);
   min-height: 0;
 }
@@ -1366,12 +1239,13 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
 .attachment-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--ds-space-sm);
   padding: var(--ds-space-sm) var(--ds-space-md);
   background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-sm);
   transition: all var(--ds-transition-base);
+  cursor: pointer;
+  min-width: 0;
 }
 
 .attachment-item:hover {
@@ -1379,66 +1253,32 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
   border-color: var(--ds-border-default);
 }
 
-.attachment-info {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ds-space-sm);
-  flex: 1;
-  min-width: 0;
-}
-
-.demo-icon {
-  width: 12px;
-  height: 12px;
-  opacity: 0.7;
-}
-
-.demo-map-name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* 附件卡片统一：1 mapname 纯白加粗 2 teams 纯白不加粗 3 文件名 灰色小号 4 时间 灰色小号 */
+.attachment-item .demo-map-name {
   font-size: var(--ds-text-sm);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--ds-text-primary);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.demo-teams {
+.attachment-item .demo-teams {
   font-size: var(--ds-text-sm);
-  color: var(--ds-text-secondary);
+  font-weight: 400;
+  color: var(--ds-text-primary);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.demo-time {
+.attachment-item .demo-file-name {
   font-size: var(--ds-text-xs);
+  font-weight: 400;
   color: var(--ds-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
   margin-left: auto;
-}
-
-.attachment-play-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--ds-radius-xs);
-  background: var(--ds-surface-base);
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-text-xs);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  flex-shrink: 0;
-}
-
-.attachment-play-btn:hover {
-  background: var(--ds-primary);
-  border-color: var(--ds-primary);
-  color: white;
-}
-
-.attachment-play-btn svg {
-  flex-shrink: 0;
 }
 </style>

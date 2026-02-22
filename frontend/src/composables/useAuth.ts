@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 
 export interface AuthUser {
+  id?: number;
   uid: string;
   username: string;
   role?: 'normal' | 'pro' | 'pro+';
@@ -12,6 +13,7 @@ const currentUser = ref<AuthUser | null>(null);
 
 function parseMeData(data: Record<string, unknown>): AuthUser {
   return {
+    id: typeof data?.id === 'number' ? data.id : undefined,
     uid: String(data?.uid ?? ''),
     username: String(data?.username ?? ''),
     role: data?.role === 'pro' || data?.role === 'pro+' ? data.role : 'normal',

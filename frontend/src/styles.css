@@ -102,6 +102,320 @@
   --ds-z-toast: 2000;
 }
 
+/* === Note form sidebar slot（右侧边栏，与左侧边栏对齐，v-show 控制显示） === */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: row;
+}
+
+#app {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.note-form-sidebar-slot {
+  flex-shrink: 0;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  align-self: stretch;
+}
+
+.note-form-sidebar-slot.is-open {
+  min-width: 320px;
+  width: 40%;
+  max-width: 560px;
+}
+
+/* 仅 note_id 分享链接：主区收起，笔记 slot 占满 */
+.app-main-and-note-row.note-only-share .app-main-area {
+  flex: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-main-and-note-row.note-only-share .note-form-sidebar-slot {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+}
+
+/* 侧边栏展示与编辑共用布局（与 NoteFormSidebar 同结构同样式） */
+.note-form-sidebar-slot .note-form-sidebar {
+  width: 100%;
+  height: 100%;
+  background: var(--ds-bg-secondary);
+  border-left: 1px solid var(--ds-border-default);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.note-form-sidebar-slot .note-form-sidebar .note-sidebar-close {
+  position: absolute;
+  top: var(--ds-space-lg);
+  right: var(--ds-space-lg);
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-form-sidebar-slot .note-form-sidebar .note-sidebar-close:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.note-form-sidebar-slot .note-form-sidebar .note-sidebar-title {
+  margin: 0 0 var(--ds-space-xl) 0;
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.note-form-sidebar-slot .note-form-sidebar .card-title-actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--ds-space-xl);
+  flex-shrink: 0;
+}
+
+/* 云笔记阅读态 / 加载态（与 NoteFormSidebar 共用 slot） */
+.note-form-sidebar-slot .note-sidebar-body {
+  padding: var(--ds-space-3xl);
+  padding-top: var(--ds-space-2xl);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ds-bg-secondary);
+}
+
+.note-form-sidebar-slot .note-sidebar-body.cloud-note-loading {
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-lg);
+  color: var(--ds-text-tertiary);
+}
+
+.note-form-sidebar-slot .cloud-note-loading .cover-spinner-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: var(--ds-space-2xl) 0;
+}
+
+.note-form-sidebar-slot .cloud-note-loading .cover-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-primary);
+  border-radius: 50%;
+  animation: note-sidebar-spin 0.8s linear infinite;
+}
+
+@keyframes note-sidebar-spin {
+  to { transform: rotate(360deg); }
+}
+
+.note-form-sidebar-slot .cloud-note-loading .cover-status {
+  margin: 0;
+  color: var(--ds-text-tertiary);
+  font-size: var(--ds-text-base);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-title {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: var(--ds-space-xl);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-title-text {
+  flex: 1 1 0%;
+  min-width: 0;
+  font-size: var(--ds-text-xl);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .cloud-note-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-secondary);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .cloud-note-edit-btn:hover {
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-secondary);
+  border-color: var(--ds-border-primary);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-title-badges { margin-top: 0; }
+
+.note-form-sidebar-slot .note-sidebar-body .card-body {
+  padding: 0;
+  background: transparent;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-content {
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-secondary);
+  line-height: 1.6;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-content-plain { white-space: pre-wrap; }
+
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich strong,
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich b { font-weight: 600; }
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich em,
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich i { font-style: italic; }
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich .text-color-white { color: #FFFFFF !important; }
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich .text-color-yellow { color: #F5C518 !important; }
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich .text-color-green { color: #00C853 !important; }
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich .text-color-blue { color: #2196F3 !important; }
+.note-form-sidebar-slot .note-sidebar-body .card-content-rich .equipment-inline-icon {
+  width: 18px; height: 18px; vertical-align: middle; margin: 0 2px; object-fit: contain;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .card-attachments-section {
+  margin-top: var(--ds-space-xl);
+  padding-top: var(--ds-space-lg);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .attachments-header { margin-bottom: var(--ds-space-md); }
+.note-form-sidebar-slot .note-sidebar-body .attachments-title { font-weight: 600; color: var(--ds-text-primary); }
+.note-form-sidebar-slot .note-sidebar-body .attachments-count { color: var(--ds-text-tertiary); margin-left: 4px; }
+.note-form-sidebar-slot .note-sidebar-body .attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-sm);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ds-space-md);
+  background: var(--ds-surface-base);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .attachment-item.is-current {
+  background: rgba(var(--ds-primary-rgb), 0.08);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .attachment-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ds-space-sm);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .demo-map-name {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .demo-teams {
+  font-size: var(--ds-text-sm);
+  font-weight: 400;
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .demo-file-name {
+  font-size: var(--ds-text-xs);
+  font-weight: 400;
+  color: var(--ds-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.note-form-sidebar-slot .note-sidebar-body .attachment-play-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-primary);
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .attachment-play-btn:hover {
+  background: rgba(var(--ds-primary-rgb), 0.12);
+}
+
+.note-form-sidebar-slot .note-sidebar-body .playing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ds-success);
+  letter-spacing: 0.5px;
+}
+
 /* === 全局滚动条样式：与设计系统风格一致 === */
 .ds-scrollbar::-webkit-scrollbar {
   width: 8px;
@@ -181,7 +495,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 12px 24px;
+  padding: 12px 12px;
   gap: 12px;
 }
 
@@ -349,6 +663,7 @@ body {
   background: var(--ds-bg-secondary);
   border-radius: 12px;
   border: 1px solid var(--ds-border-default);
+  margin-top: 12px;
 }
 
 .timeline-main {

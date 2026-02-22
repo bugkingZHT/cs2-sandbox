@@ -547,7 +547,7 @@ const demoToForceDelete = ref<ReplayData | null>(null);
 
 function openReplayer(demoUuid: string, round: number) {
   saveReplayerReturnUrl();
-  navigate('/replayer', `source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}`);
+  navigate('/replayer', `source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}&tab=players`);
 }
 
 // Upload modal state (dashed drop zone)
@@ -2310,7 +2310,7 @@ const scoreLeftRightMap = computed(() => {
 .library-actions .ds-btn {
   padding: var(--ds-space-sm) var(--ds-space-lg);
   font-size: var(--ds-text-sm);
-  height: 38px;
+  height: 36px;
 }
 
 .library-actions .ds-btn-primary {

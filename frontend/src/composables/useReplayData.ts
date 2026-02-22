@@ -42,8 +42,8 @@ interface UseReplayResult {
   replayerNoteId: ReturnType<typeof ref<string | null>>;
   /** 当前云附件 demo id（URL demo_id），用于 needLoad 判断 */
   replayerDemoId: ReturnType<typeof ref<number | null>>;
-  /** GET item 返回的笔记 title/content，公开笔记未登录或他人查看时用于 replayer 展示 */
-  cloudNoteDetailFromApi: ReturnType<typeof ref<{ title: string; content?: string } | null>>;
+  /** GET item 返回的笔记 title/content/owner_id/demos，公开笔记未登录或他人查看时用于 replayer 展示 */
+  cloudNoteDetailFromApi: ReturnType<typeof ref<{ title: string; content?: string; owner_id?: number; demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }> } | null>>;
   loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
   loadReplayByCloud: (noteId: string, demoId?: number) => Promise<void>;
   /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
@@ -75,8 +75,8 @@ function createReplayData() {
   const replayerSource = ref<'local' | 'cloud' | null>(null);
   const replayerNoteId = ref<string | null>(null);
   const replayerDemoId = ref<number | null>(null);
-  /** 公开笔记：GET item 返回的 title/content，供未登录或他人查看时 replayer 展示 */
-  const cloudNoteDetailFromApi = ref<{ title: string; content?: string } | null>(null);
+  /** 公开笔记：GET item 返回的 title/content/owner_id/demos，供未登录或他人查看时 replayer 展示 */
+  const cloudNoteDetailFromApi = ref<{ title: string; content?: string; owner_id?: number; demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }> } | null>(null);
 
   const abortController = new AbortController();
   let initialLoadPromise: Promise<void> | null = null;
@@ -323,7 +323,8 @@ function createReplayData() {
         data?: {
           title?: string;
           content?: string;
-          demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string }>;
+          owner_id?: number;
+          demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }>;
         };
       }).data;
       const demos = data?.demos ?? [];
@@ -339,6 +340,8 @@ function createReplayData() {
       cloudNoteDetailFromApi.value = {
         title: data?.title ?? '',
         content: data?.content,
+        owner_id: typeof data?.owner_id === 'number' ? data.owner_id : undefined,
+        demos: data?.demos,
       };
       const demoRound = targetDemo.demo_round ?? 1;
       let meta: ReplayMeta;

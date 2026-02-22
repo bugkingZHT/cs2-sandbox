@@ -90,19 +90,6 @@
     <div class="map-controls-panel">
     <!-- Zoom Controls (Bottom) -->
     <div class="map-zoom-controls">
-      <div v-if="!pureMode && replayerSource === 'cloud' && replayerNoteId" class="embed-link-wrap">
-        <button
-          type="button"
-          class="zoom-btn embed-link-btn"
-          title="复制内嵌分享链接"
-          @click="copyEmbedLink"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-          </svg>
-        </button>
-      </div>
       <button
         v-if="!pureMode"
         class="zoom-btn brush-btn"
@@ -194,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP, getSecondaryMapUrl, MAP_IMAGE_SIZE, LOGICAL_MAP_SIZE, SVG_TEXTURE_RESOLUTION, isDualLayerMap } from '@/config/map';
@@ -243,6 +230,8 @@ const props = withDefaults(
     /** 云笔记回放：source 为 cloud 时有值 */
     replayerSource?: 'local' | 'cloud' | null;
     replayerNoteId?: string | null;
+    /** 右侧边栏是否显示（source=cloud 时展示 note-card），影响地图居中计算 */
+    hasRightSidebar?: boolean;
     /** 大卡上隐藏的玩家 ID，不在地图上绘制（设置-玩家取消勾选时等价于全部加入此处） */
     hiddenPlayerIds?: number[];
     /** 设置：地图上是否展示投掷道具 / 掉落道具 / C4（玩家由 hiddenPlayerIds 控制） */
@@ -370,22 +359,6 @@ const copyText = async (text: string) => {
     copiedField.value = 'cmd';
     setTimeout(() => { copiedField.value = null; }, 1200);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制到剪贴板', type: 'info' } }));
-  } catch {
-    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
-  }
-};
-
-/** 云笔记回放时复制带 pure=1 的内嵌分享链接 */
-const copyEmbedLink = async () => {
-  const noteId = props.replayerNoteId;
-  if (!noteId) return;
-  const base = typeof window !== 'undefined' ? window.location.origin : '';
-  const pathBase = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
-  const prefix = pathBase && pathBase !== '/' ? pathBase : '';
-  const url = `${base}${prefix}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&tab=note&pure=1`;
-  try {
-    await navigator.clipboard.writeText(url);
-    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
   } catch {
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
   }
@@ -631,6 +604,20 @@ const setupResizeObserver = () => {
   
   resizeObserver.observe(host.value);
 };
+
+// 右侧边栏显示/隐藏时，布局变化影响 canvas 尺寸，需重新居中（等待 layout + PIXI resize）
+watch(
+  () => props.hasRightSidebar,
+  () => {
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        if (app && worldContainer && mapSprite) {
+          centerWorld(false);
+        }
+      });
+    });
+  }
+);
 
 /** SVG 纹理为 2x 逻辑尺寸（MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE），zoom 按逻辑尺寸换算 */
 const MAP_SCALE_FACTOR = LOGICAL_MAP_SIZE / MAP_IMAGE_SIZE;
@@ -1187,19 +1174,6 @@ onBeforeUnmount(() => {
 
 .save-to-note-btn .save-to-note-label {
   display: none;
-}
-
-.embed-link-wrap {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.embed-link-btn {
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  padding: 0;
 }
 
 /* + / - / [] 垂直连体按钮 */

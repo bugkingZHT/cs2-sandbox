@@ -34,6 +34,7 @@ export const REPLAYER_RETURN_URL_KEY = 'replayer_return_url';
 
 /** 保存当前页为 replayer 返回目标（应在 navigate 到 replayer 前调用） */
 export function saveReplayerReturnUrl() {
+  if (window.location.pathname === '/replayer') return;
   sessionStorage.setItem(REPLAYER_RETURN_URL_KEY, window.location.pathname + window.location.search);
 }
 

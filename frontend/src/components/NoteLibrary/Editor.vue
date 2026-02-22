@@ -1,7 +1,7 @@
 <template>
-    <div class="doc-editor">
+    <div class="doc-editor" :class="{ 'is-read-only': readOnly }">
       <!-- 工具栏 -->
-      <div class="toolbar" @mousedown.prevent>
+      <div v-if="!readOnly" class="toolbar" @mousedown.prevent>
         <!-- 格式 -->
         <div class="toolbar-group">
           <button
@@ -81,7 +81,7 @@
       <div
         ref="editorRef"
         class="editor-body"
-        contenteditable="true"
+        :contenteditable="!readOnly"
         data-placeholder="在此输入内容…"
         @input="onInput"
         @keydown="onKeydown"
@@ -112,9 +112,13 @@
     { id: 'c4', label: 'C4', src: '/utility/c4.svg' },
   ] as const;
   
-  const props = defineProps<{
-    modelValue: string;
-  }>();
+  const props = withDefaults(
+    defineProps<{
+      modelValue: string;
+      readOnly?: boolean;
+    }>(),
+    { readOnly: false }
+  );
   
   const emit = defineEmits<{
     (e: 'update:modelValue', value: string): void;
@@ -503,13 +507,14 @@
   
   .editor-body {
     flex: 1;
-    min-height: 120px;
+    min-height: 360px;
     padding: var(--ds-space-md);
     overflow-y: auto;
     outline: none;
     font-size: 14px;
     line-height: 1.6;
     color: var(--ds-text-primary);
+    border-radius: 8px;
   }
   
   .editor-body:empty::before {

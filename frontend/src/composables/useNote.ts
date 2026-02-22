@@ -17,6 +17,7 @@ export type UploadModalStep = 'form' | 'uploading' | 'success' | 'error';
 
 export interface CloudArchiveItem {
   id: string;
+  owner_id?: number;
   title: string;
   content?: string;
   permission?: string;
@@ -44,6 +45,7 @@ export interface CloudArchiveItem {
 /** API item shape from GET /api/note/items (note with optional demos array from backend) */
 interface ApiNoteItem {
   id: string;
+  owner_id?: number;
   title: string;
   content?: string;
   permission?: string;
@@ -87,6 +89,7 @@ function mapApiItemToCloud(item: ApiNoteItem): CloudArchiveItem {
   const add_time = item.created_at ? new Date(item.created_at).getTime() : Date.now();
   return {
     id: item.id,
+    owner_id: typeof item.owner_id === 'number' ? item.owner_id : undefined,
     title: item.title,
     content: item.content,
     permission: item.permission,
@@ -315,7 +318,7 @@ export function useNote() {
   function getShareUrl(): string {
     const id = createdNoteId.value;
     if (!id) return '';
-    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(id)}&tab=note`;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(id)}&demo_id=_`;
   }
 
   async function copyShareLink() {
@@ -642,7 +645,7 @@ export function useNote() {
   const shareModalCopyCopied = sharedShareModalCopyCopied;
 
   function getShareUrlForNoteId(noteId: string): string {
-    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&tab=note`;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&demo_id=_`;
   }
 
   function openShareModal(item: CloudArchiveItem) {

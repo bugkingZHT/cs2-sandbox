@@ -107,6 +107,7 @@ func itemToMap(h *Handlers, it *NoteItem) map[string]interface{} {
 	result := map[string]interface{}{
 		"id":         it.ID,
 		"note_id":    it.ID,
+		"owner_id":   it.OwnerID,
 		"title":      it.Title,
 		"content":    it.Content,
 		"permission": it.Permission,
@@ -247,7 +248,6 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("[Note] Create: uid=%s demo_uuid=%s demo_round=%d file_size=%d", u.UID, demoUUID, demoRound, header.Size)
-	filePath := "USER_" + u.UID + "/note-" + noteID + "/round_" + demoRoundStr + ".pb"
 
 	// If parent_id is provided, only create DemoItem linked to existing note
 	if parentID != "" {
@@ -270,7 +270,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 			DemoUUID:  demoUUID,
 			DemoRound: demoRound,
 			DemoMeta:  meta,
-			FilePath:  filePath,
+			FilePath:  h.Storage.RelativePath(u.UID, demoUUID, demoRound),
 			FileSize:  header.Size,
 		}
 		if err := h.Store.CreateDemoItem(demoItem); err != nil {
@@ -280,8 +280,8 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Save the file
-		if err := h.Storage.SaveFile(u.UID, parentID, demoRound, file); err != nil {
-			log.Printf("[Note] Create: SaveFile failed uid=%s note_id=%s round=%d: %v", u.UID, parentID, demoRound, err)
+		if err := h.Storage.SaveFile(u.UID, demoUUID, demoRound, file); err != nil {
+			log.Printf("[Note] Create: SaveFile failed uid=%s demo_uuid=%s round=%d: %v", u.UID, demoUUID, demoRound, err)
 			// Clean up demo item
 			_ = h.Store.DeleteDemoItem(demoItem.ID)
 			writeJSONErr(w, http.StatusInternalServerError, "failed to save file")
@@ -321,7 +321,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		DemoUUID:  demoUUID,
 		DemoRound: demoRound,
 		DemoMeta:  meta,
-		FilePath:  filePath,
+		FilePath:  h.Storage.RelativePath(u.UID, demoUUID, demoRound),
 		FileSize:  header.Size,
 	}
 	if err := h.Store.CreateDemoItem(demoItem); err != nil {
@@ -333,8 +333,8 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save the file
-	if err := h.Storage.SaveFile(u.UID, noteID, demoRound, file); err != nil {
-		log.Printf("[Note] Create: SaveFile failed uid=%s note_id=%s round=%d: %v", u.UID, noteID, demoRound, err)
+	if err := h.Storage.SaveFile(u.UID, demoUUID, demoRound, file); err != nil {
+		log.Printf("[Note] Create: SaveFile failed uid=%s demo_uuid=%s round=%d: %v", u.UID, demoUUID, demoRound, err)
 		// Clean up both records
 		_ = h.Store.DeleteItem(noteID, u.ID)
 		_ = h.Store.DeleteDemoItem(demoItem.ID)
@@ -463,7 +463,7 @@ func (h *Handlers) ItemByID(w http.ResponseWriter, r *http.Request) {
 				if err := h.Store.DeleteDemoItem(demo.ID); err != nil {
 					log.Printf("[Note] ItemByID: DELETE demo DeleteDemoItem failed id=%d: %v", demo.ID, err)
 				}
-				delErr := h.Storage.DeleteFile(u.UID, noteID, demo.DemoRound)
+				delErr := h.Storage.DeleteFile(u.UID, demo.DemoUUID, demo.DemoRound)
 				if delErr != nil && demo.FilePath != "" {
 					delErr = h.Storage.DeleteFileByRelativePath(demo.FilePath)
 				}
@@ -722,9 +722,9 @@ func (h *Handlers) DeleteDemoItem(w http.ResponseWriter, r *http.Request) {
 			// Continue with database deletion even if file deletion fails
 		}
 	} else {
-		// Fallback to old method
-		if err := h.Storage.DeleteFile(u.UID, demoItem.NoteID, demoItem.DemoRound); err != nil {
-			log.Printf("[Note] DeleteDemoItem: DeleteFile failed uid=%s note_id=%s round=%d: %v", u.UID, demoItem.NoteID, demoItem.DemoRound, err)
+		// Fallback when FilePath not set (legacy)
+		if err := h.Storage.DeleteFile(u.UID, demoItem.DemoUUID, demoItem.DemoRound); err != nil {
+			log.Printf("[Note] DeleteDemoItem: DeleteFile failed uid=%s demo_uuid=%s round=%d: %v", u.UID, demoItem.DemoUUID, demoItem.DemoRound, err)
 			// Continue with database deletion even if file deletion fails
 		}
 	}

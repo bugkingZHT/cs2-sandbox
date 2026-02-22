@@ -7,19 +7,22 @@
         class="form-input"
         maxlength="64"
         placeholder="笔记名称"
+        :readonly="disabled"
+        :disabled="disabled"
         @input="$emit('update:title', ($event.target as HTMLInputElement).value)"
       />
     </div>
     <div class="form-group note-form-editor-wrap">
-      <Editor :model-value="content" @update:model-value="$emit('update:content', $event)" />
+      <Editor :model-value="content" :read-only="disabled" @update:model-value="$emit('update:content', $event)" />
     </div>
-    <div class="form-group">
+    <div v-if="isNoteOwner" class="form-group">
       <div class="form-radios">
         <label class="form-radio">
           <input
             :checked="permission === 'private'"
             type="radio"
             value="private"
+            :disabled="disabled"
             @change="$emit('update:permission', 'private')"
           />
           <span>仅自己可见</span>
@@ -29,6 +32,7 @@
             :checked="permission === 'public'"
             type="radio"
             value="public"
+            :disabled="disabled"
             @change="$emit('update:permission', 'public')"
           />
           <span>公开链接</span>
@@ -41,11 +45,16 @@
 <script setup lang="ts">
 import Editor from './Editor.vue';
 
-defineProps<{
-  title: string;
-  content: string;
-  permission: 'private' | 'public';
-}>();
+withDefaults(
+  defineProps<{
+    title: string;
+    content: string;
+    permission: 'private' | 'public';
+    disabled?: boolean;
+    isNoteOwner?: boolean;
+  }>(),
+  { disabled: false, isNoteOwner: true }
+);
 
 defineEmits<{
   (e: 'update:title', v: string): void;
