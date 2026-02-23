@@ -170,6 +170,12 @@
                   @click="goToDemo(item, demo)"
                   @keydown.enter.space.prevent="goToDemo(item, demo)"
                 >
+                  <span class="demo-play-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/>
+                    </svg>
+                  </span>
                   <span class="demo-map-name">{{ getDemoMapName(demo) || 'Unknown Map' }}</span>
                   <span class="demo-teams">{{ getDemoTeamCT(demo) || 'CT' }} vs {{ getDemoTeamT(demo) || 'T' }}</span>
                   <span v-if="getDemoFileName(demo)" class="demo-file-name">{{ getDemoFileName(demo) }}</span>
@@ -1251,6 +1257,19 @@ function goToDemo(noteItem: CloudArchiveItem, demo: { id: number }) {
 .attachment-item:hover {
   background: var(--ds-surface-hover);
   border-color: var(--ds-border-default);
+}
+
+.attachment-item .demo-play-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--ds-text-secondary);
+}
+
+.attachment-item .demo-play-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 /* 附件卡片统一：1 mapname 纯白加粗 2 teams 纯白不加粗 3 文件名 灰色小号 4 时间 灰色小号 */

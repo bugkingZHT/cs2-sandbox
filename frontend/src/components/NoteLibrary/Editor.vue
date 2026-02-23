@@ -338,7 +338,6 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: var(--ds-bg-primary);
   }
   
   .toolbar {
@@ -349,7 +348,6 @@
     gap: 2px;
     padding: var(--ds-space-sm);
     background: var(--ds-bg-secondary);
-    border-bottom: 1px solid var(--ds-border-subtle);
     flex-shrink: 0;
   }
   
@@ -505,16 +503,20 @@
     color: var(--ds-text-primary);
   }
   
+  /* 与 form-input 对齐：边框、圆角、背景、内边距 */
   .editor-body {
     flex: 1;
     min-height: 360px;
-    padding: var(--ds-space-md);
+    padding: var(--ds-space-sm) var(--ds-space-md);
     overflow-y: auto;
     outline: none;
-    font-size: 14px;
+    font-size: var(--ds-text-base);
     line-height: 1.6;
     color: var(--ds-text-primary);
-    border-radius: 8px;
+    box-sizing: border-box;
+    border: 1px solid var(--ds-border-default);
+    border-radius: var(--ds-radius-md);
+    background: var(--ds-bg-primary);
   }
   
   .editor-body:empty::before {
