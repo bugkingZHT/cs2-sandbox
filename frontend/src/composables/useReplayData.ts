@@ -4,6 +4,7 @@ import ParserWorker from '@/workers/wasm-parser.worker?worker';
 import { getReplayStorage, cleanupOrphanedReplayStorage } from './indexdb-storage';
 import { getMetaStorage } from './indexdb-storage';
 import { decodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-converters';
+import { useAuth } from './useAuth';
 import { PARSER_CONFIG } from '@/config/parser';
 import {
   MAX_SURGE_DEMO_NUM_KEY,
@@ -511,6 +512,86 @@ function createReplayData() {
     statusMsg.value = status;
   };
 
+  /** Upload demo (meta + all rounds) to POST /api/demos; progress 80–100. Skips if not logged in. */
+  const uploadDemosToServer = async (
+    uuid: string,
+    totalRounds: number,
+    meta: ReplayMeta | null,
+    updateProgress: (p: number, msg: string) => void
+  ) => {
+    const { currentUser, handleSessionExpired } = useAuth();
+    if (!currentUser.value) {
+      updateProgress(100, '完成');
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已保存到本地（未登录，未上传云端）', type: 'info' } }));
+      return;
+    }
+    try {
+      const replayStorage = await getReplayStorage();
+      const form = new FormData();
+      form.append('demo_uuid', uuid);
+      form.append('permission', '0'); // default private
+      if (meta) form.append('meta', JSON.stringify(meta));
+      for (let r = 1; r <= totalRounds; r++) {
+        const roundBytes = await replayStorage.loadRound(uuid, r);
+        if (!roundBytes || roundBytes.length === 0) {
+          console.warn(`[UploadDemos] Round ${r} missing, skipping upload`);
+          continue;
+        }
+        const slice = roundBytes.buffer.slice(roundBytes.byteOffset, roundBytes.byteOffset + roundBytes.byteLength) as ArrayBuffer;
+        form.append(`round_${r}`, new Blob([slice], { type: 'application/octet-stream' }), `round_${r}.pb.gz`);
+      }
+      const roundKeys = Array.from({ length: totalRounds }, (_, i) => i + 1).map((n) => `round_${n}`);
+      const hasRounds = roundKeys.some((k) => form.has(k));
+      if (!hasRounds) {
+        updateProgress(100, '完成');
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '无回合数据，未上传云端', type: 'warning' } }));
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/demos');
+        xhr.withCredentials = true;
+        xhr.upload.addEventListener('progress', (ev) => {
+          if (ev.lengthComputable) {
+            const p = 80 + (ev.loaded / ev.total) * 20;
+            updateProgress(Math.round(p), '正在上传到云端...');
+          }
+        });
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            updateProgress(100, '完成');
+            window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已上传到云端', type: 'info' } }));
+            resolve();
+          } else if (xhr.status === 401) {
+            handleSessionExpired();
+            window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '未登录或登录已过期', type: 'warning' } }));
+            resolve();
+          } else {
+            const j = (() => {
+              try {
+                return JSON.parse(xhr.responseText || '{}');
+              } catch {
+                return {};
+              }
+            })();
+            window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: j?.error || `上传失败 ${xhr.status}`, type: 'error' } }));
+            resolve();
+          }
+        });
+        xhr.addEventListener('error', () => {
+          window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '网络错误，上传失败', type: 'error' } }));
+          resolve();
+        });
+        xhr.send(form);
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: `上传失败: ${msg}`, type: 'error' } }));
+    } finally {
+      updateProgress(100, '完成');
+    }
+  };
+
   const parseDemo = async (file: File) => {
     // ============ CONCURRENCY CHECK: Only allow one parsing at a time ============
     const metaStorage = await getMetaStorage();
@@ -584,7 +665,7 @@ function createReplayData() {
           lastTickTime = Date.now();
           const { uuid: workerUuid, parsedTicks } = e.data;
           if (workerUuid !== meta.uuid) return;
-          const progress = Math.min(95, (parsedTicks / estimatedTotalTicks) * 95);
+          const progress = Math.min(80, (parsedTicks / estimatedTotalTicks) * 80);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
           updateParsingProgress(Math.floor(progress), status);
           await metaStorage.updateMetaStatus(meta.uuid, 0, Math.floor(progress), status, Date.now());
@@ -633,9 +714,16 @@ function createReplayData() {
               await metaStorage.saveMeta(latestMeta);
               console.log(`[ParseDemo] Meta 已更新到 IndexedDB: status=1, progress=100%, serverPlayers=${e.data.serverPlayer?.length || 0}`);
             }
-            
+
             await loadAllReplays();
             console.log(`[ParseDemo] Parsing complete for ${file.name}`);
+
+            // Upload to server (progress 80–100) if user is logged in
+            const totalRounds = e.data.totalRounds ?? 0;
+            if (totalRounds > 0 && meta) {
+              updateParsingProgress(80, '正在上传到云端...');
+              await uploadDemosToServer(meta.uuid, totalRounds, latestMeta ?? (await metaStorage.loadMeta(meta.uuid)), updateParsingProgress);
+            }
           } catch (e: any) {
             console.error('[ParseDemo] Finalization failed:', e);
             await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Finalization error: ${e.message}`);

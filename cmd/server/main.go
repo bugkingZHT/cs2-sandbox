@@ -15,6 +15,7 @@ import (
 	"github.com/bugkingzht/cs-demobox/cmd/server/utils"
 	"github.com/bugkingzht/cs-demobox/pkg/auth"
 	"github.com/bugkingzht/cs-demobox/pkg/database"
+	"github.com/bugkingzht/cs-demobox/pkg/demo"
 	"github.com/bugkingzht/cs-demobox/pkg/note"
 	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
@@ -112,7 +113,7 @@ func openDBAndMigrate(dbCfg database.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 	log.Println("[DB] Connected")
-	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &note.NoteItem{}, &note.DemoItem{}, &role.Role{}, &role.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &note.NoteItem{}, &note.DemoItem{}, &demo.Demo{}, &role.Role{}, &role.Subscription{}); err != nil {
 		log.Printf("[DB] Migrate failed: %v", err)
 	}
 	return db, nil
@@ -170,7 +171,23 @@ func registerNoteRoutes(mux *http.ServeMux, sessionStore *session.Store, noteSto
 	log.Printf("[Note] %s set to %s", constants.EnvSnowboStorageRootPath, storageRoot)
 }
 
-func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, noteStore *note.Store) http.Handler {
+func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoStore *demo.Store, userStore *user.Store) {
+	storageRoot := utils.GetStorageRootPath()
+	if storageRoot == "" {
+		log.Printf("[Demo] %s not set; /api/demos/* will return 503", constants.EnvSnowboStorageRootPath)
+		demo503 := noteUnavailableHandler()
+		mux.HandleFunc("/api/demos", demo503)
+		mux.HandleFunc("/api/demos/", demo503)
+		return
+	}
+	demoStorage := demo.NewFileStorage(storageRoot)
+	demoHandlers := &demo.Handlers{Store: demoStore, Storage: demoStorage, UserStore: userStore}
+	mux.HandleFunc("/api/demos", session.RequireAuth(sessionStore, demoHandlers.Index))
+	mux.HandleFunc("/api/demos/", session.OptionalAuth(sessionStore, demoHandlers.ByID))
+	log.Printf("[Demo] routes registered with %s", constants.EnvSnowboStorageRootPath)
+}
+
+func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, noteStore *note.Store, demoStore *demo.Store) http.Handler {
 	sessionStore := session.NewStore(db)
 	authHandlers := &auth.Handlers{User: userStore, Session: sessionStore, RoleStore: roleStore, NoteStore: noteStore}
 	mux := http.NewServeMux()
@@ -179,6 +196,7 @@ func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, noteSt
 	mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 	mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
 	registerNoteRoutes(mux, sessionStore, noteStore, roleStore)
+	registerDemoRoutes(mux, sessionStore, demoStore, userStore)
 	return mux
 }
 
@@ -196,9 +214,10 @@ func setupAPIHandler(dbCfg database.Config) http.Handler {
 	userStore := user.NewStore(db)
 	roleStore := role.NewStore(db)
 	noteStore := note.NewStore(db)
+	demoStore := demo.NewStore(db)
 	ensureDefaultRoles(roleStore)
 	seedDefaultUserIfEmpty(db, userStore, roleStore)
-	return newAPIMux(db, userStore, roleStore, noteStore)
+	return newAPIMux(db, userStore, roleStore, noteStore, demoStore)
 }
 
 func main() {
