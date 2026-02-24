@@ -227,7 +227,9 @@ export class IndexedDBMetaStorage {
   }
 }
 
-// ========== IndexedDB Replay Round Storage (pb binary) ==========
+// ========== IndexedDB Replay Round Storage (pb binary, gzipped) ==========
+// Round bytes are stored gzipped when written via encodeReplayRound (proto-converters).
+// When loading, decodeReplayRound (proto-converters) decompresses then decodes; legacy uncompressed data is still supported.
 
 export interface CleanupOrphanedResult {
   deleted: string[];
@@ -437,7 +439,7 @@ export class IndexedDBReplayStorage {
     const roundNum = parseInt(m[1], 10);
     const bytes = await this.loadRound(uuid, roundNum);
     if (!bytes) throw new Error(`Round ${roundNum} not found for ${uuid}`);
-    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

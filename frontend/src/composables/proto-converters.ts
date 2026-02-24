@@ -1,6 +1,33 @@
 import * as protobuf from 'protobufjs';
 import type { ReplayMeta, ReplayRound, Frame, PlayerState, ProjectileState, RoundTimeInfo, KillEvent, ProjectileRenderConfig, Point, BombFrame, DroppedEquipment } from '@/types/replay';
 
+// --- Gzip compress/decompress for pb storage (browser Compression Streams API) ---
+const GZIP_MAGIC = new Uint8Array([0x1f, 0x8b]);
+
+function isGzipped(bytes: Uint8Array): boolean {
+  return bytes.byteLength >= 2 && bytes[0] === GZIP_MAGIC[0] && bytes[1] === GZIP_MAGIC[1];
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+export async function gzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+export async function gunzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function maybeDecompress(bytes: Uint8Array): Promise<Uint8Array> {
+  return isGzipped(bytes) ? gunzipBytes(bytes) : bytes;
+}
+
 // Load proto definitions at module level
 let root: protobuf.Root | null = null;
 
@@ -18,11 +45,12 @@ async function getMessageType(typeName: string) {
   return protoRoot.lookupType(`entity.${typeName}`);
 }
 
-// Decode ReplayMetaPB from binary
+// Decode ReplayMetaPB from binary (supports gzipped input for backward compat)
 export async function decodeReplayMeta(bytes: Uint8Array): Promise<ReplayMeta> {
-  console.log(`[ProtoConverter] 🔓 Decoding ReplayMeta, input size: ${bytes.byteLength} bytes`);
+  const raw = await maybeDecompress(bytes);
+  console.log(`[ProtoConverter] 🔓 Decoding ReplayMeta, input size: ${bytes.byteLength} bytes${raw !== bytes ? ' (gzipped)' : ''}`);
   const ReplayMetaPB = await getMessageType('ReplayMetaPB');
-  const decoded = ReplayMetaPB.decode(bytes);
+  const decoded = ReplayMetaPB.decode(raw);
   const obj = ReplayMetaPB.toObject(decoded, {
     longs: Number,
     enums: String,
@@ -47,11 +75,12 @@ export async function decodeReplayMeta(bytes: Uint8Array): Promise<ReplayMeta> {
   return result;
 }
 
-// Decode ReplayRoundPB from binary
+// Decode ReplayRoundPB from binary (supports gzipped input for backward compat)
 export async function decodeReplayRound(bytes: Uint8Array): Promise<ReplayRound> {
-  console.log(`[ProtoConverter] 🔓 Decoding ReplayRound, input size: ${bytes.byteLength} bytes`);
+  const raw = await maybeDecompress(bytes);
+  console.log(`[ProtoConverter] 🔓 Decoding ReplayRound, input size: ${bytes.byteLength} bytes${raw !== bytes ? ' (gzipped)' : ''}`);
   const ReplayRoundPB = await getMessageType('ReplayRoundPB');
-  const decoded = ReplayRoundPB.decode(bytes);
+  const decoded = ReplayRoundPB.decode(raw);
   const obj = ReplayRoundPB.toObject(decoded, {
     longs: Number,
     enums: String,
@@ -85,8 +114,9 @@ export async function encodeReplayMeta(meta: ReplayMeta): Promise<Uint8Array> {
     roundResultsCount: protoObj.roundResults?.length || 0
   });
   const message = ReplayMetaPB.create(protoObj);
-  const result = ReplayMetaPB.encode(message).finish();
-  console.log(`[ProtoConverter] ✅ ReplayMeta encoded, output size: ${result.byteLength} bytes`);
+  const encoded = ReplayMetaPB.encode(message).finish();
+  const result = await gzipBytes(encoded);
+  console.log(`[ProtoConverter] ✅ ReplayMeta encoded (gzipped), ${encoded.byteLength} → ${result.byteLength} bytes`);
   return result;
 }
 
@@ -100,8 +130,9 @@ export async function encodeReplayRound(round: ReplayRound): Promise<Uint8Array>
   const ReplayRoundPB = await getMessageType('ReplayRoundPB');
   const protoObj = replayRoundToProto(round);
   const message = ReplayRoundPB.create(protoObj);
-  const result = ReplayRoundPB.encode(message).finish();
-  console.log(`[ProtoConverter] ✅ ReplayRound encoded, output size: ${result.byteLength} bytes`);
+  const encoded = ReplayRoundPB.encode(message).finish();
+  const result = await gzipBytes(encoded);
+  console.log(`[ProtoConverter] ✅ ReplayRound encoded (gzipped), ${encoded.byteLength} → ${result.byteLength} bytes`);
   return result;
 }
 
