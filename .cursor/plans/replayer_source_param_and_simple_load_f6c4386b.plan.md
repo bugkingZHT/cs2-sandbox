@@ -25,7 +25,7 @@ isProject: false
 
 ## 2. 后端改动
 
-**文件：[pkg/archive/handler.go**](pkg/archive/handler.go)
+**文件：[pkg/archive/handler.go](pkg/archive/handler.go)**
 
 - **GET /api/archive/items/:id（取单条 meta，不取 file）**
   - 当前：必须登录且 `item.OwnerID == u.ID` 才 200。
@@ -38,7 +38,7 @@ isProject: false
 
 ## 3. 前端 OPFS：按回合删除
 
-**文件：[frontend/src/composables/opfs-storage.ts**](frontend/src/composables/opfs-storage.ts)
+**文件：[frontend/src/composables/opfs-storage.ts](frontend/src/composables/opfs-storage.ts)**
 
 - 新增 **deleteRound(uuid: string, roundNum: number): Promisevoid**：
   - 在 `replays/{uuid}/` 下删除 `round_{roundNum}.pb`（若存在则 removeEntry，NotFound 可忽略）。
@@ -46,7 +46,7 @@ isProject: false
 
 ## 4. 前端路由与入口：按 source 分支
 
-**文件：[frontend/src/App.vue**](frontend/src/App.vue)
+**文件：[frontend/src/App.vue](frontend/src/App.vue)**
 
 - **ensureReplayerRouteData** 中从 query 读取：`source`、`uuid`、`round`、`archive_id`。
   - 若 `source === 'cloud'` 或仅有 `archive_id`：走云分支（见下）。
@@ -63,7 +63,7 @@ isProject: false
 
 ## 5. useReplayData：两种加载入口
 
-**文件：[frontend/src/composables/useReplayData.ts**](frontend/src/composables/useReplayData.ts)
+**文件：[frontend/src/composables/useReplayData.ts](frontend/src/composables/useReplayData.ts)**
 
 ### 5.1 本地：loadReplayByLocal(uuid, roundNumber)
 
@@ -86,7 +86,7 @@ isProject: false
   - 有：解码并设置 frames/bounds/currentRoundNumber，结束。
   - 无：**GET /api/archive/file?demo_uuid=...&demo_round=...**，带进度；将响应保存到 **saveRound(item.demo_uuid, item.demo_round, bytes)**（即 uuid 路径，不是 cloud_xxx）；再解码并设置 frames/bounds/currentRoundNumber。
 
-保留并复用的辅助：**applyRoundBytes**、**fetchRoundFileFromCloud**（或内联一次）。云分支不再使用 `cloud_` 前缀存储。
+保留并复用的辅助：**applyRoundBytes**、**fetchRoundFileFromCloud**（或内联一次）。云分支不再使用 `cloud`_ 前缀存储。
 
 ### 5.3 loadRoundData 与 loadReplayById 的收敛
 
@@ -109,7 +109,7 @@ isProject: false
 
 - 移除或简化原 **loadRoundData** 中“先 GET item by demo_uuid+demo_round、再 cloud_ 缓存”的混合逻辑；由 loadReplayByLocal / loadReplayByCloud 完全按 source 分支替代。
 - 不再使用 **cloud_** 前缀目录；云拉取的文件统一存 **replays/{demo_uuid}/round_{demo_round}.pb**。
-- **loadAllReplays** / **cleanupOrphanedReplays** 中此前对 `cloud_` 的保留逻辑可删除（不再有 cloud_ 目录）。
+- **loadAllReplays** / **cleanupOrphanedReplays** 中此前对 `cloud`_ 的保留逻辑可删除（不再有 cloud_ 目录）。
 
 ## 8. 数据流示意
 

@@ -360,7 +360,10 @@
           <div v-if="demo.status === 1 && (demo.totalRounds ?? 0) > 0" class="demo-bar-round-nav">
             <div class="demo-bar-round-buttons">
               <template v-for="r in (demo.totalRounds ?? 0)" :key="r">
-                <div class="demo-bar-round-cell">
+                <div
+                  class="demo-bar-round-cell"
+                  :class="{ 'is-playing': currentPlayingLocal?.uuid === demo.uuid && currentPlayingLocal?.round === r }"
+                >
                   <button
                     type="button"
                     class="demo-bar-round-btn"
@@ -507,7 +510,7 @@ import { useReplayData } from '@/composables/useReplayData';
 import { getMetaStorage } from '@/composables/indexdb-storage';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
 // Removed import for resolveTeamDisplayName to avoid fallback to player names
-import { navigate, getQuery, replaceLocation, pathRef, searchRef, saveReplayerReturnUrl } from '@/location';
+import { navigate, getQuery, replaceLocation, pathRef, searchRef, getReplayerPlayingLocal } from '@/location';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -545,8 +548,12 @@ const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(nul
 const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
 
+const currentPlayingLocal = computed(() => {
+  if (pathRef.value !== '/demolib') return null;
+  return getReplayerPlayingLocal();
+});
+
 function openReplayer(demoUuid: string, round: number) {
-  saveReplayerReturnUrl();
   navigate('/replayer', `source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}&tab=players`);
 }
 
@@ -1849,6 +1856,10 @@ const scoreLeftRightMap = computed(() => {
   gap: 1px;
 }
 
+.demo-bar-round-cell.is-playing {
+  background: linear-gradient(to top, rgba(35, 134, 54, 0.5), transparent);
+}
+
 .demo-bar-round-btn {
   width: 30px;
   height: 30px;
@@ -1902,6 +1913,11 @@ const scoreLeftRightMap = computed(() => {
   width: 100%;
   height: 2px;
   background: var(--gh-border);
+}
+
+.demo-bar-round-cell.is-playing .demo-bar-round-underline {
+  background: rgba(46, 160, 67, 0.9);
+  box-shadow: 0 0 6px rgba(46, 160, 67, 0.7);
 }
 
 .demo-bar-round-v-divider {

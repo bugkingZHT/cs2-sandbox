@@ -20,11 +20,12 @@
         </button>
       </div>
 
-      <!-- Navigation -->
+      <!-- Navigation: active 仅根据路由 sidebarPath，不等待播放器加载 -->
       <nav class="sidebar-nav">
         <button 
+          type="button"
           class="nav-btn" 
-          :class="{ active: currentPage === 'library' || (currentPage === 'player' && replayerSource === 'local') }"
+          :class="{ active: sidebarPath === '/demolib' || sidebarPath === '/' }"
           @click="onNavigateToDemolib"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -35,6 +36,20 @@
           </span>
         </button>
         <button
+          type="button"
+          class="nav-btn"
+          :class="{ active: sidebarPath === '/replayer' }"
+          @click="onNavigateToReplayer"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span v-show="!sidebarCollapsed" class="nav-label">
+            <span class="nav-text">2D 播放器</span>
+          </span>
+        </button>
+        <button
+          type="button"
           class="nav-btn"
           :class="{ active: currentPage === 'notes' || (currentPage === 'player' && replayerSource === 'cloud') }"
           @click="onNavigateToNotes"
@@ -248,7 +263,7 @@ import { useAuth } from '@/composables/useAuth';
 import { resolveTeamDisplayName } from '@/composables/teamDisplay';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showReplayStorageDetails } from '@/composables/replayStorageViewer';
-import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery, saveReplayerReturnUrl } from '@/location';
+import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery, setReplayerPlayingLocal, getReplayerPlayingLocal } from '@/location';
 
 const { 
   parsing, 
@@ -277,8 +292,16 @@ const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
 
 useLocation();
 
-const currentPage = computed<'library' | 'player' | 'notes'>(() => {
+/** 侧边栏 active 用：去掉 base 后的 path，保证 /replayer、/demolib 等比较一致 */
+const sidebarPath = computed(() => {
   const p = pathRef.value;
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  if (base && p.startsWith(base)) return p.slice(base.length) || '/';
+  return p;
+});
+
+const currentPage = computed<'library' | 'player' | 'notes'>(() => {
+  const p = sidebarPath.value;
   if (p === '/replayer') return 'player';
   if (p === '/notes') return 'notes';
   return 'library'; // /demolib or /
@@ -426,7 +449,6 @@ function formatFileSize(bytes: number): string {
 }
 
 function goToNoteItem(payload: CloudArchiveItem | { noteId: string; demoId: number }) {
-  saveReplayerReturnUrl();
   const noteId = 'noteId' in payload ? payload.noteId : payload.id;
   const demoId = 'demoId' in payload ? payload.demoId : undefined;
   const params = new URLSearchParams({ source: 'cloud', note_id: noteId });
@@ -442,6 +464,21 @@ function navigateWithReload(path: string) {
 
 function onNavigateToDemolib() {
   navigateWithReload('/demolib');
+}
+
+function onNavigateToReplayer() {
+  const saved = getReplayerPlayingLocal();
+  if (saved?.uuid != null && saved?.round != null) {
+    const search = new URLSearchParams({
+      source: 'local',
+      uuid: saved.uuid,
+      round: String(saved.round),
+      tab: 'players',
+    }).toString();
+    navigateWithReload('/replayer?' + search);
+  } else {
+    navigateWithReload('/replayer');
+  }
 }
 
 function onNavigateToNotes() {
@@ -758,6 +795,20 @@ watch(
   { deep: true }
 );
 
+watch(
+  () =>
+    pathRef.value === '/replayer' &&
+    replayerSource.value === 'local' &&
+    replay.value?.uuid &&
+    currentRoundNumber.value
+      ? { uuid: replay.value.uuid, round: currentRoundNumber.value }
+      : null,
+  (payload) => {
+    if (payload) setReplayerPlayingLocal(payload.uuid, payload.round);
+  },
+  { immediate: true }
+);
+
 watch(currentUser, (user) => {
   if (user) loadNotes();
 });
@@ -956,7 +1007,7 @@ const showBetaWarning = () => {
   gap: var(--ds-space-md);
 }
 
-/* Demo 本地库 / 云存档：未激活无 border，激活时有 border */
+/* Demo 本地库 / 云存档：仅 .active 时有可见 border，避免残留描边与 focus 干扰 */
 .nav-btn {
   width: 100%;
   min-height: 48px;
@@ -973,6 +1024,17 @@ const showBetaWarning = () => {
   align-items: center;
   gap: var(--ds-space-md);
   text-align: left;
+  outline: none;
+  box-shadow: none;
+}
+
+.nav-btn:focus {
+  outline: none;
+}
+
+.nav-btn:focus-visible {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 2px;
 }
 
 .collapsed .nav-btn {
@@ -1027,6 +1089,11 @@ const showBetaWarning = () => {
   color: var(--ds-primary);
   border-color: var(--ds-border-strong);
   box-shadow: 0 0 0 1px var(--ds-border-default);
+}
+
+.nav-btn:not(.active) {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .nav-btn.active:hover:not(:disabled) {

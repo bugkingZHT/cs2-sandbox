@@ -6,7 +6,7 @@
     <div v-show="!noteOnlyShare" class="viewer-main">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
-      <!-- Cover：按优先级只显示一种，返回按钮在内容下方 -->
+      <!-- Cover：按优先级只显示一种 -->
       <div
         v-if="coverType !== 'none'"
         class="empty-state"
@@ -139,17 +139,6 @@
         <!-- Left Panel: Tab (玩家/回合) + Player Cards or Round Selector + 剪辑/发布 -->
         <div v-if="coverType === 'none' && !pureMode" class="players-panel top-left">
           <div class="left-panel-header">
-            <button
-              type="button"
-              class="left-panel-back-btn"
-              title="返回"
-              @click="goBack"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-              <span>返回</span>
-            </button>
             <div class="left-panel-tabs">
               <button
                 type="button"
@@ -702,7 +691,7 @@ import type { Frame, PlayerState, ReplayData, ProjectileState, ClipRoundConfig }
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
-import { replaceLocation, pathRef, searchRef, getQuery, REPLAYER_RETURN_URL_KEY } from '@/location';
+import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
 import type { CloudArchiveItem, UploadReplayContext } from '@/composables/useNote';
 import { forkClipToNewDemo, prepareCurrentRoundForUpload } from '@/composables/clipForkForNote';
 
@@ -870,18 +859,6 @@ function formatNoteTime(ms: number): string {
   const min = String(d.getMinutes()).padStart(2, '0');
   const s = String(d.getSeconds()).padStart(2, '0');
   return `${y}-${m}-${day} ${h}:${min}:${s}`;
-}
-
-function goBack() {
-  const saved = sessionStorage.getItem(REPLAYER_RETURN_URL_KEY);
-  if (saved) {
-    sessionStorage.removeItem(REPLAYER_RETURN_URL_KEY);
-    window.location.href = window.location.origin + saved;
-    return;
-  }
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  const path = replayerSource.value === 'cloud' ? '/notes' : '/demolib';
-  window.location.href = base + path;
 }
 
 /** 复制内嵌分享链接（带 pure=1） */
@@ -2073,31 +2050,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-  flex-shrink: 0;
-}
-
-.left-panel-back-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--ds-radius-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.left-panel-back-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
-}
-
-.left-panel-back-btn svg {
   flex-shrink: 0;
 }
 
