@@ -34,7 +34,7 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
 
     <!-- 二、下方：时间轴进度条 -->
     <div class="playback-control-module">
-      <!-- 左侧控制区：播放按钮 + 倍速 -->
+      <!-- 左侧控制区：播放按钮 + 倍速（桌面端多 tab，移动端单按钮循环） -->
       <div class="playback-info-box">
         <div class="controls-stack">
           <button
@@ -50,7 +50,8 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             </svg>
           </button>
         </div>
-        <div class="speed-tabs">
+        <!-- 桌面端：倍速多 tab -->
+        <div class="speed-tabs speed-tabs-desktop">
           <button
             v-for="s in speedOptions"
             :key="s"
@@ -61,10 +62,22 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             {{ s }}x
           </button>
         </div>
+        <!-- 移动端：单按钮点击循环切换倍速 -->
+        <button
+          class="speed-cycle-btn speed-cycle-mobile"
+          :title="`${playbackSpeed}x，点击切换`"
+          @click="cycleSpeed"
+        >
+          {{ playbackSpeed }}x
+        </button>
       </div>
 
       <!-- 中间时间轴主体 -->
-      <div class="timeline-track-main" @mousedown="onTimelineMouseDown">
+      <div 
+        class="timeline-track-main" 
+        @mousedown="onTimelineMouseDown"
+        @touchstart="onTimelineTouchStart"
+      >
         <!-- 进度填充（平面化） -->
         <div class="flat-progress-fill" :style="{ width: `${(roundRelativeTimeMs / roundDurationMs) * 100}%` }"></div>
 
@@ -148,17 +161,19 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             :style="{ left: clipRangeLeftPercent + '%' }"
             title="拖拽调整范围起点"
             @mousedown.stop="onClipHandleMouseDown('left', $event)"
+            @touchstart.stop="onClipHandleTouchStart('left', $event)"
           ></div>
           <div
             class="clip-range-handle clip-range-handle-right"
             :style="{ left: clipRangeRightPercent + '%' }"
             title="拖拽调整范围终点"
             @mousedown.stop="onClipHandleMouseDown('right', $event)"
+            @touchstart.stop="onClipHandleTouchStart('right', $event)"
           ></div>
         </div>
       </div>
 
-      <!-- 右侧：时间显示 + 保存当前回合到云存档 -->
+      <!-- 右侧：时间显示 -->
       <div class="time-display-box">
         <div class="time-display">
           <!-- Show C4 icon when bomb is planted -->
@@ -492,6 +507,37 @@ const onTimelineMouseDown = (e: MouseEvent) => {
   document.addEventListener('mouseup', onUp);
 };
 
+/** 移动端触摸事件处理 */
+const onTimelineTouchStart = (e: TouchEvent) => {
+  // 阻止默认的滚动行为
+  e.preventDefault();
+  
+  const el = e.currentTarget as HTMLElement;
+  const touch = e.touches[0];
+  
+  isDragging.value = true;
+  emit('dragging-change', true);
+  handleInteraction(touch.clientX, el);
+  
+  const onMove = (te: TouchEvent) => {
+    te.preventDefault();
+    const touchMove = te.touches[0];
+    handleInteraction(touchMove.clientX, el);
+  };
+  
+  const onEnd = () => {
+    isDragging.value = false;
+    emit('dragging-change', false);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+    document.removeEventListener('touchcancel', onEnd);
+  };
+  
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
+  document.addEventListener('touchcancel', onEnd);
+};
+
 const formatMs = (ms: number) => {
   const totalSeconds = Math.floor(ms / 1000);
   const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -552,7 +598,58 @@ function onClipHandleMouseDown(which: 'left' | 'right', e: MouseEvent) {
   document.addEventListener('mouseup', onUp);
 }
 
+/** 移动端剪辑拖柄触摸事件处理 */
+function onClipHandleTouchStart(which: 'left' | 'right', e: TouchEvent) {
+  // 阻止默认行为
+  e.preventDefault();
+  e.stopPropagation();
+  
+  const el = (e.target as HTMLElement).closest('.timeline-track-main') as HTMLElement;
+  if (!el || props.totalFrames <= 0) return;
+
+  const touch = e.touches[0];
+  isDragging.value = true;
+  emit('dragging-change', true);
+  handleInteraction(touch.clientX, el);
+
+  const onMove = (te: TouchEvent) => {
+    te.preventDefault();
+    const touchMove = te.touches[0];
+    const idx = clientXToFrameIndex(touchMove.clientX, el);
+    const start = props.clipRangeStart ?? 0;
+    const end = props.clipRangeEnd ?? props.totalFrames - 1;
+    
+    if (which === 'left') {
+      const newStart = Math.max(0, Math.min(idx, end));
+      emit('update-clip-range', { start: newStart, end });
+    } else {
+      const newEnd = Math.max(start, Math.min(idx, props.totalFrames - 1));
+      emit('update-clip-range', { start, end: newEnd });
+    }
+    handleInteraction(touchMove.clientX, el);
+  };
+  
+  const onEnd = () => {
+    isDragging.value = false;
+    emit('dragging-change', false);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+    document.removeEventListener('touchcancel', onEnd);
+  };
+  
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
+  document.addEventListener('touchcancel', onEnd);
+}
+
 const speedOptions = [0.5, 1, 2] as const;
+
+/** 移动端：点击倍速按钮循环切换到下一档 */
+function cycleSpeed() {
+  const idx = speedOptions.indexOf(props.playbackSpeed as typeof speedOptions[number]);
+  const nextIdx = idx < 0 ? 0 : (idx + 1) % speedOptions.length;
+  emit('update-speed', speedOptions[nextIdx]);
+}
 </script>
 
 <style scoped>
@@ -564,6 +661,9 @@ const speedOptions = [0.5, 1, 2] as const;
   padding: 2px 8px;
   background: transparent;
   user-select: none;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* === Round Selection Module === */
@@ -748,9 +848,30 @@ const speedOptions = [0.5, 1, 2] as const;
 /* === Playback Control Module === */
 .playback-control-module {
   display: flex;
-  height: 36px;
+  flex: 1 1 0;
+  min-height: 0;
   gap: var(--ds-space-sm);
   align-items: center;
+  min-width: 0; /* 允许子项收缩，防止溢出 */
+}
+
+/* 移动端布局优化 */
+@media (max-width: 768px) {
+  .playback-control-module {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: var(--ds-space-xs);
+  }
+}
+
+@media (max-width: 640px) {
+  .playback-control-module {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
 }
 
 .playback-info-box {
@@ -762,6 +883,7 @@ const speedOptions = [0.5, 1, 2] as const;
   padding: 0 var(--ds-space-sm);
   border-radius: 2px;
   flex-shrink: 0;
+  min-width: 0; /* 小屏时可收缩 */
   position: relative;
 }
 
@@ -819,6 +941,32 @@ const speedOptions = [0.5, 1, 2] as const;
   overflow: hidden;
 }
 
+/* 移动端单按钮循环倍速：默认隐藏，仅在小屏显示 */
+.speed-cycle-mobile {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 80%;
+  min-width: 36px;
+  padding: 0 8px;
+  font-family: var(--ds-font-mono);
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--ds-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.speed-cycle-mobile:hover {
+  color: var(--ds-primary);
+  background: rgba(var(--ds-primary-rgb), 0.12);
+}
+
 .speed-tab-btn {
   padding: 0 12px;
   font-family: var(--ds-font-mono);
@@ -857,6 +1005,8 @@ const speedOptions = [0.5, 1, 2] as const;
   padding: 0 var(--ds-space-sm);
   border-radius: 2px;
   flex-shrink: 0;
+  min-width: 0; /* 小屏时时间区域可收缩 */
+  overflow: hidden;
 }
 
 .time-display {
@@ -931,6 +1081,30 @@ const speedOptions = [0.5, 1, 2] as const;
   overflow: visible;
   border-radius: 2px;
   border: 1px solid var(--ds-border-subtle);
+  /* 移动端触摸优化 */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* 移动端特殊处理 */
+@media (max-width: 768px) {
+  .timeline-track-main {
+    flex: 1 1 auto;
+    min-width: 100px;
+    /* 确保在移动端有足够的显示空间 */
+  }
+}
+
+@media (max-width: 640px) {
+  .timeline-track-main {
+    flex: 1 1 auto;
+    min-width: 80px;
+  }
 }
 
 .dashed-grid-bg {
@@ -1247,13 +1421,18 @@ const speedOptions = [0.5, 1, 2] as const;
   }
 
   .playback-control-module {
-    height: 32px;
     gap: var(--ds-space-xs);
+    min-width: 0;
   }
 
   .playback-info-box {
-    width: 80px;
     padding: 0 var(--ds-space-xs);
+    min-width: 0;
+  }
+
+  .timeline-track-main {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .speed-tabs {
@@ -1311,14 +1490,9 @@ const speedOptions = [0.5, 1, 2] as const;
     height: 11px;
   }
 
-  .playback-control-module {
-    height: 40px;
-  }
-
   .playback-info-box {
     height: 100%;
   }
-
 
   .speed-tabs {
     height: 70%;
@@ -1331,6 +1505,64 @@ const speedOptions = [0.5, 1, 2] as const;
 
   .time-font {
     font-size: 11px;
+  }
+}
+
+/* === 移动端：响应式布局 + 倍速单按钮循环 === */
+@media (max-width: 640px) {
+  .timeline-widget-container {
+    padding: 2px 6px;
+    overflow: hidden;
+  }
+
+  .playback-control-module {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .playback-info-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  /* 隐藏多 tab，显示单按钮循环 */
+  .speed-tabs-desktop {
+    display: none !important;
+  }
+
+  .speed-cycle-mobile {
+    display: flex !important;
+  }
+
+  .timeline-track-main {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .time-display-box {
+    flex: 0 0 auto;
+    padding: 0 6px;
+    min-width: 0;
+  }
+
+  .time-font {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .time-display {
+    min-width: 0;
+  }
+
+  .circle-play-btn {
+    flex-shrink: 0;
   }
 }
 

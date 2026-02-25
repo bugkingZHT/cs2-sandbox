@@ -93,6 +93,20 @@
       </div>
     </aside>
 
+    <!-- 移动端侧栏折叠时：左侧居中浮动按钮，点击展开侧栏 -->
+    <button
+      v-show="isMobile && sidebarCollapsed && (currentPage !== 'player' || !replayerPureMode)"
+      type="button"
+      class="sidebar-expand-fab"
+      title="展开导航"
+      aria-label="展开导航"
+      @click="toggleSidebar"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </button>
+
     <!-- 主内容区 -->
     <div class="app-main-and-note-row">
       <!-- Library -->
@@ -210,6 +224,7 @@ import { resolveTeamDisplayName } from '@/composables/teamDisplay';
 import { DEBUG_CONFIG } from '@/config/debug';
 import { showReplayStorageDetails } from '@/composables/replayStorageViewer';
 import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery, setReplayerPlayingLocal, getReplayerPlayingLocal } from '@/location';
+import { useMobileDetection } from '@/composables/browserUtils';
 
 const { 
   parsing, 
@@ -248,6 +263,7 @@ const currentPage = computed<'library' | 'player'>(() => {
 
 const currentDemoId = ref<string | null>(null);
 const sidebarCollapsed = ref(false);
+const { isMobile } = useMobileDetection();
 const replayerPureMode = ref(false); // 播放器内「纯净模式」时隐藏侧边栏
 provide('replayerPureMode', replayerPureMode);
 const showConsoleModal = ref(false);
@@ -300,15 +316,20 @@ function onNavigateToReplayer() {
 }
 
 function showToast(message: string, type: 'info' | 'warning' | 'error' = 'info') {
-    if (toastTimer) clearTimeout(toastTimer);
-    toastMessage.value = message;
-    toastType.value = type;
-    toast.value = true;
-    toastTimer = setTimeout(() => {
-      toast.value = false;
-      toastTimer = null;
-    }, 2000);
-  }
+  if (toastTimer) clearTimeout(toastTimer);
+  toastMessage.value = message;
+  toastType.value = type;
+  toast.value = true;
+  toastTimer = setTimeout(() => {
+    toast.value = false;
+    toastTimer = null;
+  }, 2000);
+}
+
+function onAppToast(e: Event) {
+  const detail = (e as CustomEvent<{ message?: string; type?: 'info' | 'warning' | 'error' }>).detail;
+  if (detail?.message) showToast(detail.message, detail.type ?? 'info');
+}
 
 // 根据 URL demo_uuid/round/tab 加载 replayer 数据；统一先读缓存、再同步云上
 async function ensureReplayerRouteData() {
@@ -390,15 +411,23 @@ async function ensureReplayerRouteData() {
 }
 
 onMounted(async () => {
+  window.addEventListener('app:toast', onAppToast);
+
   const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
   if (stored !== null) {
     sidebarCollapsed.value = stored === 'true';
+  } else if (isMobile.value) {
+    sidebarCollapsed.value = true; // 移动端无存储时默认折叠
   }
   // session 已在 main.ts 中 initAuth 提前校验，此处不再调用 fetchAuthMe 避免重复请求与闪烁
   // 刷新进入 replayer 时立即根据 URL args 加载对局并定位回合
   ensureReplayerRouteData();
   // 等 IndexedDB 初始化完成后再 load data
   await waitForInitialLoad();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('app:toast', onAppToast);
 });
 
 watch(
@@ -557,6 +586,50 @@ const showBetaWarning = () => {
 
 .app-sidebar.collapsed {
   width: 72px;
+}
+
+/* 移动端：折叠时侧栏完全收起（不占位），并显示左侧浮动展开按钮 */
+@media (max-width: 768px) {
+  .app-sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-right-width: 0;
+    padding: 0;
+  }
+}
+
+.sidebar-expand-fab {
+  display: none;
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+  width: 40px;
+  height: 48px;
+  padding: 0;
+  background: rgba(var(--ds-primary-rgb), 0.15);
+  border: none;
+  border-radius: 0 var(--ds-radius-md) var(--ds-radius-md) 0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--ds-transition-base), color var(--ds-transition-base);
+  backdrop-filter: blur(10px);
+}
+
+.sidebar-expand-fab:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--ds-text-primary);
+}
+
+@media (max-width: 768px) {
+  .sidebar-expand-fab {
+    display: flex;
+  }
 }
 
 /* === Sidebar Header === */

@@ -13,6 +13,8 @@ import {
   PARSE_FRAME_RATIO_KEY,
 } from '@/config/debug';
 import { adaptMeta, adaptRound, checkCompatibility } from './replayDataAdapter';
+import { isMobileBrowser } from './browserUtils';
+import { requestIdleCallback, cancelIdleCallback } from './browserUtils';
 
 interface UseReplayResult {
   loading: ReturnType<typeof ref<boolean>>;
@@ -59,6 +61,31 @@ interface UseReplayResult {
 }
 
 const LATEST_KEY = 'latest_replay_uuid';
+
+/** 移动端的回合数据不写 IndexedDB，仅放内存 */
+const memoryRoundCache = new Map<string, Uint8Array>();
+function roundCacheKey(uuid: string, roundNum: number): string {
+  return `${uuid}::${roundNum}`;
+}
+function isMobile(): boolean {
+  return isMobileBrowser();
+}
+
+/** 云端拉取路径：移动端用内存缓存，桌面端用 IndexedDB */
+async function getReplayStorageForCloud(): Promise<{ loadRound(uuid: string, roundNum: number): Promise<Uint8Array | null>; saveRound(uuid: string, roundNum: number, bytes: Uint8Array): Promise<void> }> {
+  if (isMobile()) {
+    return {
+      async loadRound(uuid: string, roundNum: number) {
+        return memoryRoundCache.get(roundCacheKey(uuid, roundNum)) ?? null;
+      },
+      async saveRound(uuid: string, roundNum: number, bytes: Uint8Array) {
+        memoryRoundCache.set(roundCacheKey(uuid, roundNum), bytes);
+      },
+    };
+  }
+  const s = await getReplayStorage();
+  return { loadRound: s.loadRound.bind(s), saveRound: s.saveRound.bind(s) };
+}
 
 // 单例模式：确保所有组件使用同一个响应式实例
 let replayDataInstance: ReturnType<typeof createReplayData> | null = null;
@@ -356,7 +383,7 @@ function createReplayData() {
       demos: data?.demos,
     };
 
-    const replayStorage = await getReplayStorage();
+    const replayStorage = await getReplayStorageForCloud();
     const cachedRound = await replayStorage.loadRound(uuid, roundNumber);
 
     const metaFromApi: ReplayMeta = (() => {
@@ -461,7 +488,7 @@ function createReplayData() {
     if (!data?.demo_uuid) throw new Error('not_found');
     const uuid = data.demo_uuid;
 
-    const replayStorage = await getReplayStorage();
+    const replayStorage = await getReplayStorageForCloud();
     const cachedRound = await replayStorage.loadRound(uuid, roundNumber);
 
     const metaFromApi: ReplayMeta = (() => {
@@ -524,6 +551,8 @@ function createReplayData() {
       const replayStorage = await getReplayStorage();
       const rawMeta = await metaStorage.loadMeta(uuid);
       if (!rawMeta) {
+        console.warn('[LoadReplayByLocal] Meta not found for uuid:', uuid);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '未找到回放元数据', type: 'error' } }));
         replayRouteError.value = 'not_found';
         return;
       }
@@ -531,12 +560,15 @@ function createReplayData() {
       setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
       const roundBytes = await replayStorage.loadRound(uuid, roundNumber);
       if (!roundBytes) {
+        console.warn('[LoadReplayByLocal] Round data not found for uuid:', uuid, 'round:', roundNumber);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '未找到回合数据', type: 'error' } }));
         replayRouteError.value = 'not_found';
         return;
       }
       await applyRoundBytes(roundBytes, roundNumber);
     } catch (e) {
       console.error('[LoadReplayByLocal]', e);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '加载本地回放失败', type: 'error' } }));
       replayRouteError.value = 'not_found';
     }
   };
@@ -553,9 +585,11 @@ function createReplayData() {
       replayerDemoId.value = resolvedDemoId;
       cloudNoteDetailFromApi.value = noteDetail;
       setReplayData(meta);
-      const replayStorage = await getReplayStorage();
+      const replayStorage = await getReplayStorageForCloud();
       const roundBytes = await replayStorage.loadRound(uuid, roundNumber);
       if (!roundBytes) {
+        console.warn('[LoadReplayByCloud] Round data not found for uuid:', uuid, 'round:', roundNumber);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '未找到云端回合数据', type: 'error' } }));
         replayRouteError.value = 'not_found';
         return;
       }
@@ -563,9 +597,14 @@ function createReplayData() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === 'forbidden') replayRouteError.value = 'forbidden';
-      else if (msg === 'not_found') replayRouteError.value = 'not_found';
+      else if (msg === 'not_found') {
+        console.warn('[LoadReplayByCloud] Not found error from API');
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '云端回放未找到', type: 'error' } }));
+        replayRouteError.value = 'not_found';
+      }
       else {
         console.error('[LoadReplayByCloud]', e);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '加载云端回放失败', type: 'error' } }));
         replayRouteError.value = 'not_found';
       }
     }
@@ -581,9 +620,11 @@ function createReplayData() {
     try {
       const { uuid, roundNumber: rn, meta } = await ensureCachedFromDemosCloud(demoId, roundNumber);
       setReplayData(meta);
-      const replayStorage = await getReplayStorage();
+      const replayStorage = await getReplayStorageForCloud();
       const roundBytes = await replayStorage.loadRound(uuid, rn);
       if (!roundBytes) {
+        console.warn('[LoadReplayByDemosCloud] Round data not found for uuid:', uuid, 'round:', rn);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '未找到云端 demo 回合数据', type: 'error' } }));
         replayRouteError.value = 'not_found';
         return;
       }
@@ -591,9 +632,14 @@ function createReplayData() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === 'forbidden') replayRouteError.value = 'forbidden';
-      else if (msg === 'not_found') replayRouteError.value = 'not_found';
+      else if (msg === 'not_found') {
+        console.warn('[LoadReplayByDemosCloud] Not found error from API');
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '云端 demo 未找到', type: 'error' } }));
+        replayRouteError.value = 'not_found';
+      }
       else {
         console.error('[LoadReplayByDemosCloud]', e);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '加载云端 demo 失败:' + e, type: 'error' } }));
         replayRouteError.value = 'not_found';
       }
     }
@@ -624,15 +670,18 @@ function createReplayData() {
       if (replayerDemoId.value != null) {
         await ensureCachedFromDemosCloud(replayerDemoId.value, roundNumber);
       }
-      const storage = await getReplayStorage();
+      const storage = replayerDemoId.value != null ? await getReplayStorageForCloud() : await getReplayStorage();
       const roundBytes = await storage.loadRound(uuid, roundNumber);
       if (!roundBytes) {
+        console.warn('[LoadRoundData] Round data not found for uuid:', uuid, 'round:', roundNumber);
+        window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '未找到指定回合数据', type: 'error' } }));
         replayRouteError.value = 'not_found';
         return;
       }
       await applyRoundBytes(roundBytes, roundNumber);
     } catch (e) {
       console.error('[LoadRoundData]', e);
+      window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '加载回合数据失败', type: 'error' } }));
       replayRouteError.value = 'not_found';
     }
   };

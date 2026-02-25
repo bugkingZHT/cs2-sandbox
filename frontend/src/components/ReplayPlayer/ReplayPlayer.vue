@@ -1,7 +1,5 @@
 <template>
-  <div
-    class="viewer-layout"
-  >
+  <div class="viewer-layout">
     <div class="viewer-main">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
@@ -621,6 +619,7 @@
     <section class="timeline-panel">
       <!-- 道具解析模式下遮罩 timeline，禁止点击主时间轴 -->
       <div v-if="isGrenadeAnalyzeMode" class="timeline-block-mask" aria-hidden="true"></div>
+      <div class="timeline-panel-inner">
       <TimelineControl
         :current-frame-index="effectiveFrameIndex"
         :total-frames="totalFrames"
@@ -652,6 +651,7 @@
         @dragging-change="isDraggingTimeline = $event"
         @load-round="loadRoundData"
       />
+      </div>
     </section>
     </div>
   </div>
@@ -1893,6 +1893,7 @@ onBeforeUnmount(() => {
 <style scoped>
 /* === Layout === */
 .viewer-layout {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -2886,6 +2887,17 @@ onBeforeUnmount(() => {
   padding: 4px var(--ds-space-sm);
   border-top: 2px solid var(--ds-border-accent);
   background: var(--ds-bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.timeline-panel-inner {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 道具解析模式下仅遮罩 timeline，禁止点击 */

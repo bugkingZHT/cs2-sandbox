@@ -189,7 +189,6 @@ import {
   resetPlayerRenderer,
 } from '../../composables/playersRender';
 import DrawingBoard from './DrawingBoard.vue';
-import type { CloudArchiveItem } from '@/composables/useNote';
 
 const props = withDefaults(
   defineProps<{
@@ -226,7 +225,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'save-current-round'): void;
-  (e: 'edit-note', item: CloudArchiveItem): void;
   (e: 'close-drawing'): void;
   (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
