@@ -90,7 +90,55 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	writeJSONOK(w, map[string]interface{}{"items": items})
 }
 
+// ByUUID handles GET /api/demos/by-uuid?demo_uuid=xxx. Returns demo metadata if the current user may access it:
+// - If permission is public, anyone (including anonymous) may access.
+// - If permission is private, only the owner (session UID matches demo UserUID) may access.
+// Returns 403 when demo is private and (not logged in or session UID != owner).
+func (h *Handlers) ByUUID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	demoUUID := strings.TrimSpace(r.URL.Query().Get("demo_uuid"))
+	if demoUUID == "" {
+		writeJSONErr(w, http.StatusBadRequest, "demo_uuid required")
+		return
+	}
+	list, err := h.Store.ListByDemoUUID(demoUUID)
+	if err != nil {
+		log.Printf("[Demo] ByUUID: ListByDemoUUID failed: %v", err)
+		writeJSONErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if len(list) == 0 {
+		writeJSONErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	u := session.UserFromContext(r.Context())
+	var d *Demo
+	for _, candidate := range list {
+		if u != nil && candidate.UserUID == u.UID {
+			d = candidate
+			break
+		}
+	}
+	if d == nil {
+		for _, candidate := range list {
+			if candidate.Permission == PermissionPublic {
+				d = candidate
+				break
+			}
+		}
+	}
+	if d == nil {
+		writeJSONErr(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	writeJSONOK(w, demoToMap(d))
+}
+
 // GetFile handles GET /api/demos/file?demo_id=X&round=N. Streams round_N.pb.gz (same as note-style file endpoint).
+// If demo permission is public, allows unauthenticated access.
 func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -118,17 +166,19 @@ func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := session.UserFromContext(r.Context())
-	if u == nil {
-		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
-		return
+	if d.Permission != PermissionPublic {
+		if u == nil {
+			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
+			return
+		}
+		if u.UID != d.UserUID {
+			writeJSONErr(w, http.StatusForbidden, "forbidden")
+			return
+		}
 	}
-	if u.UID != d.UserUID && d.Permission != PermissionPublic {
-		writeJSONErr(w, http.StatusForbidden, "forbidden")
-		return
-	}
-	ownerUID := u.UID
-	if u.UID != d.UserUID && d.Permission == PermissionPublic {
-		ownerUID = d.UserUID
+	ownerUID := d.UserUID
+	if u != nil && u.UID == d.UserUID {
+		ownerUID = u.UID
 	}
 	rc, err := h.Storage.GetRound(ownerUID, d.DemoUUID, round)
 	if err != nil {
@@ -290,7 +340,7 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 
 	u := session.UserFromContext(r.Context())
 
-	// GET /api/demos/:id/rounds/:round -> stream round file
+	// GET /api/demos/:id/rounds/:round -> stream round file (public demo allows anonymous)
 	if len(parts) >= 3 && parts[1] == "rounds" {
 		roundStr := parts[2]
 		round, err := strconv.Atoi(roundStr)
@@ -298,17 +348,19 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			writeJSONErr(w, http.StatusBadRequest, "invalid round number")
 			return
 		}
-		if u == nil {
-			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
-			return
+		if d.Permission != PermissionPublic {
+			if u == nil {
+				writeJSONErr(w, http.StatusUnauthorized, "not logged in")
+				return
+			}
+			if u.UID != d.UserUID {
+				writeJSONErr(w, http.StatusForbidden, "forbidden")
+				return
+			}
 		}
-		if u.UID != d.UserUID && d.Permission != PermissionPublic {
-			writeJSONErr(w, http.StatusForbidden, "forbidden")
-			return
-		}
-		ownerUID := u.UID
-		if u.UID != d.UserUID && d.Permission == PermissionPublic {
-			ownerUID = d.UserUID
+		ownerUID := d.UserUID
+		if u != nil && u.UID == d.UserUID {
+			ownerUID = u.UID
 		}
 		rc, err := h.Storage.GetRound(ownerUID, d.DemoUUID, round)
 		if err != nil {
@@ -325,9 +377,15 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 	// GET /api/demos/:id (metadata), PATCH (update meta/permission), or DELETE
 	switch r.Method {
 	case http.MethodGet:
-		if u == nil || (u.UID != d.UserUID && d.Permission != PermissionPublic) {
-			writeJSONErr(w, http.StatusForbidden, "forbidden")
-			return
+		if d.Permission != PermissionPublic {
+			if u == nil {
+				writeJSONErr(w, http.StatusUnauthorized, "not logged in")
+				return
+			}
+			if u.UID != d.UserUID {
+				writeJSONErr(w, http.StatusForbidden, "forbidden")
+				return
+			}
 		}
 		writeJSONOK(w, demoToMap(d))
 	case http.MethodPatch:

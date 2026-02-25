@@ -748,15 +748,24 @@ async function ensureReplayerRouteData() {
     return;
   }
 
-  // 统一 demolib 播放：demo_uuid + round，从 replayList 解析 demo_id，先读缓存再同步云
+  // 统一使用 demo_uuid 请求：by-uuid 鉴权并解析出 id 后加载
   if (demoUuid) {
     await waitForInitialLoad();
-    let item = replayList.value?.find((d) => d.id === demoUuid);
-    if (!item) {
-      await loadReplayListFromServer();
-      item = replayList.value?.find((d) => d.id === demoUuid);
+    replayRouteError.value = null;
+    const byUuidRes = await fetch(`/api/demos/by-uuid?demo_uuid=${encodeURIComponent(demoUuid)}`, { credentials: 'include' });
+    if (byUuidRes.status === 403) {
+      replayerRouteLoading.value = false;
+      replayRouteError.value = 'forbidden';
+      return;
     }
-    const cloudDemoId = item ? (item as ReplayData & { cloudDemoId?: number }).cloudDemoId : undefined;
+    if (byUuidRes.status === 404 || !byUuidRes.ok) {
+      replayerRouteLoading.value = false;
+      replayRouteError.value = 'not_found';
+      return;
+    }
+    const byUuidJson = await byUuidRes.json().catch(() => ({}));
+    const byUuidData = (byUuidJson as { data?: { id?: number } })?.data;
+    const cloudDemoId = byUuidData?.id;
     if (cloudDemoId == null) {
       replayerRouteLoading.value = false;
       replayRouteError.value = 'not_found';

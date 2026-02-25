@@ -54,6 +54,13 @@ func (s *Store) ListByUser(userUID string) ([]*Demo, error) {
 	return list, err
 }
 
+// ListByDemoUUID returns all demos with the given demo_uuid (same UUID may exist under different users).
+func (s *Store) ListByDemoUUID(demoUUID string) ([]*Demo, error) {
+	var list []*Demo
+	err := s.db.Where("demo_uuid = ?", demoUUID).Find(&list).Error
+	return list, err
+}
+
 // Update updates a demo by ID; owner must match (by UID).
 func (s *Store) Update(id uint, userUID string, updates map[string]interface{}) error {
 	res := s.db.Model(&Demo{}).Where("id = ? AND user_uid = ?", id, userUID).Updates(updates)

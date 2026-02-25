@@ -177,6 +177,7 @@ func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoSto
 		log.Printf("[Demo] %s not set; /api/demos/* will return 503", constants.EnvSnowboStorageRootPath)
 		demo503 := noteUnavailableHandler()
 		mux.HandleFunc("/api/demos", demo503)
+		mux.HandleFunc("/api/demos/by-uuid", demo503)
 		mux.HandleFunc("/api/demos/file", demo503)
 		mux.HandleFunc("/api/demos/", demo503)
 		return
@@ -184,6 +185,7 @@ func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoSto
 	demoStorage := demo.NewFileStorage(storageRoot)
 	demoHandlers := &demo.Handlers{Store: demoStore, Storage: demoStorage}
 	mux.HandleFunc("/api/demos", session.RequireAuth(sessionStore, demoHandlers.Index))
+	mux.HandleFunc("/api/demos/by-uuid", session.OptionalAuth(sessionStore, demoHandlers.ByUUID))
 	mux.HandleFunc("/api/demos/file", session.OptionalAuth(sessionStore, demoHandlers.GetFile))
 	mux.HandleFunc("/api/demos/", session.OptionalAuth(sessionStore, demoHandlers.ByID))
 	log.Printf("[Demo] routes registered with %s", constants.EnvSnowboStorageRootPath)
