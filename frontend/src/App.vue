@@ -48,24 +48,6 @@
             <span class="nav-text">2D 播放器</span>
           </span>
         </button>
-        <button
-          type="button"
-          class="nav-btn"
-          :class="{ active: currentPage === 'notes' || (currentPage === 'player' && replayerNoteId) }"
-          @click="onNavigateToNotes"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="5" y1="6" x2="5" y2="6"/>
-            <line x1="10" y1="6" x2="19" y2="6"/>
-            <line x1="5" y1="12" x2="5" y2="12"/>
-            <line x1="10" y1="12" x2="19" y2="12"/>
-            <line x1="5" y1="18" x2="5" y2="18"/>
-            <line x1="10" y1="18" x2="19" y2="18"/>
-          </svg>
-          <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">战术笔记</span>
-          </span>
-        </button>
       </nav>
 
       <!-- Spacer: 把下方 Beta / Console 顶到底部 -->
@@ -111,10 +93,10 @@
       </div>
     </aside>
 
-    <!-- 主内容区与笔记边栏并列（同一层级，不嵌套）；note-only 分享时仅展示笔记 slot -->
-    <div class="app-main-and-note-row" :class="{ 'note-only-share': replayerNoteOnlyShare }">
-      <!-- Library / Notes -->
-      <template v-if="currentPage === 'library' || currentPage === 'notes'">
+    <!-- 主内容区 -->
+    <div class="app-main-and-note-row">
+      <!-- Library -->
+      <template v-if="currentPage === 'library'">
         <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
           <header class="app-page-header" id="app-page-header"></header>
           <div class="app-main-with-sidebar">
@@ -128,17 +110,7 @@
                 @upload-demo="onUploadDemo"
                 @share-demo="onShareDemo"
               />
-              <NoteLibrary
-                v-if="currentPage === 'notes'"
-                :quota-used="quotaUsed"
-                :quota-limit="quotaLimit"
-                :replayer-source="replayerSource"
-                :replayer-note-id="replayerNoteId"
-                @share="openShareModal"
-                @edit="onRequestEditNote"
-                @delete="onRequestDeleteNote"
-                @go="goToNoteItem"
-              />
+
             </main>
           </div>
         </div>
@@ -151,38 +123,14 @@
           <div class="app-main-with-sidebar">
             <main class="app-main">
               <ReplayPlayer
-                :can-add-to-note="canAddToNote"
-                :note-uploading="noteUploading"
-                :cloud-note-full="cloudNoteFullForReplayer"
-                :note-only-share="replayerNoteOnlyShare"
-                :can-edit-note="canEditReplayerNote"
-                @save-current-round="handleAddToNote"
                 @clip-publish-available="onClipPublishAvailable"
-                @go="goToNoteItem"
               />
             </main>
           </div>
         </div>
       </template>
 
-      <!-- Note form sidebar（与 app-main-area 并列）：编辑/新建/上传 或 replayer 云笔记阅读 -->
-      <aside
-        v-show="noteFormOpen || (currentPage === 'player' && (cloudNoteFullForReplayer || replayerNoteOnlyShare))"
-        class="note-form-sidebar-slot"
-        :class="{ 'is-open': noteFormOpen || (currentPage === 'player' && (cloudNoteFullForReplayer || replayerNoteOnlyShare)) }"
-      >
-        <template v-if="noteFormOpen">
-          <NoteFormSidebar @go="goToNoteItem" />
-        </template>
-        <template v-else-if="currentPage === 'player' && replayerNoteId && !cloudNoteFullForReplayer">
-          <div class="note-sidebar-body cloud-note-loading">
-            <div class="cover-spinner-container">
-              <div class="cover-spinner"></div>
-            </div>
-            <p class="cover-status">正在加载笔记…</p>
-          </div>
-        </template>
-      </aside>
+
     </div>
 
     <!-- Demo 相关弹窗：解析 / 分享（删除/上传阻止/强制删除在 DemoLibrary 内用 DemoModal） -->
@@ -194,8 +142,8 @@
       :share-permission="shareModalPermission"
       @update-permission="onShareUpdatePermission"
       @close-share="closeDemoShareModal"
-      @copied="() => showNoteToast('已复制', 'info')"
-      @copy-failed="() => showNoteToast('复制失败', 'error')"
+      @copied="() => showToast('已复制', 'info')"
+      @copy-failed="() => showToast('复制失败', 'error')"
     />
 
     <!-- Console Modal -->
@@ -223,16 +171,16 @@
       </div>
     </div>
 
-    <!-- 云存档提示（info/warning/error，样式见 styles/toast.css） -->
+    <!-- Toast notification (info/warning/error, styles in styles/toast.css) -->
     <Transition name="toast-top">
-      <div v-if="noteToast" :class="['ds-toast-top', 'ds-toast-' + noteToastType]">
+      <div v-if="toast" :class="['ds-toast-top', 'ds-toast-' + toastType]">
         <span class="ds-toast-icon">
           <!-- info -->
-          <svg v-if="noteToastType === 'info'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg v-if="toastType === 'info'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
           <!-- warning -->
-          <svg v-else-if="noteToastType === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg v-else-if="toastType === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           <!-- error -->
@@ -240,11 +188,9 @@
             <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
           </svg>
         </span>
-        <span class="ds-toast-text">{{ noteToastMessage }}</span>
+        <span class="ds-toast-text">{{ toastMessage }}</span>
       </div>
     </Transition>
-
-    <NoteModal @close-share="openNoteMenuId = null" @confirm-delete="openNoteMenuId = null" />
   </div>
 </template>
 
@@ -253,14 +199,12 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, de
 
 const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlayer/ReplayPlayer.vue'));
 const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
-const NoteLibrary = defineAsyncComponent(() => import('@/components/NoteLibrary/NoteLibrary.vue'));
-import NoteModal from '@/components/NoteLibrary/NoteModal.vue';
-import NoteFormSidebar from '@/components/NoteLibrary/NoteFormSidebar.vue';
+
 import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
 import type { ReplayData } from '@/types/replay';
 import { useReplayData } from '@/composables/useReplayData';
-import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composables/useNote';
+
 import { useAuth } from '@/composables/useAuth';
 import { resolveTeamDisplayName } from '@/composables/teamDisplay';
 import { DEBUG_CONFIG } from '@/config/debug';
@@ -274,22 +218,14 @@ const {
   replayList, 
   loading,
   parseDemo,
-  loadReplayById,
-  loadRoundData,
   loadReplayByLocal,
-  loadReplayByCloud,
   loadReplayByDemosCloud,
   loadReplayListFromServer,
   deleteReplayById,
-  clearCloudPlaybackState,
   replay,
   currentRoundNumber,
   waitForInitialLoad,
   replayRouteError,
-  replayerSource,
-  replayerNoteId,
-  replayerDemoId,
-  cloudNoteDetailFromApi,
 } = useReplayData();
 
 const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
@@ -304,10 +240,9 @@ const sidebarPath = computed(() => {
   return p;
 });
 
-const currentPage = computed<'library' | 'player' | 'notes'>(() => {
+const currentPage = computed<'library' | 'player'>(() => {
   const p = sidebarPath.value;
   if (p === '/replayer') return 'player';
-  if (p === '/notes') return 'notes';
   return 'library'; // /demolib or /
 });
 
@@ -320,145 +255,25 @@ const replayerRouteLoading = ref(false);
 provide('replayerRouteLoading', replayerRouteLoading);
 const showBetaModal = ref(false);
 
+// Toast variables
+const toast = ref(false);
+const toastMessage = ref('');
+const toastType = ref<'info' | 'warning' | 'error'>('info');
+let toastTimer: number | null = null;
+
 const hasSelectedDemo = computed(() => !!currentDemoId.value);
 
 const { currentUser, truncatedUsername, fetchAuthMe } = useAuth();
 
-const {
-  noteList,
-  loadNotes,
-  addItem: addNoteItem,
-  removeItem: removeNoteItemById,
-  setItems,
-  updateItem: updateNoteItem,
-  quotaUsed,
-  quotaLimit,
-  isQuotaFull,
-  noteToast,
-  noteToastMessage,
-  noteToastType,
-  showNoteToast,
-  noteUploading,
-  openUploadModal,
-  openEditModal,
-  openEditNoteModal,
-  confirmDeleteNoteId,
-  confirmDeleteNoteConfirm,
-  showQuotaExceededModal,
-  openShareModal: openShareModalFromNote,
-  openCreateNoteModal,
-  editModalOpen,
-  editNoteItem,
-  createNoteModalOpen,
-  uploadModalOpen,
-} = useNote();
 
-const noteFormOpen = computed(() => editModalOpen.value || createNoteModalOpen.value || uploadModalOpen.value);
+
+
 
 const canPublishClip = ref(false);
 function onClipPublishAvailable(payload: { available: boolean }) {
   canPublishClip.value = payload.available;
 }
-const canAddToNote = computed(
-  () =>
-    currentPage.value === 'player' &&
-    !replayerNoteId.value &&
-    ((!!currentDemoId.value && !!currentRoundNumber.value && !!replay.value) || canPublishClip.value)
-);
 
-/** 完整云笔记（source=cloud 时用于右侧边栏 note-card 展示，仅本人笔记有 demos） */
-const cloudNoteFullForReplayer = computed<CloudArchiveItem | null>(() => {
-  const id = replayerNoteId.value;
-  if (!id) return null;
-  const item = noteList.value.find((n) => n.id === id);
-  if (item) return item;
-  if (cloudNoteDetailFromApi.value) {
-    const d = cloudNoteDetailFromApi.value;
-    return {
-      id,
-      title: d.title,
-      content: d.content,
-      owner_id: d.owner_id,
-      demo_uuid: '',
-      demo_round: 1,
-      add_time: Date.now(),
-      demos: d.demos,
-    } as CloudArchiveItem;
-  }
-  return null;
-});
-
-/** 仅 note_id 的分享链接（无 demo_id）：只展示右侧笔记内容，不展示左侧播放页 */
-const replayerNoteOnlyShare = computed(() => {
-  if (currentPage.value !== 'player') return false;
-  const q = getQuery();
-  return (q.note_id != null && q.note_id !== '') && (q.demo_id == null || q.demo_id === '');
-});
-
-/** 当前 replayer 云笔记是否为本人的（可编辑）；非 owner 禁用编辑并隐藏保存 */
-const canEditReplayerNote = computed(() => {
-  const full = cloudNoteFullForReplayer.value;
-  const user = currentUser.value;
-  if (!full) return false;
-  if (typeof full.owner_id === 'number' && user?.id !== undefined) return full.owner_id === user.id;
-  return noteList.value.some((n) => n.id === full.id);
-});
-
-function openShareModal(item: CloudArchiveItem) {
-  openNoteMenuId.value = null;
-  openShareModalFromNote(item);
-}
-
-function onRequestEditNote(item: CloudArchiveItem) {
-  openEditNoteModal(item);
-  openNoteMenuId.value = null;
-}
-
-function onRequestDeleteNote(item: CloudArchiveItem) {
-  confirmDeleteNoteId.value = item.id;
-  openNoteMenuId.value = null;
-}
-
-async function handleAddToNote(forkContext?: import('@/composables/useNote').UploadReplayContext) {
-  if (!forkContext) return;
-  if (!currentUser.value) {
-    showNoteToast('需要登录账户', 'warning');
-    return;
-  }
-  if (isQuotaFull.value) {
-    showQuotaExceededModal.value = true;
-    return;
-  }
-  openUploadModal(forkContext);
-}
-
-/** 时间格式 YYYY-MM-DD HH:mm:ss */
-function formatNoteTime(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}:${s}`;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-function goToNoteItem(payload: CloudArchiveItem | { noteId: string; demoId: number }) {
-  const noteId = 'noteId' in payload ? payload.noteId : payload.id;
-  const demoId = 'demoId' in payload ? payload.demoId : undefined;
-  const params = new URLSearchParams({ note_id: noteId });
-  if (demoId != null) params.set('demo_id', String(demoId));
-  navigate('/replayer', params.toString());
-}
 
 /** 侧边栏使用刷新跳转，保证完整加载目标页 */
 function navigateWithReload(path: string) {
@@ -484,210 +299,18 @@ function onNavigateToReplayer() {
   }
 }
 
-function onNavigateToNotes() {
-  navigateWithReload('/notes');
-}
-
-function onNoteDragEnd() {
-  draggedNoteIndex.value = null;
-  dragOverIndex.value = null;
-  showDragIndicator.value = false;
-  // 清理指示器样式
-  clearDragIndicatorPosition();
-}
-
-function onNoteDragLeave() {
-  dragOverIndex.value = null;
-  showDragIndicator.value = false;
-  // 清理指示器样式
-  clearDragIndicatorPosition();
-}
-
-function toggleNoteMenu(id: string) {
-  if (openNoteMenuId.value === id) {
-    openNoteMenuId.value = null;
-    return;
+function showToast(message: string, type: 'info' | 'warning' | 'error' = 'info') {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastMessage.value = message;
+    toastType.value = type;
+    toast.value = true;
+    toastTimer = setTimeout(() => {
+      toast.value = false;
+      toastTimer = null;
+    }, 2000);
   }
-  
-  openNoteMenuId.value = id;
-  
-  // 下一帧计算位置
-  nextTick(() => {
-    const btn = document.querySelector(`[data-item-id="${id}"]`);
-    if (btn) {
-      const rect = btn.getBoundingClientRect();
-      dropdownPosition.value = {
-        top: `${rect.top}px`,
-        left: `${rect.right + 4}px`
-      };
-    }
-  });
-}
 
-function startRenameNote(item: CloudArchiveItem) {
-  renamingNoteId.value = item.id;
-  renamingTitle.value = item.title;
-  openNoteMenuId.value = null;
-  // 下次渲染后聚焦输入框
-  nextTick(() => {
-    const input = document.querySelector(`.cloud-archive-rename-input[data-id="${item.id}"]`) as HTMLInputElement;
-    if (input) {
-      input.focus();
-      input.select();
-    }
-  });
-}
-
-async function saveRenameNote() {
-  if (!renamingNoteId.value) return;
-  const title = renamingTitle.value.trim();
-  if (title === '') {
-    cancelRenameNote();
-    return;
-  }
-  if (currentUser.value) {
-    await updateNoteItem(renamingNoteId.value, { title });
-  } else {
-    const item = noteList.value.find(i => i.id === renamingNoteId.value);
-    if (item) {
-      const index = noteList.value.findIndex(i => i.id === renamingNoteId.value);
-      if (index !== -1) {
-        const newItems = [...noteList.value];
-        newItems[index] = { ...item, title };
-        await setItems(newItems);
-      }
-    }
-  }
-  cancelRenameNote();
-}
-
-function cancelRenameNote() {
-  renamingNoteId.value = null;
-  renamingTitle.value = '';
-}
-
-function updateDragIndicatorPosition(index: number, position: 'before' | 'after') {
-  const indicator = document.querySelector('.cloud-archive-drag-indicator') as HTMLElement;
-  if (!indicator) return;
-  
-  const item = document.querySelector(`.cloud-archive-item:nth-child(${index + 1})`) as HTMLElement;
-  if (!item) return;
-  
-  const itemRect = item.getBoundingClientRect();
-  const listRect = item.parentElement!.getBoundingClientRect();
-  
-  const topOffset = itemRect.top - listRect.top;
-  
-  if (position === 'before') {
-    indicator.style.top = `${topOffset}px`;
-  } else {
-    indicator.style.top = `${topOffset + itemRect.height}px`;
-  }
-}
-
-function clearDragIndicatorPosition() {
-  const indicator = document.querySelector('.cloud-archive-drag-indicator') as HTMLElement;
-  if (indicator) {
-    indicator.style.top = '';
-  }
-}
-
-// 点击其他地方关闭菜单
-function handleClickOutside() {
-  openNoteMenuId.value = null;
-  cancelRenameNote();
-}
-
-function handleSessionExpired() {
-  showNoteToast('用户身份过期，需要重新登录', 'warning');
-}
-
-declare global {
-  interface WindowEventMap {
-    'app:toast': CustomEvent<{ message: string; type?: NoteToastType }>;
-  }
-}
-function handleAppToast(e: CustomEvent<{ message: string; type?: NoteToastType }>) {
-  showNoteToast(e.detail.message, e.detail.type ?? 'info');
-}
-
-// 监听全局点击事件、session 过期、全局 toast
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
-  window.addEventListener('open-create-note-modal', handleOpenCreateNoteModal);
-  window.addEventListener('session-expired', handleSessionExpired);
-  window.addEventListener('app:toast', handleAppToast as EventListener);
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside);
-  window.removeEventListener('open-create-note-modal', handleOpenCreateNoteModal);
-  window.removeEventListener('session-expired', handleSessionExpired);
-  window.removeEventListener('app:toast', handleAppToast as EventListener);
-});
-
-const draggedNoteIndex = ref<number | null>(null);
-const dragOverIndex = ref<number | null>(null);
-const dragOverPosition = ref<'before' | 'after'>('before');
-const showDragIndicator = ref(false);
-const openNoteMenuId = ref<string | null>(null);
-const renamingNoteId = ref<string | null>(null);
-const renamingTitle = ref('');
-
-function getDemoAddTime(demo: { created_at?: string }): number {
-  return demo.created_at ? new Date(demo.created_at).getTime() : Date.now();
-}
-
-/** Handle open create note modal event from NoteLibrary */
-function handleOpenCreateNoteModal() {
-  openCreateNoteModal();
-}
-const dropdownPosition = ref({});
-
-function onNoteDragStart(e: DragEvent, index: number) {
-  draggedNoteIndex.value = index;
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(index));
-  }
-}
-
-function onNoteDragOver(e: DragEvent, index: number) {
-  e.dataTransfer!.dropEffect = 'move';
-  
-  // 获取当前拖拽项的元素
-  const currentItem = (e.currentTarget as HTMLElement);
-  const rect = currentItem.getBoundingClientRect();
-  
-  if (rect) {
-    const mouseY = e.clientY;
-    const rectCenter = rect.top + rect.height / 2;
-    
-    dragOverIndex.value = index;
-    dragOverPosition.value = mouseY < rectCenter ? 'before' : 'after';
-    showDragIndicator.value = true;
-    
-    // 更新指示器的位置样式
-    nextTick(() => {
-      updateDragIndicatorPosition(index, dragOverPosition.value);
-    });
-  }
-}
-
-function onNoteDrop(toIndex: number) {
-  const from = draggedNoteIndex.value;
-  if (from === null || from === toIndex) return;
-  
-  // 根据拖拽位置调整目标索引
-  let targetIndex = toIndex;
-  if (dragOverPosition.value === 'after' && toIndex < noteList.value.length - 1) {
-    targetIndex = toIndex + 1;
-  }
-  
-  onNoteDragEnd();
-}
-
-// 根据 URL demo_uuid/round/tab 或 note_id 加载 replayer 数据；统一先读缓存、再同步云上
+// 根据 URL demo_uuid/round/tab 加载 replayer 数据；统一先读缓存、再同步云上
 async function ensureReplayerRouteData() {
   const path = pathRef.value || window.location.pathname;
   const search = searchRef.value ?? window.location.search;
@@ -697,7 +320,6 @@ async function ensureReplayerRouteData() {
   const query = getQuery(search);
   const demoUuid = query.demo_uuid ?? null;
   const roundNum = parseInt(query.round || '', 10) || 1;
-  const noteId = query.note_id ?? null;
   const demoIdRaw = query.demo_id != null ? parseInt(String(query.demo_id), 10) : undefined;
   const demoIdValid = demoIdRaw != null && !Number.isNaN(demoIdRaw) ? demoIdRaw : undefined;
 
@@ -712,8 +334,8 @@ async function ensureReplayerRouteData() {
     return;
   }
 
-  // 无 demo_uuid 且无 note_id：若当前有播放中的 demo 则规范化 URL 为 demo_uuid
-  if (!demoUuid && !noteId) {
+  // 无 demo_uuid：若当前有播放中的 demo 则规范化 URL 为 demo_uuid
+  if (!demoUuid) {
     replayerRouteLoading.value = false;
     if (currentDemoId.value) {
       const q = getQuery();
@@ -721,29 +343,6 @@ async function ensureReplayerRouteData() {
       const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
       const tab = (q.tab && ['players', 'rounds', 'settings', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '&tab=players';
       replaceLocation('/replayer', base + pure + tab);
-    }
-    return;
-  }
-
-  // 笔记附件播放：note_id + 可选 demo_id
-  if (noteId) {
-    const needLoad =
-      !replay.value ||
-      replayerNoteId.value !== noteId ||
-      (demoIdValid !== undefined && replayerDemoId.value !== demoIdValid);
-    if (!needLoad) {
-      replayerRouteLoading.value = false;
-      currentDemoId.value = replay.value?.uuid ?? null;
-      return;
-    }
-    replayerRouteLoading.value = true;
-    currentDemoId.value = null;
-    try {
-      await waitForInitialLoad();
-      await loadReplayByCloud(noteId, demoIdValid);
-      currentDemoId.value = replay.value?.uuid ?? null;
-    } finally {
-      replayerRouteLoading.value = false;
     }
     return;
   }
@@ -773,7 +372,6 @@ async function ensureReplayerRouteData() {
     }
     const needLoad =
       !replay.value ||
-      replayerDemoId.value !== cloudDemoId ||
       currentRoundNumber.value !== roundNum;
     if (!needLoad) {
       replayerRouteLoading.value = false;
@@ -784,7 +382,7 @@ async function ensureReplayerRouteData() {
     currentDemoId.value = null;
     try {
       await loadReplayByDemosCloud(cloudDemoId, roundNum);
-      currentDemoId.value = replay.value?.uuid ?? null;
+        currentDemoId.value = replay.value?.uuid ?? null;
     } finally {
       replayerRouteLoading.value = false;
     }
@@ -799,9 +397,8 @@ onMounted(async () => {
   // session 已在 main.ts 中 initAuth 提前校验，此处不再调用 fetchAuthMe 避免重复请求与闪烁
   // 刷新进入 replayer 时立即根据 URL args 加载对局并定位回合
   ensureReplayerRouteData();
-  // 等 IndexedDB 初始化完成后再加载云存档，避免刷新后列表为空
+  // 等 IndexedDB 初始化完成后再 load data
   await waitForInitialLoad();
-  loadNotes();
 });
 
 watch(
@@ -823,7 +420,6 @@ watch(
 
 watch(currentUser, (user) => {
   if (user) {
-    loadNotes();
     loadReplayListFromServer();
   }
 });
@@ -844,20 +440,7 @@ watch(currentPage, (newPage) => {
   document.title = newPage === 'player' ? 'Demo 回放 - Snowbo' : DEFAULT_PAGE_TITLE;
 }, { immediate: true });
 
-/** Replayer 有云笔记时直接打开编辑页（无单独展示态） */
-watch(
-  () => ({ note: cloudNoteFullForReplayer.value, page: currentPage.value }),
-  ({ note, page }) => {
-    if (page !== 'player' || !note) return;
-    if (!editModalOpen.value || editNoteItem.value?.id !== note.id) openEditNoteModal(note);
-  },
-  { deep: true }
-);
 
-/** Replayer 下关闭编辑侧栏时回到战术笔记页 */
-watch(editModalOpen, (isOpen) => {
-  if (!isOpen && currentPage.value === 'player' && cloudNoteFullForReplayer.value) onNavigateToNotes();
-});
 
 const onLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement;
@@ -908,23 +491,23 @@ async function saveDemoSharePermission() {
     });
     const json = await res.json().catch(() => ({}));
     if (res.ok && (json as { status?: string }).status === 'OK') {
-      showNoteToast('可见范围已修改', 'info');
+      showToast('可见范围已修改', 'info');
       if (replayList.value) {
         const item = replayList.value.find((d) => (d as DemoWithCloud).cloudDemoId === demo.cloudDemoId) as DemoWithCloud | undefined;
         if (item) item.cloudPermission = shareModalPermission.value;
       }
     } else {
-      showNoteToast((json as { error?: string }).error || '修改失败', 'error');
+      showToast((json as { error?: string }).error || '修改失败', 'error');
     }
   } catch {
-    showNoteToast('修改失败', 'error');
+    showToast('修改失败', 'error');
   }
 }
 
 const onShareDemo = (demo: ReplayData) => {
   const d = demo as DemoWithCloud;
   if (d.cloudDemoId == null) {
-    showNoteToast('请先上传到云端后再分享', 'warning');
+    showToast('请先上传到云端后再分享', 'warning');
     return;
   }
   shareModalDemo.value = d;

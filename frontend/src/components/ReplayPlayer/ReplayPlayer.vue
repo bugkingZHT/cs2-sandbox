@@ -1,9 +1,8 @@
 <template>
   <div
     class="viewer-layout"
-    :class="{ 'note-only-share': noteOnlyShare }"
   >
-    <div v-show="!noteOnlyShare" class="viewer-main">
+    <div class="viewer-main">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
       <!-- Cover：按优先级只显示一种 -->
@@ -69,7 +68,6 @@
         <MapCanvas 
           :frames="effectiveFrames" 
           :bounds="bounds"
-          :has-right-sidebar="!!(replayerNoteId && cloudNoteFull)"
           :current-frame-index="effectiveFrameIndex"
           :replay-meta="effectiveReplay"
           :is-playing="isPlaying"
@@ -78,11 +76,6 @@
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
-          :can-add-to-note="props.canAddToNote"
-          :show-save-to-note="!replayerNoteId"
-          :hide-save-to-note="true"
-          :note-uploading="props.noteUploading"
-          @save-current-round="emit('save-current-round')"
           @close-drawing="isDrawingMode = false"
           @toggle-drawing="onToggleDrawing"
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
@@ -679,29 +672,9 @@ import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
-import type { CloudArchiveItem, UploadReplayContext } from '@/composables/useNote';
-import { forkClipToNewDemo, prepareCurrentRoundForUpload } from '@/composables/clipForkForNote';
-
-const props = withDefaults(
-  defineProps<{
-    /** 是否可保存当前回合到云存档（由 App 根据播放状态计算） */
-    canAddToNote?: boolean;
-    /** 云存档上传中 */
-    noteUploading?: boolean;
-    /** 完整云笔记（source=cloud 时用于右侧边栏 note-card 展示） */
-    cloudNoteFull?: CloudArchiveItem | null;
-    /** 仅 note_id 的分享链接（无 demo_id）：只展示右侧笔记内容，不展示左侧播放页 */
-    noteOnlyShare?: boolean;
-    /** 当前云笔记是否为本人的（可显示编辑按钮） */
-    canEditNote?: boolean;
-  }>(),
-  { noteOnlyShare: false, canEditNote: false }
-);
 
 const emit = defineEmits<{
-  (e: 'save-current-round', forkContext?: UploadReplayContext): void;
   (e: 'clip-publish-available', payload: { available: boolean }): void;
-  (e: 'go', payload: CloudArchiveItem | { noteId: string; demoId: number }): void;
 }>();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
@@ -1013,11 +986,6 @@ const showMapPlayers = computed({
       hiddenPlayerIds.value = new Set(all);
     }
   },
-});
-
-// 笔记附件播放时若当前是「回合」则切到「玩家」
-watch(replayerNoteId, (id) => {
-  if (id && leftPanelTab.value === 'rounds') leftPanelTab.value = 'players';
 });
 
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
@@ -1800,63 +1768,6 @@ function toggleClipRound(roundNumber: number) {
     clipRounds.value = clipRounds.value.filter((_, i) => i !== idx);
   } else {
     clipRounds.value = [...clipRounds.value, { round: roundNumber }];
-  }
-}
-
-/** 发布笔记点击：剪辑模式 fork 新 demo；非剪辑模式直接追加 settings 到当前 meta，使用原始回合 */
-async function onPublishClick() {
-  if (!props.canAddToNote) return;
-  const sourceReplay = effectiveReplay.value ?? replay.value;
-  if (!sourceReplay) {
-    window.dispatchEvent(
-      new CustomEvent('app:toast', { detail: { message: '请先加载回合或选择剪辑内容', type: 'warning' } })
-    );
-    return;
-  }
-  const settings = {
-    hiddenPlayerIds: hiddenPlayerIdsArray.value,
-    showMapProjectiles: showMapProjectiles.value,
-    showMapDropped: showMapDropped.value,
-    showMapBomb: showMapBomb.value,
-  };
-  clipForking.value = true;
-  try {
-    let ctx: UploadReplayContext;
-    if (isClipMode.value) {
-      let framesToSave = effectiveFrames.value;
-      if (framesToSave.length > 0) {
-        const start = Math.max(0, Math.min(clipRangeStartIndex.value, framesToSave.length - 1));
-        const end = Math.max(start, Math.min(clipRangeEndIndex.value, framesToSave.length - 1));
-        framesToSave = framesToSave.slice(start, end + 1);
-      }
-      if (framesToSave.length === 0) {
-        window.dispatchEvent(
-          new CustomEvent('app:toast', { detail: { message: '请先选择剪辑内容', type: 'warning' } })
-        );
-        return;
-      }
-      ctx = await forkClipToNewDemo(framesToSave, sourceReplay, settings);
-    } else {
-      const roundNum = currentRound.value || 0;
-      if (!sourceReplay.uuid || roundNum === 0) {
-        window.dispatchEvent(
-          new CustomEvent('app:toast', { detail: { message: '请先加载回合', type: 'warning' } })
-        );
-        return;
-      }
-      ctx = await prepareCurrentRoundForUpload(
-        sourceReplay.uuid,
-        roundNum,
-        sourceReplay,
-        settings
-      );
-    }
-    emit('save-current-round', ctx);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : '导出失败';
-    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: msg, type: 'error' } }));
-  } finally {
-    clipForking.value = false;
   }
 }
 

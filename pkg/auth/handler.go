@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bugkingzht/cs-demobox/pkg/note"
 	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
 	"github.com/bugkingzht/cs-demobox/pkg/user"
@@ -26,7 +25,6 @@ type Handlers struct {
 	User      *user.Store
 	Session   *session.Store
 	RoleStore *role.Store
-	NoteStore *note.Store
 }
 
 // LoginRequest is the JSON body for POST /api/auth/login.
@@ -143,12 +141,7 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	if h.RoleStore != nil {
 		resp.Role, _, resp.QuotaLimit = h.RoleStore.GetEffectiveRole(u.UID)
 	}
-	if h.NoteStore != nil {
-		count, err := h.NoteStore.CountByOwnerID(u.ID)
-		if err == nil {
-			resp.QuotaUsed = int(count)
-		}
-	}
+
 	writeJSONOK(w, resp)
 }
 

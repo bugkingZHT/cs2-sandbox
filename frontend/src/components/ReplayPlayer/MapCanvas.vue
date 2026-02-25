@@ -136,18 +136,7 @@
         </button>
       </div>
       <div class="zoom-pure-column">
-        <div v-if="!pureMode && !hideSaveToNote && showSaveToNote" class="save-to-note-wrap">
-          <button
-            type="button"
-            class="save-to-note-btn zoom-column-btn"
-            :title="canAddToNote ? '发布笔记' : '当前回合可发布到笔记'"
-            :disabled="!canAddToNote || noteUploading"
-            @click="emit('save-current-round')"
-          >
-            <img src="/icons/upload.svg" alt="" class="save-to-note-icon" width="18" height="18" />
-            <span class="save-to-note-label">保存到笔记</span>
-          </button>
-        </div>
+
         <div class="zoom-reset-group">
           <button class="zoom-btn zoom-in-btn" @click="zoomIn" title="放大">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -220,18 +209,7 @@ const props = withDefaults(
     tabRecorderConverting?: boolean;
     tabRecorderConvertingProgress?: number;
     tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
-    canAddToNote?: boolean;
-    showSaveToNote?: boolean;
-    /** 为 true 时隐藏「保存到笔记」按钮（已移至左侧 footer） */
-    hideSaveToNote?: boolean;
-    noteUploading?: boolean;
-    /** 当前回合已发布的笔记（有则按钮绿色、点击为编辑） */
-    publishedNote?: CloudArchiveItem | null;
-    /** 云笔记回放：source 为 cloud 时有值 */
-    replayerSource?: 'local' | 'cloud' | null;
-    replayerNoteId?: string | null;
-    /** 右侧边栏是否显示（source=cloud 时展示 note-card），影响地图居中计算 */
-    hasRightSidebar?: boolean;
+
     /** 大卡上隐藏的玩家 ID，不在地图上绘制（设置-玩家取消勾选时等价于全部加入此处） */
     hiddenPlayerIds?: number[];
     /** 设置：地图上是否展示投掷道具 / 掉落道具 / C4（玩家由 hiddenPlayerIds 控制） */
@@ -240,9 +218,6 @@ const props = withDefaults(
     showMapBomb?: boolean;
   }>(),
   {
-    showSaveToNote: true,
-    hideSaveToNote: false,
-    publishedNote: null,
     showMapProjectiles: true,
     showMapDropped: true,
     showMapBomb: true,
@@ -604,20 +579,6 @@ const setupResizeObserver = () => {
   
   resizeObserver.observe(host.value);
 };
-
-// 右侧边栏显示/隐藏时，布局变化影响 canvas 尺寸，需重新居中（等待 layout + PIXI resize）
-watch(
-  () => props.hasRightSidebar,
-  () => {
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        if (app && worldContainer && mapSprite) {
-          centerWorld(false);
-        }
-      });
-    });
-  }
-);
 
 /** SVG 纹理为 2x 逻辑尺寸（MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE），zoom 按逻辑尺寸换算 */
 const MAP_SCALE_FACTOR = LOGICAL_MAP_SIZE / MAP_IMAGE_SIZE;
