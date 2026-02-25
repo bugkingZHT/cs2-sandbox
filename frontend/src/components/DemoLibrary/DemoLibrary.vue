@@ -395,110 +395,64 @@
           <div v-else-if="demo.status === -1" class="demo-bar-failed-msg">{{ demo.parsingStatus || 'Parsing failed' }}</div>
           </div>
           <div class="demo-bar-footer-right">
-            <button
-              type="button"
-              class="demo-bar-delete-btn"
-              title="Delete"
-              @click.stop="demo.status === 0 ? confirmForceDelete(demo) : confirmDelete(demo)"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-            </button>
+            <div class="demo-bar-more-wrap">
+              <button
+                type="button"
+                class="demo-bar-more-btn"
+                title="更多"
+                aria-haspopup="true"
+                :aria-expanded="openMenuDemoId === demo.uuid"
+                @click.stop="toggleDemoMenu(demo.uuid, $event)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteModal" class="delete-modal-overlay" @click="cancelDelete">
-      <div class="delete-modal ds-card ds-card-elevated" @click.stop>
-        <div class="modal-icon">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-        <h3 class="modal-title">Confirm Deletion</h3>
-        <p class="modal-message">
-          Are you sure you want to delete <strong class="filename-truncate" :title="demoToDelete?.fileName || demoToDelete?.mapName">{{ demoToDelete?.fileName || demoToDelete?.mapName || 'this demo' }}</strong>?
-        </p>
-        <p class="modal-warning">This action cannot be undone</p>
-        <div class="modal-actions">
-          <button class="ds-btn ds-btn-secondary" @click="cancelDelete">Cancel</button>
-          <button class="ds-btn ds-btn-danger" @click="performDelete">Delete</button>
-        </div>
-      </div>
-    </div>
+    <!-- Demo 弹窗：删除确认 / 上传阻止 / 强制删除（解析与分享在 App 内用 DemoModal） -->
+    <DemoModal
+      :show-delete-modal="showDeleteModal"
+      :demo-to-delete="demoToDelete"
+      :show-upload-blocked-modal="showUploadBlockedModal"
+      :upload-blocked-info="uploadBlockedInfo"
+      :show-force-delete-modal="showForceDeleteModal"
+      :demo-to-force-delete="demoToForceDelete"
+      @cancel-delete="cancelDelete"
+      @confirm-delete="performDelete"
+      @close-upload-blocked="closeUploadBlockedModal"
+      @cancel-force-delete="cancelForceDelete"
+      @confirm-force-delete="performForceDelete"
+    />
 
-    <!-- Upload Blocked Warning Modal -->
-    <div v-if="showUploadBlockedModal" class="delete-modal-overlay" @click="closeUploadBlockedModal">
-      <div class="delete-modal ds-card ds-card-elevated" @click.stop>
-        <div class="modal-icon">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
+    <!-- Demo bar more menu (Share / Delete) Teleport to body -->
+    <Teleport to="body">
+      <div
+        v-if="openMenuDemoId && openMenuDemo"
+        class="demo-bar-more-menu demo-bar-more-menu-fixed"
+        :style="{ right: demoBarMoreMenuPosition.right + 'px', bottom: demoBarMoreMenuPosition.bottom + 'px' }"
+        @click.stop
+      >
+        <button type="button" class="demo-bar-more-menu-item" @click.stop="handleDemoMenuShare">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
-        </div>
-        <h3 class="modal-title">Upload Blocked</h3>
-        <p class="modal-message">
-          已有解析任务正在进行中，请等待完成后再上传
-        </p>
-        <div v-if="uploadBlockedInfo" class="modal-info">
-          <div class="modal-info-row">
-            <span class="info-label">正在解析:</span>
-            <span class="info-value filename-truncate" :title="uploadBlockedInfo.fileName">
-              {{ uploadBlockedInfo.fileName }}
-            </span>
-          </div>
-          <div class="modal-info-row">
-            <span class="info-label">解析进度:</span>
-            <span class="info-value">{{ uploadBlockedInfo.progress }}%</span>
-          </div>
-        </div>
-        <p class="modal-warning">提示：为避免内存不足，系统限制同时只能解析一个 Demo 文件</p>
-        <div class="modal-actions">
-          <button class="ds-btn ds-btn-primary" @click="closeUploadBlockedModal">Got it</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Force Delete Confirmation Modal -->
-    <div v-if="showForceDeleteModal" class="delete-modal-overlay" @click="cancelForceDelete">
-      <div class="delete-modal ds-card ds-card-elevated" @click.stop>
-        <div class="modal-icon">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          <span>分享</span>
+        </button>
+        <button type="button" class="demo-bar-more-menu-item demo-bar-more-menu-item-delete" @click.stop="handleDemoMenuDelete">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
-        </div>
-        <h3 class="modal-title">Force Delete Parsing Demo</h3>
-        <p class="modal-message">
-          Demo <strong class="filename-truncate" :title="demoToForceDelete?.fileName || demoToForceDelete?.mapName">{{ demoToForceDelete?.fileName || demoToForceDelete?.mapName }}</strong> is currently being parsed.
-        </p>
-        <div v-if="demoToForceDelete" class="modal-info">
-          <div class="modal-info-row">
-            <span class="info-label">Progress:</span>
-            <span class="info-value">{{ demoToForceDelete.parsingProgress || 0 }}%</span>
-          </div>
-          <div class="modal-info-row">
-            <span class="info-label">Status:</span>
-            <span class="info-value">{{ demoToForceDelete.parsingStatus || 'Processing...' }}</span>
-          </div>
-        </div>
-        <p class="modal-warning">
-          ⚠️ Force deleting will terminate the parsing process and clean up all associated memory and storage.
-        </p>
-        <div class="modal-actions">
-          <button class="ds-btn ds-btn-secondary" @click="cancelForceDelete">Cancel</button>
-          <button class="ds-btn ds-btn-danger" @click="performForceDelete">Force Delete</button>
-        </div>
+          <span>删除</span>
+        </button>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -510,6 +464,7 @@ import { useReplayData } from '@/composables/useReplayData';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
 // Removed import for resolveTeamDisplayName to avoid fallback to player names
 import { navigate, getQuery, replaceLocation, pathRef, searchRef, getReplayerPlayingLocal } from '@/location';
+import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -521,6 +476,7 @@ const emit = defineEmits<{
   (e: 'delete-demo', id: string): void;
   (e: 'upload-demo', file: File): void;
   (e: 'upload-blocked', info: { fileName: string; progress: number }): void;
+  (e: 'share-demo', demo: ReplayData): void;
 }>();
 
 const { parsing, showUploadBlockedWarning } = useReplayData();
@@ -546,6 +502,13 @@ const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(nul
 // Force delete modal state
 const showForceDeleteModal = ref(false);
 const demoToForceDelete = ref<ReplayData | null>(null);
+
+// Demo bar more menu (dropdown)
+const openMenuDemoId = ref<string | null>(null);
+const demoBarMoreMenuPosition = ref({ right: 0, bottom: 0 });
+const openMenuDemo = computed(() =>
+  openMenuDemoId.value ? props.demoList.find((d) => d.uuid === openMenuDemoId.value) ?? null : null
+);
 
 const currentPlayingLocal = computed(() => {
   if (pathRef.value !== '/demolib') return null;
@@ -872,7 +835,38 @@ const handleClickOutside = (event: MouseEvent) => {
     showTeamDropdown.value = false;
     showPlayerDropdown.value = false;
   }
+  if (!target.closest('.demo-bar-more-wrap') && !target.closest('.demo-bar-more-menu')) {
+    openMenuDemoId.value = null;
+  }
 };
+
+function toggleDemoMenu(demoId: string, e?: Event) {
+  if (openMenuDemoId.value === demoId) {
+    openMenuDemoId.value = null;
+    return;
+  }
+  if (e?.currentTarget && typeof (e.currentTarget as HTMLElement).getBoundingClientRect === 'function') {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    // 向左上方向打开：菜单右下角对齐按钮左下角，菜单在按钮左侧且向上延伸
+    demoBarMoreMenuPosition.value = {
+      right: Math.max(8, window.innerWidth - rect.left - 4),
+      bottom: Math.max(8, window.innerHeight - rect.bottom),
+    };
+  }
+  openMenuDemoId.value = demoId;
+}
+
+function handleDemoMenuShare() {
+  if (openMenuDemo.value) emit('share-demo', openMenuDemo.value);
+  openMenuDemoId.value = null;
+}
+
+function handleDemoMenuDelete() {
+  if (!openMenuDemo.value) return;
+  if (openMenuDemo.value.status === 0) confirmForceDelete(openMenuDemo.value);
+  else confirmDelete(openMenuDemo.value);
+  openMenuDemoId.value = null;
+}
 
 // Defensive: list may briefly show status=0 before loadAllReplays marks them interrupted
 const hasParsingDemos = computed(() => props.demoList.some(demo => demo.status === 0));
@@ -1757,27 +1751,6 @@ const scoreLeftRightMap = computed(() => {
   min-width: 2.5em;
 }
 
-.demo-bar-delete-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: transparent;
-  border: 1px solid var(--gh-border);
-  border-radius: 6px;
-  color: var(--gh-text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.demo-bar-delete-btn:hover {
-  color: #f85149;
-  border-color: rgba(248, 81, 73, 0.5);
-  background: rgba(248, 81, 73, 0.1);
-}
-
 /* Footer row: round selector / error message (left) + delete (right) */
 .demo-bar-footer-row {
   position: relative;
@@ -1802,6 +1775,81 @@ const scoreLeftRightMap = computed(() => {
 
 .demo-bar-footer-right {
   flex-shrink: 0;
+}
+
+.demo-bar-more-wrap {
+  position: relative;
+}
+
+.demo-bar-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--gh-border);
+  border-radius: 6px;
+  color: var(--gh-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.demo-bar-more-btn:hover {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text-primary);
+}
+
+.demo-bar-more-btn svg {
+  flex-shrink: 0;
+}
+
+.demo-bar-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  left: auto;
+  min-width: 80px;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-xl);
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.demo-bar-more-menu-fixed {
+  position: fixed;
+  top: auto;
+  left: auto;
+  z-index: 99999;
+}
+
+.demo-bar-more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: var(--ds-space-sm) var(--ds-space-md);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--ds-transition-base);
+  text-align: left;
+}
+
+.demo-bar-more-menu-item:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text-primary);
+}
+
+.demo-bar-more-menu-item-delete:hover {
+  color: var(--ds-error, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 .demo-bar-footer-row .demo-bar-failed-msg {
@@ -3126,129 +3174,6 @@ const scoreLeftRightMap = computed(() => {
   background: var(--ds-danger);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-}
-
-/* === Delete Modal === */
-.delete-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7); /* Match ConsoleModal transparency */
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--ds-z-modal);
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.delete-modal {
-  max-width: 440px;
-  padding: var(--ds-space-3xl);
-  text-align: center;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-icon {
-  margin-bottom: var(--ds-space-xl);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.modal-title {
-  font-size: var(--ds-text-2xl);
-  font-weight: 700;
-  color: var(--ds-text-primary);
-  margin: 0 0 var(--ds-space-lg) 0;
-}
-
-.modal-message {
-  font-size: var(--ds-text-base);
-  color: var(--ds-text-secondary);
-  margin: 0 0 var(--ds-space-sm) 0;
-  line-height: 1.6;
-}
-
-.modal-message strong {
-  color: var(--ds-primary);
-}
-
-.modal-message .filename-truncate {
-  display: inline-block;
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-}
-
-.modal-warning {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-warning);
-  margin: 0 0 var(--ds-space-xl) 0;
-}
-
-.modal-info {
-  background: var(--ds-background-subtle);
-  border-radius: var(--ds-radius-md);
-  padding: var(--ds-space-md);
-  margin: var(--ds-space-md) 0;
-}
-
-.modal-info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--ds-space-xs) 0;
-}
-
-.modal-info-row + .modal-info-row {
-  border-top: 1px solid var(--ds-border-subtle);
-  margin-top: var(--ds-space-xs);
-  padding-top: var(--ds-space-sm);
-}
-
-.info-label {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-tertiary);
-  font-weight: 500;
-}
-
-.info-value {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-primary);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.info-value.filename-truncate {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.modal-actions {
-  display: flex;
-  gap: var(--ds-space-md);
-  justify-content: center;
 }
 
 /* === Upload Demo Modal === */

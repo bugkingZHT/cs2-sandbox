@@ -126,6 +126,7 @@
                 @select-demo="onSelectDemo"
                 @delete-demo="onDeleteDemo"
                 @upload-demo="onUploadDemo"
+                @share-demo="onShareDemo"
               />
               <NoteLibrary
                 v-if="currentPage === 'notes'"
@@ -184,19 +185,18 @@
       </aside>
     </div>
 
-    <!-- 解析进度弹窗（阻塞：先「等待解析器加载中」，再「解析中..」+ 进度条，解析完成后关闭） -->
-    <div v-if="parsing" class="parsing-overlay">
-      <div class="parsing-modal">
-        <h3>{{ parsingProgress === 0 ? '等待解析器加载中' : '解析中..' }}</h3>
-        <div class="spinner-container">
-          <div class="spinner"></div>
-        </div>
-        <div class="parsing-progress-bar-wrap">
-          <div class="parsing-progress-bar-fill" :style="{ width: parsingProgress + '%' }"></div>
-        </div>
-        <p class="parsing-status">{{ parsingStatus }}</p>
-      </div>
-    </div>
+    <!-- Demo 相关弹窗：解析 / 分享（删除/上传阻止/强制删除在 DemoLibrary 内用 DemoModal） -->
+    <DemoModal
+      :parsing="parsing"
+      :parsing-progress="parsingProgress"
+      :parsing-status="parsingStatus"
+      :share-demo="shareModalDemo"
+      :share-permission="shareModalPermission"
+      @update-permission="onShareUpdatePermission"
+      @close-share="closeDemoShareModal"
+      @copied="() => showNoteToast('已复制', 'info')"
+      @copy-failed="() => showNoteToast('复制失败', 'error')"
+    />
 
     <!-- Console Modal -->
     <ConsoleModal 
@@ -256,6 +256,7 @@ const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/
 const NoteLibrary = defineAsyncComponent(() => import('@/components/NoteLibrary/NoteLibrary.vue'));
 import NoteModal from '@/components/NoteLibrary/NoteModal.vue';
 import NoteFormSidebar from '@/components/NoteLibrary/NoteFormSidebar.vue';
+import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
 import type { ReplayData } from '@/types/replay';
 import { useReplayData } from '@/composables/useReplayData';
@@ -873,6 +874,54 @@ const onUploadDemo = async (file: File) => {
   // No auto-navigation after upload, user must click card to view
 };
 
+type DemoWithCloud = ReplayData & { cloudDemoId?: number; cloudPermission?: number };
+const shareModalDemo = ref<DemoWithCloud | null>(null);
+const shareModalPermission = ref<0 | 1>(0);
+
+function closeDemoShareModal() {
+  shareModalDemo.value = null;
+}
+
+function onShareUpdatePermission(value: 0 | 1) {
+  shareModalPermission.value = value;
+  saveDemoSharePermission();
+}
+
+async function saveDemoSharePermission() {
+  const demo = shareModalDemo.value;
+  if (!demo || demo.cloudDemoId == null) return;
+  try {
+    const res = await fetch(`/api/demos/${demo.cloudDemoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ permission: shareModalPermission.value }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && (json as { status?: string }).status === 'OK') {
+      showNoteToast('可见范围已修改', 'info');
+      if (replayList.value) {
+        const item = replayList.value.find((d) => (d as DemoWithCloud).cloudDemoId === demo.cloudDemoId) as DemoWithCloud | undefined;
+        if (item) item.cloudPermission = shareModalPermission.value;
+      }
+    } else {
+      showNoteToast((json as { error?: string }).error || '修改失败', 'error');
+    }
+  } catch {
+    showNoteToast('修改失败', 'error');
+  }
+}
+
+const onShareDemo = (demo: ReplayData) => {
+  const d = demo as DemoWithCloud;
+  if (d.cloudDemoId == null) {
+    showNoteToast('请先上传到云端后再分享', 'warning');
+    return;
+  }
+  shareModalDemo.value = d;
+  shareModalPermission.value = (d.cloudPermission === 1 ? 1 : 0) as 0 | 1;
+};
+
 // Console modal handlers
 const handleFrameDataViewer = () => {
   showConsoleModal.value = false;
@@ -1270,114 +1319,6 @@ const showBetaWarning = () => {
   min-height: 0;
   overflow: hidden;
   min-width: 0;
-}
-
-/* === Parsing Modal === */
-.parsing-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: var(--ds-bg-primary);
-  backdrop-filter: blur(4px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: var(--ds-z-modal);
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.parsing-modal {
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--ds-radius-lg);
-  padding: var(--ds-space-3xl);
-  width: 500px;
-  max-width: 90vw;
-  box-shadow: var(--ds-shadow-xl);
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.parsing-modal h3 {
-  margin: 0 0 var(--ds-space-xl) 0;
-  color: var(--ds-text-primary);
-  text-align: center;
-  font-size: var(--ds-text-xl);
-  font-weight: 600;
-}
-
-.spinner-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: var(--ds-space-2xl) 0;
-}
-
-.parsing-progress-bar-wrap {
-  width: 100%;
-  height: 8px;
-  background: var(--ds-border-subtle);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 0 0 var(--ds-space-lg) 0;
-}
-
-.parsing-progress-bar-fill {
-  height: 100%;
-  background: var(--ds-primary);
-  border-radius: 4px;
-  transition: width 0.2s ease;
-}
-
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid var(--ds-border-subtle);
-  border-top-color: var(--ds-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.parsing-status {
-  margin: var(--ds-space-sm) 0 0 0;
-  color: var(--ds-text-tertiary);
-  text-align: center;
-  font-size: var(--ds-text-base);
-  min-height: 24px;
-  line-height: 24px;
-  animation: fade-in 0.3s ease-in;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 </style>

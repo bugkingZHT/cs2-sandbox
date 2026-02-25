@@ -122,7 +122,7 @@ function createReplayData() {
         return;
       }
       const json = await res.json().catch(() => ({}));
-      const data = (json as { status?: string; data?: { items?: Array<{ id: number; demo_uuid: string; demo_meta?: string; created_at?: string }> } }).data;
+      const data = (json as { status?: string; data?: { items?: Array<{ id: number; demo_uuid: string; demo_meta?: string; permission?: number; created_at?: string }> } }).data;
       const items = data?.items ?? [];
       replayList.value = items.map((item) => {
         let meta: ReplayMeta;
@@ -166,7 +166,8 @@ function createReplayData() {
           frames: [],
           timestamp: createdAt || adapted.uploadTime,
           cloudDemoId: item.id,
-        } as ReplayData & { cloudDemoId: number };
+          cloudPermission: item.permission ?? 0,
+        } as ReplayData & { cloudDemoId: number; cloudPermission: number };
       });
       console.log('[LoadReplayListFromServer] 从后端加载 demo 列表数量:', replayList.value.length);
     } catch (e) {

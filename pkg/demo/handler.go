@@ -348,7 +348,7 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// GET /api/demos/:id (metadata) or DELETE /api/demos/:id
+	// GET /api/demos/:id (metadata), PATCH (update meta/permission), or DELETE
 	switch r.Method {
 	case http.MethodGet:
 		if u == nil || (u.ID != d.UserID && d.Permission != PermissionPublic) {
@@ -356,6 +356,45 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSONOK(w, demoToMap(d))
+	case http.MethodPatch:
+		if u == nil {
+			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
+			return
+		}
+		if u.ID != d.UserID {
+			writeJSONErr(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		var body struct {
+			Permission *int8  `json:"permission"`
+			DemoMeta   *string `json:"demo_meta"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		updates := make(map[string]interface{})
+		if body.Permission != nil {
+			if *body.Permission != PermissionPrivate && *body.Permission != PermissionPublic {
+				writeJSONErr(w, http.StatusBadRequest, "permission must be 0 or 1")
+				return
+			}
+			updates["permission"] = *body.Permission
+		}
+		if body.DemoMeta != nil {
+			updates["demo_meta"] = *body.DemoMeta
+		}
+		if len(updates) == 0 {
+			writeJSONErr(w, http.StatusBadRequest, "no updates")
+			return
+		}
+		if err := h.Store.Update(d.ID, u.ID, updates); err != nil {
+			log.Printf("[Demo] Patch: Update failed: %v", err)
+			writeJSONErr(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		log.Printf("[Demo] Patch: ok id=%d uid=%s permission=%v", d.ID, u.UID, updates["permission"])
+		writeJSONOK(w, map[string]interface{}{"updated": true})
 	case http.MethodDelete:
 		if u == nil {
 			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
