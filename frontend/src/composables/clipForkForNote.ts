@@ -5,7 +5,6 @@
  */
 import type { Frame, ReplayData, ReplayMeta, ReplayRound, ReplaySettings } from '@/types/replay';
 import { getReplayStorage } from './indexdb-storage';
-import { getMetaStorage } from './indexdb-storage';
 import { encodeReplayRound } from './proto-converters';
 import { resolveTeamDisplayName } from './teamDisplay';
 import type { UploadReplayContext } from './useNote';
@@ -23,19 +22,28 @@ export async function prepareCurrentRoundForUpload(
   if (!sourceReplay) {
     throw new Error('缺少源回放信息');
   }
-  const metaStorage = await getMetaStorage();
-  const rawMeta = await metaStorage.loadMeta(demoId);
-  if (rawMeta) {
-    const meta = { ...rawMeta } as ReplayMeta;
-    meta.replaySettings = {
-      ...(meta.replaySettings ?? {}),
-      ...(replaySettings ?? {}),
-    };
-    await metaStorage.saveMeta(meta);
-  }
+  const meta: ReplayMeta = {
+    uuid: demoId,
+    uploaderUid: sourceReplay.uploaderUid ?? '',
+    uploadTime: sourceReplay.uploadTime ?? 0,
+    engineVersion: sourceReplay.engineVersion,
+    serverPlayer: sourceReplay.serverPlayer,
+    mapName: sourceReplay.mapName ?? '',
+    teamCT: sourceReplay.teamCT ?? '',
+    teamT: sourceReplay.teamT ?? '',
+    scoreCT: sourceReplay.scoreCT ?? 0,
+    scoreT: sourceReplay.scoreT ?? 0,
+    totalRounds: sourceReplay.totalRounds ?? 0,
+    roundResults: sourceReplay.roundResults,
+    totalFrames: sourceReplay.totalFrames ?? 0,
+    totalDurationMs: sourceReplay.totalDurationMs ?? 0,
+    status: 1,
+    replaySettings: { ...(sourceReplay.replaySettings ?? {}), ...(replaySettings ?? {}) },
+  };
   return {
     demoId,
     roundNumber,
+    meta,
     replay: {
       mapName: sourceReplay.mapName,
       teamCT: resolveTeamDisplayName(sourceReplay.teamCT ?? '', 3, sourceReplay.serverPlayer),
@@ -100,9 +108,6 @@ export async function forkClipToNewDemo(
     fork: true,
   };
 
-  const metaStorage = await getMetaStorage();
-  await metaStorage.saveMeta(meta);
-
   const round: ReplayRound = {
     uuid: newUuid,
     round: 0,
@@ -115,6 +120,7 @@ export async function forkClipToNewDemo(
   return {
     demoId: newUuid,
     roundNumber: 0,
+    meta,
     replay: {
       mapName: sourceReplay.mapName,
       teamCT: resolveTeamDisplayName(sourceReplay.teamCT ?? '', 3, sourceReplay.serverPlayer),

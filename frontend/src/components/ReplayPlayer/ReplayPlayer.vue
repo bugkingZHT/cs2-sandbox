@@ -69,7 +69,7 @@
         <MapCanvas 
           :frames="effectiveFrames" 
           :bounds="bounds"
-          :has-right-sidebar="!!(replayerSource === 'cloud' && cloudNoteFull)"
+          :has-right-sidebar="!!(replayerNoteId && cloudNoteFull)"
           :current-frame-index="effectiveFrameIndex"
           :replay-meta="effectiveReplay"
           :is-playing="isPlaying"
@@ -79,7 +79,7 @@
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
           :can-add-to-note="props.canAddToNote"
-          :show-save-to-note="replayerSource !== 'cloud'"
+          :show-save-to-note="!replayerNoteId"
           :hide-save-to-note="true"
           :note-uploading="props.noteUploading"
           @save-current-round="emit('save-current-round')"
@@ -147,7 +147,7 @@
                 @click="toggleLeftPanelTab('players')"
               >玩家</button>
               <button
-                v-if="replayerSource !== 'cloud'"
+                v-if="!replayerNoteId"
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
@@ -541,7 +541,7 @@
                     active: !isClipMode ? currentRound === r : clipRounds.some(c => c.round === r),
                     'clip-selected': isClipMode && clipRounds.some(c => c.round === r)
                   }"
-                  :disabled="replayerSource === 'cloud' && r !== currentRound"
+                  :disabled="!!(replayerNoteId && r !== currentRound)"
                   @click="isClipMode ? toggleClipRound(r) : loadRoundData(r)"
                 >
                   <span
@@ -598,7 +598,7 @@
             </div>
           </div>
           <div class="left-panel-footer">
-            <div v-if="replayerSource === 'cloud' && replayerNoteId" class="embed-link-wrap">
+            <div v-if="replayerNoteId" class="embed-link-wrap">
               <button
                 type="button"
                 class="left-panel-footer-btn embed-link-btn"
@@ -613,7 +613,7 @@
               </button>
             </div>
             <button
-              v-if="replayerSource === 'local'"
+              v-if="!replayerNoteId"
               type="button"
               class="left-panel-footer-btn clip-mode-btn"
               :class="{ active: isClipMode }"
@@ -623,7 +623,7 @@
               <img src="/icons/slip.svg" class="left-panel-footer-btn-icon" alt="" />
             </button>
             <button
-              v-if="!pureMode && replayerSource !== 'cloud'"
+              v-if="!pureMode && !replayerNoteId"
               type="button"
               class="left-panel-footer-btn publish-note-btn"
               :title="props.canAddToNote ? '发布笔记' : '当前回合可发布到笔记'"
@@ -659,7 +659,7 @@
         :round-results="replay?.roundResults || []"
         :replay-meta="replay"
         :pure-mode="pureMode"
-        :cloud-replay="replayerSource === 'cloud'"
+        :cloud-replay="!!replayerNoteId || replayerDemoId != null"
         :can-play="effectiveFrames.length > 0"
         :hide-round-selector="true"
         :clip-mode="isClipMode"
@@ -868,7 +868,7 @@ async function copyEmbedLink() {
   const base = typeof window !== 'undefined' ? window.location.origin : '';
   const pathBase = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
   const prefix = pathBase && pathBase !== '/' ? pathBase : '';
-  const url = `${base}${prefix}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&demo_id=_&pure=1`;
+  const url = `${base}${prefix}/replayer?note_id=${encodeURIComponent(noteId)}&demo_id=_&pure=1`;
   try {
     await navigator.clipboard.writeText(url);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
@@ -992,9 +992,9 @@ watch([isClipMode, () => effectiveFrames.value.length], () => {
 
 // 播放笔记时应用 meta 中保存的 replaySettings（玩家可见性、地图投掷物/掉落/C4）
 watch(
-  [replayerSource, () => replay.value?.replaySettings],
+  [replayerNoteId, () => replay.value?.replaySettings],
   () => {
-    if (replayerSource.value !== 'cloud') return;
+    if (!replayerNoteId.value) return;
     const s = replay.value?.replaySettings;
     if (!s) return;
     hiddenPlayerIds.value = new Set(s.hiddenPlayerIds ?? []);
@@ -1031,9 +1031,9 @@ const showMapPlayers = computed({
   },
 });
 
-// source 切换时：cloud 下若当前是「回合」则切到「玩家」
-watch(replayerSource, (source) => {
-  if (source === 'cloud' && leftPanelTab.value === 'rounds') leftPanelTab.value = 'players';
+// 笔记附件播放时若当前是「回合」则切到「玩家」
+watch(replayerNoteId, (id) => {
+  if (id && leftPanelTab.value === 'rounds') leftPanelTab.value = 'players';
 });
 
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
@@ -1902,14 +1902,15 @@ const loadRoundData = async (roundNumber: number) => {
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
     
-    // 同步 URL：保留 source/uuid/note_id/round，并带上 tab 与 pure
+    // 同步 URL：笔记模式保留 note_id/demo_id/round，否则 demo_uuid + round；并带上 tab 与 pure
     const q = getQuery();
-    if (q.source === 'cloud' && q.note_id) {
-      q.source = 'cloud';
-      q.note_id = q.note_id;
+    if (q.note_id) {
+      q.round = String(roundNumber);
+      if (q.demo_id != null) q.demo_id = String(q.demo_id);
     } else {
-      q.source = 'local';
-      q.uuid = replay.value.uuid;
+      delete q.source;
+      delete q.uuid;
+      q.demo_uuid = replay.value.uuid;
       q.round = String(roundNumber);
     }
     if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; if (leftPanelTab.value != null) q.tab = leftPanelTab.value; else delete q.tab; }

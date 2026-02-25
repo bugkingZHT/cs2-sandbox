@@ -136,7 +136,7 @@
         </button>
       </div>
       <div class="zoom-pure-column">
-        <div v-if="!pureMode && !hideSaveToNote && replayerSource !== 'cloud'" class="save-to-note-wrap">
+        <div v-if="!pureMode && !hideSaveToNote && showSaveToNote" class="save-to-note-wrap">
           <button
             type="button"
             class="save-to-note-btn zoom-column-btn"

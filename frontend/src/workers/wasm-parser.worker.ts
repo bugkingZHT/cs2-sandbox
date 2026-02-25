@@ -2,7 +2,6 @@
 
 import type { ReplayRound } from '@/types/replay';
 import { decodeReplayRound } from '@/composables/proto-converters';
-import { getMetaStorage } from '@/composables/indexdb-storage';
 import { MAP_PARSING_SUPPORT, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 
 // Declare global types for Go WASM runtime
@@ -267,17 +266,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       
       console.log(`[Worker] [${uuid}] All rounds parsed (${totalRoundsParsed} total)`);
       
-      // Extract final statistics from the last parsed state
-      // Call backfillDemoMeta to get final scores
-      // Load complete meta from IndexedDB and pass to WASM for backfill
-      const metaStorage = await getMetaStorage();
-      const currentMeta = await metaStorage.loadMeta(uuid);
-      if (!currentMeta) {
-        throw new Error(`Meta not found in IndexedDB: ${uuid}`);
-      }
-      
-      // Pass complete meta to ensure all fields are preserved during backfill
-      const currentMetaJson = JSON.stringify(currentMeta);
+      // Extract final statistics: pass in-memory meta to WASM backfill (no IndexedDB)
+      const currentMetaJson = JSON.stringify(meta);
       
       const backfillJsonString = await new Promise<string>((resolve, reject) => {
         (self as any).backfillDemoMeta(currentMetaJson, (res: any, err: string) => {

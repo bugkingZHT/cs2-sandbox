@@ -84,6 +84,64 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	writeJSONOK(w, map[string]interface{}{"items": items})
 }
 
+// GetFile handles GET /api/demos/file?demo_id=X&round=N. Streams round_N.pb.gz (same as note-style file endpoint).
+func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	demoIDStr := strings.TrimSpace(r.URL.Query().Get("demo_id"))
+	roundStr := strings.TrimSpace(r.URL.Query().Get("round"))
+	if demoIDStr == "" || roundStr == "" {
+		writeJSONErr(w, http.StatusBadRequest, "demo_id and round required")
+		return
+	}
+	demoID, err := strconv.ParseUint(demoIDStr, 10, 64)
+	if err != nil {
+		writeJSONErr(w, http.StatusBadRequest, "invalid demo_id")
+		return
+	}
+	round, err := strconv.Atoi(roundStr)
+	if err != nil || round < 1 {
+		writeJSONErr(w, http.StatusBadRequest, "invalid round")
+		return
+	}
+	d, err := h.Store.GetByID(uint(demoID))
+	if err != nil || d == nil {
+		writeJSONErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	u := session.UserFromContext(r.Context())
+	if u == nil {
+		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
+		return
+	}
+	if u.ID != d.UserID && d.Permission != PermissionPublic {
+		writeJSONErr(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	var ownerUID string
+	if u.ID == d.UserID {
+		ownerUID = u.UID
+	} else {
+		owner, err := h.UserStore.GetByID(d.UserID)
+		if err != nil || owner == nil {
+			writeJSONErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		ownerUID = owner.UID
+	}
+	rc, err := h.Storage.GetRound(ownerUID, d.DemoUUID, round)
+	if err != nil {
+		log.Printf("[Demo] GetFile: GetRound failed: %v", err)
+		writeJSONErr(w, http.StatusNotFound, "round file not found")
+		return
+	}
+	defer rc.Close()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	_, _ = io.Copy(w, rc)
+}
+
 // Create handles POST multipart: meta, permission, demo_uuid, and files round_1, round_2, ... (or round_1.pb.gz, ...).
 func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	u := session.UserFromContext(r.Context())

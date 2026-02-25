@@ -3,13 +3,15 @@ import { getMetaStorage } from './indexdb-storage';
 import { getReplayStorage } from './indexdb-storage';
 import { useAuth } from './useAuth';
 import { resolveTeamDisplayName } from './teamDisplay';
-import type { PlayerInfo } from '@/types/replay';
+import type { PlayerInfo, ReplayMeta } from '@/types/replay';
 
 /** 上传弹窗所需的回合上下文（由 App 在打开弹窗时传入） */
 export interface UploadReplayContext {
   replay: { mapName?: string; teamCT?: string; teamT?: string };
   roundNumber: number;
   demoId: string;
+  /** 完整 meta，用于上传时附带给后端；不存 IndexedDB 时由调用方传入 */
+  meta?: ReplayMeta;
 }
 
 export type NoteToastType = 'info' | 'warning' | 'error';
@@ -318,7 +320,7 @@ export function useNote() {
   function getShareUrl(): string {
     const id = createdNoteId.value;
     if (!id) return '';
-    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(id)}&demo_id=_`;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?note_id=${encodeURIComponent(id)}&demo_id=_`;
   }
 
   async function copyShareLink() {
@@ -432,8 +434,7 @@ export function useNote() {
     form.append('demo_uuid', demoId);
     form.append('demo_round', String(roundNumber));
     form.append('parent_id', noteId); // Link to existing note
-    const metaStorage = await getMetaStorage();
-    const fullMeta = await metaStorage.loadMeta(demoId);
+    const fullMeta = ctx.meta ?? (await getMetaStorage().then((s) => s.loadMeta(demoId)));
     if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
 
     uploadModalStep.value = 'uploading';
@@ -562,8 +563,7 @@ export function useNote() {
     form.append('demo_uuid', demoId);
     form.append('demo_round', String(roundNumber));
     form.append('permission', uploadFormPermission.value);
-    const metaStorage = await getMetaStorage();
-    const fullMeta = await metaStorage.loadMeta(demoId);
+    const fullMeta = ctx.meta ?? (await getMetaStorage().then((s) => s.loadMeta(demoId)));
     if (fullMeta) form.append('meta', JSON.stringify(fullMeta));
 
     uploadModalStep.value = 'uploading';
@@ -645,7 +645,7 @@ export function useNote() {
   const shareModalCopyCopied = sharedShareModalCopyCopied;
 
   function getShareUrlForNoteId(noteId: string): string {
-    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?source=cloud&note_id=${encodeURIComponent(noteId)}&demo_id=_`;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/replayer?note_id=${encodeURIComponent(noteId)}&demo_id=_`;
   }
 
   function openShareModal(item: CloudArchiveItem) {

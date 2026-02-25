@@ -47,6 +47,10 @@ interface UseReplayResult {
   cloudNoteDetailFromApi: ReturnType<typeof ref<{ title: string; content?: string; owner_id?: number; demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }> } | null>>;
   loadReplayByLocal: (uuid: string, roundNumber: number) => Promise<void>;
   loadReplayByCloud: (noteId: string, demoId?: number) => Promise<void>;
+  /** 云端 demo 库（/api/demos）：先读 IndexedDB 缓存，未命中时通过 GET /api/demos/file 拉取并写入缓存后加载，带 progress */
+  loadReplayByDemosCloud: (demoId: number, roundNumber: number) => Promise<void>;
+  /** 从后端 GET /api/demos 拉取列表并写入 replayList（登录后或刷新 demolib 时调用） */
+  loadReplayListFromServer: () => Promise<void>;
   /** 清理云存档播放状态（如切到 Demo 本地库时清掉后台 cloud 播放） */
   clearCloudPlaybackState: () => void;
   /** 只读加载某 demo 某回合的帧数据，用于列表页预览 timeline，不写入全局 replay/frames */
@@ -104,37 +108,78 @@ function createReplayData() {
     else removeBeforeUnload();
   }, { immediate: true });
 
-  // Load all replay metadata for list display
+  /** 从后端 GET /api/demos 拉取列表，映射为 ReplayData[]（含 cloudDemoId 供打开 replayer 用） */
+  const loadReplayListFromServer = async (): Promise<void> => {
+    const { currentUser } = useAuth();
+    if (!currentUser.value) {
+      replayList.value = [];
+      return;
+    }
+    try {
+      const res = await fetch('/api/demos', { credentials: 'include' });
+      if (!res.ok) {
+        replayList.value = [];
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      const data = (json as { status?: string; data?: { items?: Array<{ id: number; demo_uuid: string; demo_meta?: string; created_at?: string }> } }).data;
+      const items = data?.items ?? [];
+      replayList.value = items.map((item) => {
+        let meta: ReplayMeta;
+        try {
+          const parsed = item.demo_meta ? (JSON.parse(item.demo_meta) as ReplayMeta) : null;
+          meta = parsed ?? {
+            uuid: item.demo_uuid,
+            uploaderUid: '',
+            uploadTime: 0,
+            mapName: '',
+            teamCT: '',
+            teamT: '',
+            scoreCT: 0,
+            scoreT: 0,
+            totalRounds: 0,
+            totalFrames: 0,
+            status: 1,
+            totalDurationMs: 0,
+          };
+        } catch {
+          meta = {
+            uuid: item.demo_uuid,
+            uploaderUid: '',
+            uploadTime: 0,
+            mapName: '',
+            teamCT: '',
+            teamT: '',
+            scoreCT: 0,
+            scoreT: 0,
+            totalRounds: 0,
+            totalFrames: 0,
+            status: 1,
+            totalDurationMs: 0,
+          };
+        }
+        const adapted = adaptMeta(meta);
+        const createdAt = item.created_at ? new Date(item.created_at).getTime() : 0;
+        return {
+          ...adapted,
+          id: item.demo_uuid,
+          frames: [],
+          timestamp: createdAt || adapted.uploadTime,
+          cloudDemoId: item.id,
+        } as ReplayData & { cloudDemoId: number };
+      });
+      console.log('[LoadReplayListFromServer] 从后端加载 demo 列表数量:', replayList.value.length);
+    } catch (e) {
+      console.error('[LoadReplayListFromServer]', e);
+      replayList.value = [];
+    }
+  };
+
+  // Replay list is from server only; this only runs orphan cleanup for round storage.
   const loadAllReplays = async () => {
-    console.log('[LoadAllReplays] 开始加载所有回放元数据');
-    const metaStorage = await getMetaStorage();
-
-    // Step 1: 从 IndexedDB 加载所有 meta
-    let metas = await metaStorage.loadAllMetas();
-    console.log('[LoadAllReplays] 从 IndexedDB 加载的 meta 数量:', metas.length);
-
-    // Step 2 & 3: 清理 IndexedDB 泄露（无 meta 的 round），超过 maxSurgeDemoNum 时按时间从旧到新清理至该数以内
     const maxSurge = Math.max(0, parseInt(localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY) ?? String(MAX_SURGE_DEMO_NUM_DEFAULT), 10)) || MAX_SURGE_DEMO_NUM_DEFAULT;
     await cleanupOrphanedReplayStorage(maxSurge);
-
-    // Step 4: 将刷新后遗留的 status=0（未完成解析）标记为「解析中断」
-    for (const m of metas) {
-      if (m.status === 0) {
-        await metaStorage.updateMetaStatus(m.uuid, -1, undefined, '解析中断（页面已刷新，任务已终止）');
-      }
-    }
-    metas = await metaStorage.loadAllMetas();
-
-    // Step 5: 直接映射 meta 到 replayList（无需 cache 合并）；fork=true 的 demo 不在 demolib 展示
-    const listMetas = metas.filter((m) => m.fork !== true);
-    replayList.value = listMetas.map(meta => ({
-      ...meta,
-      id: meta.uuid,
-      frames: [],
-      timestamp: meta.uploadTime,
-    }));
-
-    console.log('[LoadAllReplays] 最终 replay list 大小:', replayList.value.length);
+    replayList.value = [];
   };
 
   // Load replay meta and first round from IndexedDB
@@ -234,6 +279,7 @@ function createReplayData() {
   };
 
   // Fetch round file from cloud by note_id + demo_id (permission + file in one API). Returns arraybuffer on 2xx, throws on error.
+  // Updates cloudDownloadProgress during download for progress bar.
   const fetchRoundFileByNoteAndDemo = (noteId: string, demoId: number): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
       const url = `/api/note/file?note_id=${encodeURIComponent(noteId)}&demo_id=${demoId}`;
@@ -270,6 +316,200 @@ function createReplayData() {
     });
   };
 
+  /** Cache-first: ensure demo meta and round for a note attachment are in IndexedDB; fill from cloud on miss. Shows progress when fetching round from cloud. */
+  const ensureCachedFromNoteCloud = async (
+    noteId: string,
+    demoId?: number
+  ): Promise<{
+    uuid: string;
+    roundNumber: number;
+    meta: ReplayData;
+    noteDetail: { title: string; content?: string; owner_id?: number; demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }> };
+    resolvedDemoId: number;
+  }> => {
+    const res = await fetch(`/api/note/items/${encodeURIComponent(noteId)}`, { credentials: 'include' });
+    if (res.status === 403) throw new Error('forbidden');
+    if (res.status === 404) throw new Error('not_found');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json().catch(() => ({}));
+    const data = (json as {
+      data?: {
+        title?: string;
+        content?: string;
+        owner_id?: number;
+        demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }>;
+      };
+    }).data;
+    const demos = data?.demos ?? [];
+    const targetDemo = demoId != null ? demos.find((d) => d.id === demoId) : demos[0];
+    if (!targetDemo) throw new Error('not_found');
+    const resolvedDemoId = targetDemo.id;
+    const uuid = targetDemo.demo_uuid;
+    const roundNumber = targetDemo.demo_round ?? 1;
+    const noteDetail = {
+      title: data?.title ?? '',
+      content: data?.content,
+      owner_id: typeof data?.owner_id === 'number' ? data.owner_id : undefined,
+      demos: data?.demos,
+    };
+
+    const replayStorage = await getReplayStorage();
+    const cachedRound = await replayStorage.loadRound(uuid, roundNumber);
+
+    const metaFromApi: ReplayMeta = (() => {
+      try {
+        const parsed = targetDemo.demo_meta ? (JSON.parse(targetDemo.demo_meta) as ReplayMeta) : null;
+        return parsed ? parsed : {
+          uuid: targetDemo.demo_uuid,
+          uploaderUid: '',
+          uploadTime: 0,
+          mapName: '',
+          teamCT: '',
+          teamT: '',
+          scoreCT: 0,
+          scoreT: 0,
+          totalRounds: 0,
+          totalFrames: 0,
+          status: 1,
+          totalDurationMs: 0,
+        };
+      } catch {
+        return {
+          uuid: targetDemo.demo_uuid,
+          uploaderUid: '',
+          uploadTime: 0,
+          mapName: '',
+          teamCT: '',
+          teamT: '',
+          scoreCT: 0,
+          scoreT: 0,
+          totalRounds: 0,
+          totalFrames: 0,
+          status: 1,
+          totalDurationMs: 0,
+        };
+      }
+    })();
+
+    if (!cachedRound) {
+      const buf = await fetchRoundFileByNoteAndDemo(noteId, resolvedDemoId);
+      const roundBytes = new Uint8Array(buf);
+      await replayStorage.saveRound(uuid, roundNumber, roundBytes);
+    }
+
+    const meta = adaptMeta(metaFromApi);
+    return {
+      uuid,
+      roundNumber,
+      meta: { ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime },
+      noteDetail,
+      resolvedDemoId,
+    };
+  };
+
+  /** 从云端 demo 库拉取单回合文件（GET /api/demos/file?demo_id=&round=），带 progress，用于填充缓存 */
+  const fetchRoundFileByDemosApi = (demoId: number, roundNumber: number): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const url = `/api/demos/file?demo_id=${encodeURIComponent(String(demoId))}&round=${encodeURIComponent(String(roundNumber))}`;
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url);
+      xhr.withCredentials = true;
+      xhr.responseType = 'arraybuffer';
+      xhr.onprogress = (e) => {
+        const prev = cloudDownloadProgress.value;
+        const lengthComputable = prev.lengthComputable ?? e.lengthComputable;
+        if (e.lengthComputable && e.total > 0) {
+          cloudDownloadProgress.value = { active: true, progress: Math.round((e.loaded / e.total) * 100), lengthComputable: true };
+        } else {
+          cloudDownloadProgress.value = { active: true, progress: prev.progress, lengthComputable: lengthComputable ?? false };
+        }
+      };
+      xhr.onload = () => {
+        cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+          resolve(xhr.response);
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => {
+        cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+        reject(new Error('Network error'));
+      };
+      xhr.onabort = () => {
+        cloudDownloadProgress.value = { active: false, progress: 0, lengthComputable: null };
+        reject(new Error('Aborted'));
+      };
+      xhr.send();
+    });
+  };
+
+  /** 缓存优先：确保指定云端 demo 的 meta 与 round 在 IndexedDB 中；未命中时通过 /api/demos 拉取并写入缓存，拉取时展示 progress */
+  const ensureCachedFromDemosCloud = async (
+    demoId: number,
+    roundNumber: number
+  ): Promise<{ uuid: string; roundNumber: number; meta: ReplayData }> => {
+    const res = await fetch(`/api/demos/${demoId}`, { credentials: 'include' });
+    if (res.status === 403) throw new Error('forbidden');
+    if (res.status === 404) throw new Error('not_found');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json().catch(() => ({}));
+    const data = (json as { status?: string; data?: { demo_uuid?: string; demo_meta?: string } }).data;
+    if (!data?.demo_uuid) throw new Error('not_found');
+    const uuid = data.demo_uuid;
+
+    const replayStorage = await getReplayStorage();
+    const cachedRound = await replayStorage.loadRound(uuid, roundNumber);
+
+    const metaFromApi: ReplayMeta = (() => {
+      try {
+        const parsed = data.demo_meta ? (JSON.parse(data.demo_meta) as ReplayMeta) : null;
+        return parsed ?? {
+          uuid,
+          uploaderUid: '',
+          uploadTime: 0,
+          mapName: '',
+          teamCT: '',
+          teamT: '',
+          scoreCT: 0,
+          scoreT: 0,
+          totalRounds: 0,
+          totalFrames: 0,
+          status: 1,
+          totalDurationMs: 0,
+        };
+      } catch {
+        return {
+          uuid,
+          uploaderUid: '',
+          uploadTime: 0,
+          mapName: '',
+          teamCT: '',
+          teamT: '',
+          scoreCT: 0,
+          scoreT: 0,
+          totalRounds: 0,
+          totalFrames: 0,
+          status: 1,
+          totalDurationMs: 0,
+        };
+      }
+    })();
+
+    if (!cachedRound) {
+      const buf = await fetchRoundFileByDemosApi(demoId, roundNumber);
+      const roundBytes = new Uint8Array(buf);
+      await replayStorage.saveRound(uuid, roundNumber, roundBytes);
+    }
+
+    const meta = adaptMeta(metaFromApi);
+    return {
+      uuid,
+      roundNumber,
+      meta: { ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime },
+    };
+  };
+
   /** 本地录像：IndexedDB meta + round 数据，找不到即 not_found */
   const loadReplayByLocal = async (uuid: string, roundNumber: number) => {
     replayRouteError.value = null;
@@ -298,7 +538,7 @@ function createReplayData() {
     }
   };
 
-  /** 云录像：GET item 拿 note + demos，按 note_id + demo_id 用统一接口下载文件（权限+文件一体） */
+  /** 云录像：优先从 IndexedDB 缓存加载；未命中 meta 或 round 时从云端拉取并写入缓存后再加载，拉取时展示 progress。 */
   const loadReplayByCloud = async (noteId: string, demoId?: number) => {
     replayRouteError.value = null;
     cloudNoteDetailFromApi.value = null;
@@ -306,98 +546,60 @@ function createReplayData() {
     replayerNoteId.value = noteId;
     replayerDemoId.value = demoId ?? null;
     try {
-      const res = await fetch(`/api/note/items/${encodeURIComponent(noteId)}`, { credentials: 'include' });
-      if (res.status === 403) {
-        replayRouteError.value = 'forbidden';
-        return;
-      }
-      if (res.status === 404) {
-        replayRouteError.value = 'not_found';
-        return;
-      }
-      if (!res.ok) {
-        replayRouteError.value = 'not_found';
-        return;
-      }
-      const json = await res.json().catch(() => ({}));
-      const data = (json as {
-        data?: {
-          title?: string;
-          content?: string;
-          owner_id?: number;
-          demos?: Array<{ id: number; demo_uuid: string; demo_round: number; demo_meta?: string; file_name?: string; file_size?: number; created_at?: string }>;
-        };
-      }).data;
-      const demos = data?.demos ?? [];
-      const targetDemo = demoId != null
-        ? demos.find((d) => d.id === demoId)
-        : demos[0];
-      if (!targetDemo) {
-        replayRouteError.value = 'not_found';
-        return;
-      }
-      const resolvedDemoId = targetDemo.id;
+      const { uuid, roundNumber, meta, noteDetail, resolvedDemoId } = await ensureCachedFromNoteCloud(noteId, demoId);
       replayerDemoId.value = resolvedDemoId;
-      cloudNoteDetailFromApi.value = {
-        title: data?.title ?? '',
-        content: data?.content,
-        owner_id: typeof data?.owner_id === 'number' ? data.owner_id : undefined,
-        demos: data?.demos,
-      };
-      const demoRound = targetDemo.demo_round ?? 1;
-      let meta: ReplayMeta;
-      try {
-        const parsed = targetDemo.demo_meta ? (JSON.parse(targetDemo.demo_meta) as ReplayMeta) : null;
-        meta = parsed ? adaptMeta(parsed) : {
-          uuid: targetDemo.demo_uuid,
-          uploaderUid: '',
-          uploadTime: 0,
-          mapName: '',
-          teamCT: '',
-          teamT: '',
-          scoreCT: 0,
-          scoreT: 0,
-          totalRounds: 0,
-          totalFrames: 0,
-          status: 1,
-          totalDurationMs: 0,
-        };
-      } catch {
-        meta = {
-          uuid: targetDemo.demo_uuid,
-          uploaderUid: '',
-          uploadTime: 0,
-          mapName: '',
-          teamCT: '',
-          teamT: '',
-          scoreCT: 0,
-          scoreT: 0,
-          totalRounds: 0,
-          totalFrames: 0,
-          status: 1,
-          totalDurationMs: 0,
-        };
+      cloudNoteDetailFromApi.value = noteDetail;
+      setReplayData(meta);
+      const replayStorage = await getReplayStorage();
+      const roundBytes = await replayStorage.loadRound(uuid, roundNumber);
+      if (!roundBytes) {
+        replayRouteError.value = 'not_found';
+        return;
       }
-      setReplayData({ ...meta, id: meta.uuid, frames: [], timestamp: meta.uploadTime });
-      cloudDownloadProgress.value = { active: true, progress: 0, lengthComputable: null };
-      try {
-        const buf = await fetchRoundFileByNoteAndDemo(noteId, resolvedDemoId);
-        const roundBytesFetched = new Uint8Array(buf);
-        await applyRoundBytes(roundBytesFetched, demoRound);
-      } catch (e) {
-        console.warn('[LoadReplayByCloud] file fetch failed:', e);
+      await applyRoundBytes(roundBytes, roundNumber);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'forbidden') replayRouteError.value = 'forbidden';
+      else if (msg === 'not_found') replayRouteError.value = 'not_found';
+      else {
+        console.error('[LoadReplayByCloud]', e);
         replayRouteError.value = 'not_found';
       }
+    }
+  };
+
+  /** 云端 demo 库（/api/demos）：优先 IndexedDB 缓存，未命中时通过 GET /api/demos/file 拉取并写入缓存后加载，拉取时展示 progress */
+  const loadReplayByDemosCloud = async (demoId: number, roundNumber: number) => {
+    replayRouteError.value = null;
+    cloudNoteDetailFromApi.value = null;
+    replayerSource.value = 'cloud';
+    replayerNoteId.value = null;
+    replayerDemoId.value = demoId;
+    try {
+      const { uuid, roundNumber: rn, meta } = await ensureCachedFromDemosCloud(demoId, roundNumber);
+      setReplayData(meta);
+      const replayStorage = await getReplayStorage();
+      const roundBytes = await replayStorage.loadRound(uuid, rn);
+      if (!roundBytes) {
+        replayRouteError.value = 'not_found';
+        return;
+      }
+      await applyRoundBytes(roundBytes, rn);
     } catch (e) {
-      console.error('[LoadReplayByCloud]', e);
-      replayRouteError.value = 'not_found';
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'forbidden') replayRouteError.value = 'forbidden';
+      else if (msg === 'not_found') replayRouteError.value = 'not_found';
+      else {
+        console.error('[LoadReplayByDemosCloud]', e);
+        replayRouteError.value = 'not_found';
+      }
     }
   };
 
   /** 切换回合：仅 local 模式从 IndexedDB 加载；cloud 单回合不切换 */
   /** 清理云笔记播放状态：清空 source/noteId/replay/frames，用于切到本地库时不再保留 cloud 后台播放 */
   const clearCloudPlaybackState = () => {
-    if (replayerSource.value !== 'cloud') return;
+    if (!replayerNoteId.value && replayerDemoId.value == null) return;
     replayerSource.value = null;
     replayerNoteId.value = null;
     replayerDemoId.value = null;
@@ -412,10 +614,13 @@ function createReplayData() {
 
   const loadRoundData = async (uuid: string, roundNumber: number) => {
     replayRouteError.value = null;
-    if (replayerSource.value === 'cloud') {
+    if (replayerNoteId.value) {
       return;
     }
     try {
+      if (replayerDemoId.value != null) {
+        await ensureCachedFromDemosCloud(replayerDemoId.value, roundNumber);
+      }
       const storage = await getReplayStorage();
       const roundBytes = await storage.loadRound(uuid, roundNumber);
       if (!roundBytes) {
@@ -431,19 +636,12 @@ function createReplayData() {
 
   const deleteReplayById = async (uuid: string) => {
     console.log('[DeleteReplayById] 删除 UUID:', uuid);
-    
-    const metaStorage = await getMetaStorage();
     const replayStorage = await getReplayStorage();
-    
-    // 从 IndexedDB 删除 meta
-    await metaStorage.deleteMeta(uuid);
-    
-    // 从 IndexedDB 删除 rounds
     await replayStorage.deleteReplay(uuid);
-    
-    // 刷新列表
-    await loadAllReplays();
-    
+
+    const { currentUser } = useAuth();
+    if (currentUser.value) await loadReplayListFromServer();
+
     if (localStorage.getItem(LATEST_KEY) === uuid) {
       localStorage.removeItem(LATEST_KEY);
     }
@@ -561,6 +759,7 @@ function createReplayData() {
           if (xhr.status >= 200 && xhr.status < 300) {
             updateProgress(100, '完成');
             window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已上传到云端', type: 'info' } }));
+            loadReplayListFromServer();
             resolve();
           } else if (xhr.status === 401) {
             handleSessionExpired();
@@ -628,7 +827,6 @@ function createReplayData() {
       const estimatedTotalTicks = Math.round(fileSizeMB * PARSER_CONFIG.estimatedRatio);
       console.log(`[ParseDemo] File size: ${fileSizeMB.toFixed(2)}MB, Estimated ticks: ${estimatedTotalTicks} (ratio: ${PARSER_CONFIG.estimatedRatio})`);
 
-      const metaStorage = await getMetaStorage();
       const worker = new ParserWorker();
       let savedRoundsCount = 0;
       let lastTickTime = Date.now();
@@ -640,24 +838,19 @@ function createReplayData() {
           const parsed: ReplayMeta = JSON.parse(metaJsonString);
           parsed.fileName = fileName.replace(/\.dem$/i, '');
           if (parsed.status === -1) {
-            // 地图不支持等已由 worker 写入 status=-1 和 parsingStatus，直接保存不覆盖
             meta = parsed;
-            await metaStorage.saveMeta(parsed);
-            await loadAllReplays();
             parsing.value = false;
             parsingProgress.value = 0;
-            console.log('[ParseDemo] ✅ Meta saved (status=-1, unsupported map or error)');
+            console.log('[ParseDemo] Unsupported map or error (status=-1)');
             return;
           }
-          // status=0: 保存 meta 供刷新后「解析中断」展示；不关闭 cover，不 loadAllReplays
           parsed.status = 0;
           parsed.parsingProgress = 0;
           parsed.parsingStatus = 'Starting round parsing...';
           parsed.lastTickTime = Date.now();
           meta = parsed;
-          await metaStorage.saveMeta(parsed);
           updateParsingProgress(0, 'Starting round parsing...');
-          console.log('[ParseDemo] ✅ Meta saved (blocking parse in progress)');
+          console.log('[ParseDemo] Meta ready, round parsing in progress');
           return;
         }
         if (e.data.type === 'PROGRESS') {
@@ -668,7 +861,6 @@ function createReplayData() {
           const progress = Math.min(80, (parsedTicks / estimatedTotalTicks) * 80);
           const status = `Parsing rounds (${parsedTicks.toLocaleString()} / ~${estimatedTotalTicks.toLocaleString()} ticks)`;
           updateParsingProgress(Math.floor(progress), status);
-          await metaStorage.updateMetaStatus(meta.uuid, 0, Math.floor(progress), status, Date.now());
           console.log(`[ParseDemo] [${meta.uuid}] Tick progress: ${parsedTicks.toLocaleString()} ticks (${Math.floor(progress)}%)`);
         } else if (e.data.type === 'ROUND_COMPLETE') {
           const round: ReplayRound = e.data.round;
@@ -696,37 +888,33 @@ function createReplayData() {
               hasServerPlayer: !!e.data.serverPlayer,
               serverPlayerCount: e.data.serverPlayer?.length || 0,
             });
-            const latestMeta = await metaStorage.loadMeta(meta.uuid);
-            if (latestMeta) {
-              latestMeta.totalRounds = e.data.totalRounds;
-              latestMeta.scoreCT = e.data.scoreCT;
-              latestMeta.scoreT = e.data.scoreT;
-              latestMeta.teamCT = e.data.teamCT;
-              latestMeta.teamT = e.data.teamT;
-              latestMeta.roundResults = e.data.roundResults;
-              latestMeta.serverPlayer = e.data.serverPlayer; // Save server player info
-              if (e.data.totalRawFrames !== undefined) latestMeta.totalRawFrames = e.data.totalRawFrames;
-              if (e.data.totalParsedFrames !== undefined) latestMeta.totalParsedFrames = e.data.totalParsedFrames;
-              latestMeta.status = 1; // 完成
-              latestMeta.parsingProgress = 100;
-              latestMeta.parsingStatus = 'Complete';
-              
-              await metaStorage.saveMeta(latestMeta);
-              console.log(`[ParseDemo] Meta 已更新到 IndexedDB: status=1, progress=100%, serverPlayers=${e.data.serverPlayer?.length || 0}`);
-            }
+            const latestMeta: ReplayMeta = {
+              ...meta,
+              totalRounds: e.data.totalRounds ?? meta.totalRounds ?? 0,
+              scoreCT: e.data.scoreCT ?? meta.scoreCT ?? 0,
+              scoreT: e.data.scoreT ?? meta.scoreT ?? 0,
+              teamCT: e.data.teamCT ?? meta.teamCT ?? '',
+              teamT: e.data.teamT ?? meta.teamT ?? '',
+              roundResults: e.data.roundResults ?? meta.roundResults,
+              serverPlayer: e.data.serverPlayer ?? meta.serverPlayer,
+              totalRawFrames: e.data.totalRawFrames ?? meta.totalRawFrames,
+              totalParsedFrames: e.data.totalParsedFrames ?? meta.totalParsedFrames,
+              status: 1,
+              parsingProgress: 100,
+              parsingStatus: 'Complete',
+            };
 
-            await loadAllReplays();
             console.log(`[ParseDemo] Parsing complete for ${file.name}`);
 
-            // Upload to server (progress 80–100) if user is logged in
             const totalRounds = e.data.totalRounds ?? 0;
             if (totalRounds > 0 && meta) {
               updateParsingProgress(80, '正在上传到云端...');
-              await uploadDemosToServer(meta.uuid, totalRounds, latestMeta ?? (await metaStorage.loadMeta(meta.uuid)), updateParsingProgress);
+              await uploadDemosToServer(meta.uuid, totalRounds, latestMeta, updateParsingProgress);
+              const { currentUser } = useAuth();
+              if (currentUser.value) await loadReplayListFromServer();
             }
           } catch (e: any) {
             console.error('[ParseDemo] Finalization failed:', e);
-            await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, `Finalization error: ${e.message}`);
           } finally {
             parsing.value = false;
             parsingProgress.value = 0;
@@ -738,8 +926,8 @@ function createReplayData() {
           const { uuid: workerUuid, error: errorMessage } = e.data;
           console.error(`[ParseDemo] [${workerUuid}] Worker error:`, errorMessage);
           if (meta) {
-            await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, errorMessage);
-            await loadAllReplays();
+            const { currentUser } = useAuth();
+            if (currentUser.value) await loadReplayListFromServer();
           } else {
             error.value = `解析失败: ${errorMessage}`;
           }
@@ -754,8 +942,8 @@ function createReplayData() {
         const errMsg = ev.message || (ev.error && (ev.error as Error).message) || String(ev);
         console.error('[ParseDemo] Worker error event:', ev);
         if (meta) {
-          await metaStorage.updateMetaStatus(meta.uuid, -1, undefined, errMsg);
-          await loadAllReplays();
+          const { currentUser } = useAuth();
+          if (currentUser.value) await loadReplayListFromServer();
         } else {
           error.value = `解析失败: ${errMsg}`;
         }
@@ -806,13 +994,17 @@ function createReplayData() {
       loading.value = true;
       error.value = null;
 
-      await loadAllReplays();
-      console.log('[Load] 已加载所有回放列表，数量:', replayList.value.length);
+      const { currentUser } = useAuth();
+      if (currentUser.value) {
+        await loadReplayListFromServer();
+      } else {
+        replayList.value = [];
+      }
+      console.log('[Load] 已加载回放列表，数量:', replayList.value.length);
 
-      // Don't automatically load any demo on first page load
-      // User must manually select a demo from the list
-      console.log('[Load] 不自动加载任何Demo，等待用户手动选择');
-      statusMsg.value = '请打开左上角 Demo 列表并解析 demo 文件';
+      statusMsg.value = currentUser.value
+        ? 'Demo 列表已从云端加载'
+        : '请登录后查看云端 Demo 列表';
     } catch (e: any) {
       if (e.name === 'AbortError') return;
       console.error('Initial load failed', e);
@@ -862,6 +1054,8 @@ function createReplayData() {
     cloudNoteDetailFromApi,
     loadReplayByLocal,
     loadReplayByCloud,
+    loadReplayByDemosCloud,
+    loadReplayListFromServer,
     clearCloudPlaybackState,
     getRoundFramesForPreview,
   };

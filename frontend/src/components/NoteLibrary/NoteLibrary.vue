@@ -108,7 +108,7 @@
           v-for="item in filteredNoteList"
           :key="item.id"
           class="note-card cs2-tactics-card ds-card"
-          :class="{ 'is-current': replayerSource === 'cloud' && replayerNoteId === item.id }"
+          :class="{ 'is-current': replayerNoteId === item.id }"
         >
           <!-- Card header: title only, no background image -->
           <div class="card-title">
@@ -131,7 +131,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="replayerSource === 'cloud' && replayerNoteId === item.id" class="card-title-badges">
+            <div v-if="replayerNoteId === item.id" class="card-title-badges">
               <span class="playing-badge">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="5 3 19 12 5 21 5 3"/>

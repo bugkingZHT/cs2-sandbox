@@ -1,231 +1,82 @@
 import type { ReplayMeta } from '../types/replay';
-import { resolveTeamDisplayName } from './teamDisplay';
+
+// Replay meta is no longer stored in IndexedDB; it is always loaded from cloud (GET /api/demos, note item, etc.).
+// Only replay-rounds are cached in IndexedDB for faster re-load.
 
 // Database schema
 const DB_NAME = 'cs-demobox';
-const DB_VERSION = 12; // v11→v12: remove unused cloud-archive store
-const META_STORE = 'replay-meta';
+const DB_VERSION = 13; // v12→v13: remove replay-meta store; meta comes from cloud only
 const ROUNDS_STORE = 'replay-rounds';
+const LEGACY_META_STORE = 'replay-meta';
 
-export class IndexedDBMetaStorage {
-  private db: IDBDatabase | null = null;
+let sharedDb: IDBDatabase | null = null;
+let sharedDbPromise: Promise<IDBDatabase> | null = null;
 
-  isInitialized(): boolean {
-    return this.db !== null;
-  }
-
-  getDb(): IDBDatabase | null {
-    return this.db;
-  }
-
-  async init(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        // Create meta store with uuid as key
-        if (!db.objectStoreNames.contains(META_STORE)) {
-          const store = db.createObjectStore(META_STORE, { keyPath: 'uuid' });
-          store.createIndex('uploadTime', 'uploadTime', { unique: false });
-          store.createIndex('status', 'status', { unique: false });
-          console.log('[IndexedDB] Created meta store with indexes');
-        }
-        // v9: remove legacy tactic stores if present (cleanup leaked 战术本 data)
-        if (db.objectStoreNames.contains('tactic-favorites')) {
-          db.deleteObjectStore('tactic-favorites');
-          console.log('[IndexedDB] Deleted legacy tactic-favorites store');
-        }
-        if (db.objectStoreNames.contains('tactic-tree')) {
-          db.deleteObjectStore('tactic-tree');
-          console.log('[IndexedDB] Deleted legacy tactic-tree store');
-        }
-        if (db.objectStoreNames.contains('cloud-archive')) {
-          db.deleteObjectStore('cloud-archive');
-          console.log('[IndexedDB] Deleted unused cloud-archive store');
-        }
-        if (!db.objectStoreNames.contains(ROUNDS_STORE)) {
-          const roundsStore = db.createObjectStore(ROUNDS_STORE, { autoIncrement: false });
-          roundsStore.createIndex('uuid', 'uuid', { unique: false });
-          console.log('[IndexedDB] Created replay-rounds store');
-        }
-      };
-    });
-  }
-
-  // Save meta to IndexedDB
-  async saveMeta(meta: ReplayMeta): Promise<void> {
-    if (!this.db) throw new Error('DB not initialized');
-    // Structured clone used by put() cannot clone Vue reactive proxies or other non-plain values.
-    // Ensure a plain object so put() never fails with "could not be cloned".
-    const plain = JSON.parse(JSON.stringify(meta)) as ReplayMeta;
-
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readwrite');
-      const store = tx.objectStore(META_STORE);
-      const request = store.put(plain);
-
-      request.onsuccess = () => {
-        console.log(`[IndexedDB] Saved meta: ${plain.uuid.substring(0, 8)}, status=${plain.status}`);
-        resolve();
-      };
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // Load single meta by UUID
-  async loadMeta(uuid: string): Promise<ReplayMeta | null> {
-    if (!this.db) throw new Error('DB not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readonly');
-      const store = tx.objectStore(META_STORE);
-      const request = store.get(uuid);
-      
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // Load all metas
-  async loadAllMetas(): Promise<ReplayMeta[]> {
-    if (!this.db) throw new Error('DB not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readonly');
-      const store = tx.objectStore(META_STORE);
-      const request = store.getAll();
-      
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // Update meta status fields
-  async updateMetaStatus(
-    uuid: string, 
-    status: number, 
-    progress?: number, 
-    statusText?: string,
-    lastTickTime?: number
-  ): Promise<void> {
-    const meta = await this.loadMeta(uuid);
-    if (!meta) throw new Error(`Meta not found: ${uuid}`);
-    
-    meta.status = status;
-    if (progress !== undefined) meta.parsingProgress = progress;
-    if (statusText !== undefined) meta.parsingStatus = statusText;
-    if (lastTickTime !== undefined) meta.lastTickTime = lastTickTime;
-    
-    await this.saveMeta(meta);
-  }
-
-  // Delete meta
-  async deleteMeta(uuid: string): Promise<void> {
-    if (!this.db) throw new Error('DB not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readwrite');
-      const store = tx.objectStore(META_STORE);
-      const request = store.delete(uuid);
-      
-      request.onsuccess = () => {
-        console.log(`[IndexedDB] Deleted meta: ${uuid.substring(0, 8)}`);
-        resolve();
-      };
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // Query parsing metas (status = 0)
-  async getParsingMetas(): Promise<ReplayMeta[]> {
-    if (!this.db) throw new Error('DB not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readonly');
-      const store = tx.objectStore(META_STORE);
-      const index = store.index('status');
-      const request = index.getAll(0); // status = 0 (parsing)
-      
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // Get all unique team names from both teamCT and teamT
-  async getAllTeamNames(): Promise<string[]> {
-    if (!this.db) throw new Error('DB not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readonly');
-      const store = tx.objectStore(META_STORE);
-      const request = store.getAll();
-      
-      request.onsuccess = () => {
-        const metas = request.result || [];
-        const teamNamesSet = new Set<string>();
-        
-        // Only include metas where fork is not true
-        metas.filter((meta: ReplayMeta) => !meta.fork).forEach((meta: ReplayMeta) => {
-          const ctName = resolveTeamDisplayName(meta.teamCT ?? '', 3, meta.serverPlayer);
-          const tName = resolveTeamDisplayName(meta.teamT ?? '', 2, meta.serverPlayer);
-          if (ctName !== '-') teamNamesSet.add(ctName);
-          if (tName !== '-') teamNamesSet.add(tName);
-        });
-        
-        // Convert to sorted array
-        const teamNames = Array.from(teamNamesSet).sort((a, b) => 
-          a.toLowerCase().localeCompare(b.toLowerCase())
-        );
-        
-        resolve(teamNames);
-      };
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // Get all unique player names from serverPlayer
-  async getAllPlayerNames(): Promise<string[]> {
-    if (!this.db) throw new Error('DB not initialized');
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db!.transaction(META_STORE, 'readonly');
-      const store = tx.objectStore(META_STORE);
-      const request = store.getAll();
-      
-      request.onsuccess = () => {
-        const metas = request.result || [];
-        const playerNamesSet = new Set<string>();
-        
-        // Only include metas where fork is not true
-        metas.filter((meta: ReplayMeta) => !meta.fork).forEach((meta: ReplayMeta) => {
-          if (meta.serverPlayer && Array.isArray(meta.serverPlayer)) {
-            meta.serverPlayer.forEach(player => {
-              if (player.name && player.name.trim()) {
-                playerNamesSet.add(player.name.trim());
-              }
-            });
-          }
-        });
-        
-        // Convert to sorted array
-        const playerNames = Array.from(playerNamesSet).sort((a, b) => 
-          a.toLowerCase().localeCompare(b.toLowerCase())
-        );
-        
-        resolve(playerNames);
-      };
-      request.onerror = () => reject(request.error);
-    });
-  }
+function ensureDB(): Promise<IDBDatabase> {
+  if (sharedDb) return Promise.resolve(sharedDb);
+  if (sharedDbPromise) return sharedDbPromise;
+  sharedDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      sharedDb = request.result;
+      resolve(sharedDb);
+    };
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (db.objectStoreNames.contains(LEGACY_META_STORE)) {
+        db.deleteObjectStore(LEGACY_META_STORE);
+        console.log('[IndexedDB] Deleted replay-meta store (meta from cloud only)');
+      }
+      if (db.objectStoreNames.contains('tactic-favorites')) {
+        db.deleteObjectStore('tactic-favorites');
+      }
+      if (db.objectStoreNames.contains('tactic-tree')) {
+        db.deleteObjectStore('tactic-tree');
+      }
+      if (db.objectStoreNames.contains('cloud-archive')) {
+        db.deleteObjectStore('cloud-archive');
+      }
+      if (!db.objectStoreNames.contains(ROUNDS_STORE)) {
+        const roundsStore = db.createObjectStore(ROUNDS_STORE, { autoIncrement: false });
+        roundsStore.createIndex('uuid', 'uuid', { unique: false });
+        console.log('[IndexedDB] Created replay-rounds store');
+      }
+    };
+  });
+  return sharedDbPromise;
 }
+
+/** No-op meta storage: replay meta is never persisted locally; all meta comes from cloud. */
+export const IndexedDBMetaStorage = {
+  isInitialized(): boolean {
+    return sharedDb !== null;
+  },
+  getDb(): IDBDatabase | null {
+    return sharedDb;
+  },
+  async init(): Promise<IDBDatabase> {
+    return ensureDB();
+  },
+  async saveMeta(_meta: ReplayMeta): Promise<void> {},
+  async loadMeta(_uuid: string): Promise<ReplayMeta | null> {
+    return null;
+  },
+  async loadAllMetas(): Promise<ReplayMeta[]> {
+    return [];
+  },
+  async updateMetaStatus(_uuid: string, _status: number, _progress?: number, _statusText?: string, _lastTickTime?: number): Promise<void> {},
+  async deleteMeta(_uuid: string): Promise<void> {},
+  async getParsingMetas(): Promise<ReplayMeta[]> {
+    return [];
+  },
+  async getAllTeamNames(): Promise<string[]> {
+    return [];
+  },
+  async getAllPlayerNames(): Promise<string[]> {
+    return [];
+  },
+};
 
 // ========== IndexedDB Replay Round Storage (pb binary, gzipped) ==========
 // Round bytes are stored gzipped when written via encodeReplayRound (proto-converters).
@@ -244,14 +95,8 @@ export class IndexedDBReplayStorage {
   private db: IDBDatabase | null = null;
 
   async init(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-    });
+    this.db = await ensureDB();
+    return this.db;
   }
 
   async saveRound(uuid: string, roundNum: number, roundBytes: Uint8Array): Promise<void> {
@@ -342,6 +187,9 @@ export class IndexedDBReplayStorage {
     const roundUuids = await this.listAllReplays();
     const metaStorage = await getMetaStorage();
     const metas = await metaStorage.loadAllMetas();
+    if (metas.length === 0) {
+      return { deleted: [], count: 0 };
+    }
     const metaUuidSet = new Set(metas.map((m) => m.uuid));
     const orphaned = roundUuids.filter((uuid) => !metaUuidSet.has(uuid));
     const deleted: string[] = [];
@@ -457,7 +305,7 @@ export async function getReplayStorage(): Promise<IndexedDBReplayStorage> {
   if (replayStorageInstance) return replayStorageInstance;
   if (replayInitPromise) return replayInitPromise;
   replayInitPromise = (async () => {
-    await getMetaStorage();
+    await ensureDB();
     const instance = new IndexedDBReplayStorage();
     await instance.init();
     replayStorageInstance = instance;
@@ -472,38 +320,9 @@ export async function cleanupOrphanedReplayStorage(maxSurge?: number): Promise<C
   return storage.cleanupOrphanedReplays(maxSurge);
 }
 
-// Singleton
-let metaStorageInstance: IndexedDBMetaStorage | null = null;
-let initPromise: Promise<IndexedDBMetaStorage> | null = null;
-
-export async function getMetaStorage(): Promise<IndexedDBMetaStorage> {
-  // If instance exists and is initialized, return it
-  if (metaStorageInstance && metaStorageInstance.isInitialized()) {
-    return metaStorageInstance;
-  }
-  
-  // If initialization is in progress, wait for it
-  if (initPromise) {
-    return initPromise;
-  }
-  
-  // Start new initialization
-  initPromise = (async () => {
-    try {
-      metaStorageInstance = new IndexedDBMetaStorage();
-      await metaStorageInstance.init();
-      return metaStorageInstance;
-    } catch (error) {
-      console.error('[IndexedDB] Failed to initialize:', error);
-      metaStorageInstance = null;
-      initPromise = null;
-      throw error;
-    } finally {
-      initPromise = null;
-    }
-  })();
-  
-  return initPromise;
+export async function getMetaStorage(): Promise<typeof IndexedDBMetaStorage> {
+  await ensureDB();
+  return IndexedDBMetaStorage;
 }
 
 // Debug utilities for console (window.debugOPFS for backward compat)

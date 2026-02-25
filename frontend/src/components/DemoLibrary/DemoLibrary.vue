@@ -370,7 +370,7 @@
                     :class="{ 'is-filtered-out': filterEconomyType !== 'all' && !roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType) }"
                     :title="'播放回合 ' + r"
                     :disabled="filterEconomyType !== 'all' && !roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType)"
-                    @click.stop="(filterEconomyType === 'all' || roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType)) && openReplayer(demo.uuid, r)"
+                    @click.stop="(filterEconomyType === 'all' || roundMatchesEconomyFilter(r, demo.roundResults, filterEconomyType)) && openReplayer(demo, r)"
                   >
                     <img
                       v-if="getRoundResultIcon(r, demo.roundResults) && shouldIconBeFirst(r, demo.roundResults)"
@@ -507,7 +507,6 @@ import { computed, ref, onMounted, watch } from 'vue';
 import type { ReplayData } from '@/types/replay';
 import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
-import { getMetaStorage } from '@/composables/indexdb-storage';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
 // Removed import for resolveTeamDisplayName to avoid fallback to player names
 import { navigate, getQuery, replaceLocation, pathRef, searchRef, getReplayerPlayingLocal } from '@/location';
@@ -553,8 +552,9 @@ const currentPlayingLocal = computed(() => {
   return getReplayerPlayingLocal();
 });
 
-function openReplayer(demoUuid: string, round: number) {
-  navigate('/replayer', `source=local&uuid=${encodeURIComponent(demoUuid)}&round=${round}&tab=players`);
+function openReplayer(demo: ReplayData, round: number) {
+  const tab = 'players';
+  navigate('/replayer', `demo_uuid=${encodeURIComponent(demo.uuid)}&round=${round}&tab=${tab}`);
 }
 
 // Upload modal state (dashed drop zone)
@@ -601,8 +601,27 @@ const filterPlayerNameInput = ref('');
 const showMapDropdown = ref(false);
 const showTeamDropdown = ref(false);
 const showPlayerDropdown = ref(false);
-const allTeamNames = ref<string[]>([]);
-const allPlayerNames = ref<string[]>([]);
+const allTeamNames = computed(() => {
+  const set = new Set<string>();
+  props.demoList.forEach(demo => {
+    if (demo.fork) return;
+    const ct = getTeamDisplayName(demo, 'ct');
+    const t = getTeamDisplayName(demo, 't');
+    if (ct !== '-') set.add(ct);
+    if (t !== '-') set.add(t);
+  });
+  return Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+});
+const allPlayerNames = computed(() => {
+  const set = new Set<string>();
+  props.demoList.forEach(demo => {
+    if (demo.fork) return;
+    (demo.serverPlayer || []).forEach((p: { name?: string }) => {
+      if (p.name && p.name.trim()) set.add(p.name.trim());
+    });
+  });
+  return Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+});
 
 // Filtered map options based on input (derived from demoList)
 const filteredMapOptions = computed(() => {
@@ -638,7 +657,7 @@ const filteredTeamOptions = computed(() => {
     if (tName !== '') teamCounts.set(tName, (teamCounts.get(tName) || 0) + 1);
   });
   
-  let teams = allTeamNames.value;
+  let teams = [...allTeamNames.value];
   
   // Filter by input if provided
   if (filterTeamNameInput.value.trim()) {
@@ -670,7 +689,7 @@ const filteredPlayerOptions = computed(() => {
     }
   });
   
-  let players = allPlayerNames.value;
+  let players = [...allPlayerNames.value];
   
   // Filter by input if provided
   if (filterPlayerNameInput.value.trim()) {
@@ -718,32 +737,6 @@ const getPlayerDemoCount = (playerName: string): number => {
     }
   });
   return count;
-};
-
-// Load team names from IndexedDB
-const loadTeamNames = async () => {
-  try {
-    const metaStorage = await getMetaStorage();
-    if (metaStorage) {
-      allTeamNames.value = await metaStorage.getAllTeamNames();
-    }
-  } catch (error) {
-    console.error('[DemoLibrary] Failed to load team names:', error);
-    allTeamNames.value = [];
-  }
-};
-
-// Load player names from IndexedDB
-const loadPlayerNames = async () => {
-  try {
-    const metaStorage = await getMetaStorage();
-    if (metaStorage) {
-      allPlayerNames.value = await metaStorage.getAllPlayerNames();
-    }
-  } catch (error) {
-    console.error('[DemoLibrary] Failed to load player names:', error);
-    allPlayerNames.value = [];
-  }
 };
 
 // Toggle player name (single-select)
@@ -903,8 +896,6 @@ onMounted(() => {
   filterPlayerNames.value = player;
   filterEconomyType.value = economy;
 
-  loadTeamNames(); // Load team names from IndexedDB
-  loadPlayerNames(); // Load player names from IndexedDB
 
   // Add click outside listener for dropdown
   document.addEventListener('click', handleClickOutside);
@@ -948,8 +939,6 @@ watch(searchRef, () => {
 });
 
 watch(() => props.demoList.length, () => {
-  loadTeamNames(); // Reload team names when demo list changes
-  loadPlayerNames(); // Reload player names when demo list changes
 });
 
 // Watch for parsing completion (status change from 0 to 1)
@@ -964,8 +953,6 @@ watch(() => props.demoList.map(d => ({ id: d.id, status: d.status })), (newList,
   
   if (hasCompletedParsing) {
     console.log('[DemoLibrary] Demo parsing completed, refreshing player and team indexes');
-    loadTeamNames();
-    loadPlayerNames();
   }
 }, { deep: true });
 
@@ -1537,7 +1524,7 @@ const scoreLeftRightMap = computed(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0;
+  padding: 0 12px;
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-md);
@@ -1857,7 +1844,7 @@ const scoreLeftRightMap = computed(() => {
 }
 
 .demo-bar-round-cell.is-playing {
-  background: linear-gradient(to top, rgba(35, 134, 54, 0.5), transparent);
+  background: linear-gradient(to top, rgba(var(--ds-primary-rgb), 0.5), transparent);
 }
 
 .demo-bar-round-btn {
@@ -1916,8 +1903,8 @@ const scoreLeftRightMap = computed(() => {
 }
 
 .demo-bar-round-cell.is-playing .demo-bar-round-underline {
-  background: rgba(46, 160, 67, 0.9);
-  box-shadow: 0 0 6px rgba(46, 160, 67, 0.7);
+  background: rgba(var(--ds-primary-rgb), 0.9);
+  box-shadow: 0 0 6px rgba(var(--ds-primary-rgb), 0.7);
 }
 
 .demo-bar-round-v-divider {

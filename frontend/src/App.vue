@@ -51,7 +51,7 @@
         <button
           type="button"
           class="nav-btn"
-          :class="{ active: currentPage === 'notes' || (currentPage === 'player' && replayerSource === 'cloud') }"
+          :class="{ active: currentPage === 'notes' || (currentPage === 'player' && replayerNoteId) }"
           @click="onNavigateToNotes"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -257,6 +257,7 @@ const NoteLibrary = defineAsyncComponent(() => import('@/components/NoteLibrary/
 import NoteModal from '@/components/NoteLibrary/NoteModal.vue';
 import NoteFormSidebar from '@/components/NoteLibrary/NoteFormSidebar.vue';
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
+import type { ReplayData } from '@/types/replay';
 import { useReplayData } from '@/composables/useReplayData';
 import { useNote, type CloudArchiveItem, type NoteToastType } from '@/composables/useNote';
 import { useAuth } from '@/composables/useAuth';
@@ -276,6 +277,8 @@ const {
   loadRoundData,
   loadReplayByLocal,
   loadReplayByCloud,
+  loadReplayByDemosCloud,
+  loadReplayListFromServer,
   deleteReplayById,
   clearCloudPlaybackState,
   replay,
@@ -358,7 +361,7 @@ function onClipPublishAvailable(payload: { available: boolean }) {
 const canAddToNote = computed(
   () =>
     currentPage.value === 'player' &&
-    replayerSource.value !== 'cloud' &&
+    !replayerNoteId.value &&
     ((!!currentDemoId.value && !!currentRoundNumber.value && !!replay.value) || canPublishClip.value)
 );
 
@@ -388,7 +391,7 @@ const cloudNoteFullForReplayer = computed<CloudArchiveItem | null>(() => {
 const replayerNoteOnlyShare = computed(() => {
   if (currentPage.value !== 'player') return false;
   const q = getQuery();
-  return q.source === 'cloud' && (q.note_id != null && q.note_id !== '') && (q.demo_id == null || q.demo_id === '');
+  return (q.note_id != null && q.note_id !== '') && (q.demo_id == null || q.demo_id === '');
 });
 
 /** 当前 replayer 云笔记是否为本人的（可编辑）；非 owner 禁用编辑并隐藏保存 */
@@ -451,7 +454,7 @@ function formatFileSize(bytes: number): string {
 function goToNoteItem(payload: CloudArchiveItem | { noteId: string; demoId: number }) {
   const noteId = 'noteId' in payload ? payload.noteId : payload.id;
   const demoId = 'demoId' in payload ? payload.demoId : undefined;
-  const params = new URLSearchParams({ source: 'cloud', note_id: noteId });
+  const params = new URLSearchParams({ note_id: noteId });
   if (demoId != null) params.set('demo_id', String(demoId));
   navigate('/replayer', params.toString());
 }
@@ -470,8 +473,7 @@ function onNavigateToReplayer() {
   const saved = getReplayerPlayingLocal();
   if (saved?.uuid != null && saved?.round != null) {
     const search = new URLSearchParams({
-      source: 'local',
-      uuid: saved.uuid,
+      demo_uuid: saved.uuid,
       round: String(saved.round),
       tab: 'players',
     }).toString();
@@ -684,7 +686,7 @@ function onNoteDrop(toIndex: number) {
   onNoteDragEnd();
 }
 
-// 根据 URL source/uuid/round 或 note_id 加载 replayer 数据
+// 根据 URL demo_uuid/round/tab 或 note_id 加载 replayer 数据；统一先读缓存、再同步云上
 async function ensureReplayerRouteData() {
   const path = pathRef.value || window.location.pathname;
   const search = searchRef.value ?? window.location.search;
@@ -692,8 +694,7 @@ async function ensureReplayerRouteData() {
   searchRef.value = search;
 
   const query = getQuery(search);
-  const source = query.source ?? null;
-  const uuid = query.uuid ?? null;
+  const demoUuid = query.demo_uuid ?? null;
   const roundNum = parseInt(query.round || '', 10) || 1;
   const noteId = query.note_id ?? null;
   const demoIdRaw = query.demo_id != null ? parseInt(String(query.demo_id), 10) : undefined;
@@ -705,33 +706,28 @@ async function ensureReplayerRouteData() {
     replayerPureMode.value = false;
   }
 
-  const isCloud = source === 'cloud' || (noteId && source !== 'local');
-  const isLocal = !isCloud && (source === 'local' || uuid);
-
   if (path !== '/replayer') {
     replayerRouteLoading.value = false;
     return;
   }
-  if (!isCloud && !isLocal) {
+
+  // 无 demo_uuid 且无 note_id：若当前有播放中的 demo 则规范化 URL 为 demo_uuid
+  if (!demoUuid && !noteId) {
     replayerRouteLoading.value = false;
     if (currentDemoId.value) {
       const q = getQuery();
-      const base = `source=local&uuid=${currentDemoId.value}&round=${currentRoundNumber.value || 1}`;
+      const base = `demo_uuid=${encodeURIComponent(currentDemoId.value)}&round=${currentRoundNumber.value || 1}`;
       const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
-      const tab = (q.tab && ['players', 'rounds', 'settings', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '';
+      const tab = (q.tab && ['players', 'rounds', 'settings', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '&tab=players';
       replaceLocation('/replayer', base + pure + tab);
     }
     return;
   }
 
-  if (isCloud) {
-    if (!noteId) {
-      replayerRouteLoading.value = false;
-      return;
-    }
+  // 笔记附件播放：note_id + 可选 demo_id
+  if (noteId) {
     const needLoad =
       !replay.value ||
-      replayerSource.value !== 'cloud' ||
       replayerNoteId.value !== noteId ||
       (demoIdValid !== undefined && replayerDemoId.value !== demoIdValid);
     if (!needLoad) {
@@ -751,28 +747,37 @@ async function ensureReplayerRouteData() {
     return;
   }
 
-  if (!uuid) {
-    replayerRouteLoading.value = false;
-    return;
-  }
-  const needLoadReplay = !replay.value || replay.value.uuid !== uuid || replayerSource.value !== 'local';
-  const needLoadRound = !needLoadReplay && currentRoundNumber.value !== roundNum;
-  if (!needLoadReplay && !needLoadRound) {
-    replayerRouteLoading.value = false;
-    currentDemoId.value = uuid;
-    return;
-  }
-  replayerRouteLoading.value = true;
-  currentDemoId.value = uuid;
-  try {
+  // 统一 demolib 播放：demo_uuid + round，从 replayList 解析 demo_id，先读缓存再同步云
+  if (demoUuid) {
     await waitForInitialLoad();
-    if (needLoadReplay) {
-      await loadReplayByLocal(uuid, roundNum);
-    } else if (needLoadRound) {
-      await loadRoundData(uuid, roundNum);
+    let item = replayList.value?.find((d) => d.id === demoUuid);
+    if (!item) {
+      await loadReplayListFromServer();
+      item = replayList.value?.find((d) => d.id === demoUuid);
     }
-  } finally {
-    replayerRouteLoading.value = false;
+    const cloudDemoId = item ? (item as ReplayData & { cloudDemoId?: number }).cloudDemoId : undefined;
+    if (cloudDemoId == null) {
+      replayerRouteLoading.value = false;
+      replayRouteError.value = 'not_found';
+      return;
+    }
+    const needLoad =
+      !replay.value ||
+      replayerDemoId.value !== cloudDemoId ||
+      currentRoundNumber.value !== roundNum;
+    if (!needLoad) {
+      replayerRouteLoading.value = false;
+      currentDemoId.value = replay.value?.uuid ?? null;
+      return;
+    }
+    replayerRouteLoading.value = true;
+    currentDemoId.value = null;
+    try {
+      await loadReplayByDemosCloud(cloudDemoId, roundNum);
+      currentDemoId.value = replay.value?.uuid ?? null;
+    } finally {
+      replayerRouteLoading.value = false;
+    }
   }
 }
 
@@ -797,10 +802,7 @@ watch(
 
 watch(
   () =>
-    pathRef.value === '/replayer' &&
-    replayerSource.value === 'local' &&
-    replay.value?.uuid &&
-    currentRoundNumber.value
+    pathRef.value === '/replayer' && replay.value?.uuid && currentRoundNumber.value
       ? { uuid: replay.value.uuid, round: currentRoundNumber.value }
       : null,
   (payload) => {
@@ -810,7 +812,10 @@ watch(
 );
 
 watch(currentUser, (user) => {
-  if (user) loadNotes();
+  if (user) {
+    loadNotes();
+    loadReplayListFromServer();
+  }
 });
 
 watch(sidebarCollapsed, (val) => {
