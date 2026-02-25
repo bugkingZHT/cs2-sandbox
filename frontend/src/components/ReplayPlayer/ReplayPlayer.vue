@@ -147,7 +147,6 @@
                 @click="toggleLeftPanelTab('players')"
               >玩家</button>
               <button
-                v-if="!replayerNoteId"
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
@@ -598,7 +597,7 @@
             </div>
           </div>
           <div class="left-panel-footer">
-            <div v-if="replayerNoteId" class="embed-link-wrap">
+            <div class="embed-link-wrap">
               <button
                 type="button"
                 class="left-panel-footer-btn embed-link-btn"
@@ -609,7 +608,6 @@
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
                 </svg>
-                <span class="left-panel-footer-btn-text">内嵌链接</span>
               </button>
             </div>
             <button
@@ -621,17 +619,6 @@
               @click="isClipMode = !isClipMode"
             >
               <img src="/icons/slip.svg" class="left-panel-footer-btn-icon" alt="" />
-            </button>
-            <button
-              v-if="!pureMode && !replayerNoteId"
-              type="button"
-              class="left-panel-footer-btn publish-note-btn"
-              :title="props.canAddToNote ? '发布笔记' : '当前回合可发布到笔记'"
-              :disabled="!props.canAddToNote || props.noteUploading || clipForking"
-              @click="onPublishClick"
-            >
-              <img src="/icons/upload.svg" alt="" class="left-panel-footer-btn-icon" width="18" height="18" />
-              <span class="left-panel-footer-btn-text">笔记</span>
             </button>
           </div>
         </div>
@@ -861,14 +848,11 @@ function formatNoteTime(ms: number): string {
   return `${y}-${m}-${day} ${h}:${min}:${s}`;
 }
 
-/** 复制内嵌分享链接（带 pure=1） */
+/** 复制内嵌分享链接（当前页面链接 + pure=1） */
 async function copyEmbedLink() {
-  const noteId = replayerNoteId.value;
-  if (!noteId) return;
-  const base = typeof window !== 'undefined' ? window.location.origin : '';
-  const pathBase = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
-  const prefix = pathBase && pathBase !== '/' ? pathBase : '';
-  const url = `${base}${prefix}/replayer?note_id=${encodeURIComponent(noteId)}&demo_id=_&pure=1`;
+  let url = typeof window !== 'undefined' ? window.location.href : '';
+  const sep = url.includes('?') ? '&' : '?';
+  url = `${url}${sep}pure=1`;
   try {
     await navigator.clipboard.writeText(url);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
