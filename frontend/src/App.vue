@@ -221,7 +221,7 @@ const {
   loadReplayByLocal,
   loadReplayByDemosCloud,
   loadReplayListFromServer,
-  deleteReplayById,
+  deleteDemoByUuid,
   replay,
   currentRoundNumber,
   waitForInitialLoad,
@@ -452,13 +452,15 @@ const onSelectDemo = (_demoId: string) => {
   /* no-op */
 };
 
-const onDeleteDemo = async (demoId: string) => {
-  console.log('[App] Deleting demo:', demoId);
-  await deleteReplayById(demoId);
-  if (currentDemoId.value === demoId) {
-    currentDemoId.value = null;
+const onDeleteDemo = async (demoUuid: string) => {
+  try {
+    await deleteDemoByUuid(demoUuid);
+    if (currentDemoId.value === demoUuid) currentDemoId.value = null;
+    showToast('删除成功', 'info');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '删除失败';
+    showToast(msg, 'error');
   }
-  console.log('[App] Demo deleted successfully:', demoId);
 };
 
 const onUploadDemo = async (file: File) => {

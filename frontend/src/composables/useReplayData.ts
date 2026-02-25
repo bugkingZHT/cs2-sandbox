@@ -30,7 +30,8 @@ interface UseReplayResult {
   parseDemo: (file: File) => Promise<void>;
   loadReplayById: (id: string) => Promise<void>;
   loadRoundData: (uuid: string, roundNumber: number) => Promise<void>;
-  deleteReplayById: (id: string) => Promise<void>;
+  /** 按 demo_uuid 删除云端 demo 并清理本地缓存：先鉴权（uid 匹配），删除云 DB+存储，再清本地，最后刷新列表 */
+  deleteDemoByUuid: (uuid: string) => Promise<void>;
   /** 等待首次 loadAllReplays 完成，与 demolib 一致，避免 replayer 刷新时竞态 */
   waitForInitialLoad: () => Promise<void>;
   /** replayer 路由下加载失败原因：'not_found' 未找到回放，'forbidden' 回放无权限，null 无错误 */
@@ -636,18 +637,28 @@ function createReplayData() {
     }
   };
 
-  const deleteReplayById = async (uuid: string) => {
-    console.log('[DeleteReplayById] 删除 UUID:', uuid);
+  /** 按 demo_uuid 删除：后端鉴权（uid 匹配）→ 删除云 DB+存储 → 清理本地 cache → 刷新列表 */
+  const deleteDemoByUuid = async (uuid: string) => {
+    const byUuidRes = await fetch(`/api/demos/by-uuid?demo_uuid=${encodeURIComponent(uuid)}`, { credentials: 'include' });
+    if (byUuidRes.status === 403) throw new Error('无权限');
+    if (byUuidRes.status === 404 || !byUuidRes.ok) throw new Error('未找到');
+    const byUuidJson = await byUuidRes.json().catch(() => ({}));
+    const data = (byUuidJson as { data?: { id?: number } })?.data;
+    const demoId = data?.id;
+    if (demoId == null) throw new Error('未找到');
+
+    const delRes = await fetch(`/api/demos/${demoId}`, { method: 'DELETE', credentials: 'include' });
+    if (delRes.status === 403) throw new Error('无权限');
+    if (delRes.status === 404 || !delRes.ok) {
+      const errJson = await delRes.json().catch(() => ({}));
+      throw new Error((errJson as { error?: string }).error || '删除失败');
+    }
+
     const replayStorage = await getReplayStorage();
     await replayStorage.deleteReplay(uuid);
-
+    if (localStorage.getItem(LATEST_KEY) === uuid) localStorage.removeItem(LATEST_KEY);
     const { currentUser } = useAuth();
     if (currentUser.value) await loadReplayListFromServer();
-
-    if (localStorage.getItem(LATEST_KEY) === uuid) {
-      localStorage.removeItem(LATEST_KEY);
-    }
-    console.log('[DeleteReplayById] 删除完成');
   };
 
   const estimateBounds = (allFrames: Frame[]): WorldBounds | null => {
@@ -1046,7 +1057,7 @@ function createReplayData() {
     parseDemo,
     loadReplayById,
     loadRoundData,
-    deleteReplayById,
+    deleteDemoByUuid,
     waitForInitialLoad,
     replayRouteError,
     cloudDownloadProgress,
