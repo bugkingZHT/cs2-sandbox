@@ -15,8 +15,8 @@ const (
 // Files are stored under FilePath as round_1.pb.gz, round_2.pb.gz, etc.
 type Demo struct {
 	ID         uint   `gorm:"primaryKey;autoIncrement"`
-	UserID     uint   `gorm:"not null;index"`
-	DemoUUID   string `gorm:"size:64;not null;uniqueIndex:idx_user_demo"`
+	UserUID    string `gorm:"size:8;not null;uniqueIndex:idx_user_demo,priority:1"`
+	DemoUUID   string `gorm:"size:64;not null;uniqueIndex:idx_user_demo,priority:2"`
 	DemoMeta   string `gorm:"type:json"`
 	FilePath   string `gorm:"size:512"`               // directory: USER_{uid}/{demoUUID}
 	FileSize   int64  `gorm:"not null;default:0"`    // total size of all round pb.gz files

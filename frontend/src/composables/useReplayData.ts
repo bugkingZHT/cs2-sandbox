@@ -108,15 +108,16 @@ function createReplayData() {
     else removeBeforeUnload();
   }, { immediate: true });
 
-  /** 从后端 GET /api/demos 拉取列表，映射为 ReplayData[]（含 cloudDemoId 供打开 replayer 用） */
+  /** 从后端 GET /api/demos 拉取列表（通过 uid 鉴权），映射为 ReplayData[]（含 cloudDemoId 供打开 replayer 用） */
   const loadReplayListFromServer = async (): Promise<void> => {
     const { currentUser } = useAuth();
-    if (!currentUser.value) {
+    if (!currentUser.value?.uid) {
       replayList.value = [];
       return;
     }
     try {
-      const res = await fetch('/api/demos', { credentials: 'include' });
+      const uid = encodeURIComponent(currentUser.value.uid);
+      const res = await fetch(`/api/demos?uid=${uid}`, { credentials: 'include' });
       if (!res.ok) {
         replayList.value = [];
         return;

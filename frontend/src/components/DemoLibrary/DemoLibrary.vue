@@ -849,7 +849,7 @@ function toggleDemoMenu(demoId: string, e?: Event) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     // 向左上方向打开：菜单右下角对齐按钮左下角，菜单在按钮左侧且向上延伸
     demoBarMoreMenuPosition.value = {
-      right: Math.max(8, window.innerWidth - rect.left - 4),
+      right: Math.max(8, window.innerWidth - rect.left + 4),
       bottom: Math.max(8, window.innerHeight - rect.bottom),
     };
   }

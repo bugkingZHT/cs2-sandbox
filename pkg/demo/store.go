@@ -34,10 +34,10 @@ func (s *Store) GetByID(id uint) (*Demo, error) {
 	return &d, nil
 }
 
-// GetByUserAndUUID returns a demo by user ID and demo UUID.
-func (s *Store) GetByUserAndUUID(userID uint, demoUUID string) (*Demo, error) {
+// GetByUserAndUUID returns a demo by user UID and demo UUID.
+func (s *Store) GetByUserAndUUID(userUID string, demoUUID string) (*Demo, error) {
 	var d Demo
-	err := s.db.Where("user_id = ? AND demo_uuid = ?", userID, demoUUID).First(&d).Error
+	err := s.db.Where("user_uid = ? AND demo_uuid = ?", userUID, demoUUID).First(&d).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -47,16 +47,16 @@ func (s *Store) GetByUserAndUUID(userID uint, demoUUID string) (*Demo, error) {
 	return &d, nil
 }
 
-// ListByUser returns all demos for the given user, newest first.
-func (s *Store) ListByUser(userID uint) ([]*Demo, error) {
+// ListByUser returns all demos for the given user (by UID), newest first.
+func (s *Store) ListByUser(userUID string) ([]*Demo, error) {
 	var list []*Demo
-	err := s.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&list).Error
+	err := s.db.Where("user_uid = ?", userUID).Order("created_at DESC").Find(&list).Error
 	return list, err
 }
 
-// Update updates a demo by ID; owner must match.
-func (s *Store) Update(id uint, userID uint, updates map[string]interface{}) error {
-	res := s.db.Model(&Demo{}).Where("id = ? AND user_id = ?", id, userID).Updates(updates)
+// Update updates a demo by ID; owner must match (by UID).
+func (s *Store) Update(id uint, userUID string, updates map[string]interface{}) error {
+	res := s.db.Model(&Demo{}).Where("id = ? AND user_uid = ?", id, userUID).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -66,9 +66,9 @@ func (s *Store) Update(id uint, userID uint, updates map[string]interface{}) err
 	return nil
 }
 
-// Delete deletes a demo by ID; owner must match.
-func (s *Store) Delete(id uint, userID uint) error {
-	res := s.db.Where("id = ? AND user_id = ?", id, userID).Delete(&Demo{})
+// Delete deletes a demo by ID; owner must match (by UID).
+func (s *Store) Delete(id uint, userUID string) error {
+	res := s.db.Where("id = ? AND user_uid = ?", id, userUID).Delete(&Demo{})
 	if res.Error != nil {
 		return res.Error
 	}

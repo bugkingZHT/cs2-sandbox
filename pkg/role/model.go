@@ -47,7 +47,7 @@ func (Role) TableName() string {
 type Subscription struct {
 	ID        uint      `gorm:"primaryKey"`
 	OrderID   string    `gorm:"size:64;uniqueIndex;not null"`
-	UserID    uint      `gorm:"not null;index:idx_user_active_ends,priority:1"`
+	UserUID   string    `gorm:"size:8;not null;index:idx_user_active_ends,priority:1"`
 	Role      string    `gorm:"size:32;not null"` // pro or pro+
 	StartedAt time.Time `gorm:"not null"`
 	EndsAt    time.Time `gorm:"not null;index:idx_user_active_ends,priority:3"`

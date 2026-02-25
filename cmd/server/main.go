@@ -143,7 +143,7 @@ func seedDefaultUserIfEmpty(db *gorm.DB, userStore *user.Store, roleStore *role.
 	}
 	log.Println("[DB] Seed default user created: admin /", user.DefaultPasswordHash)
 	endsAt := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
-	if err := roleStore.CreateSubscription("seed-admin-pro", adminUser.ID, role.RolePro, adminUser.CreatedAt, endsAt); err != nil {
+	if err := roleStore.CreateSubscription("seed-admin-pro", adminUser.UID, role.RolePro, adminUser.CreatedAt, endsAt); err != nil {
 		log.Printf("[DB] Seed admin pro subscription failed: %v", err)
 		return
 	}
@@ -182,7 +182,7 @@ func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoSto
 		return
 	}
 	demoStorage := demo.NewFileStorage(storageRoot)
-	demoHandlers := &demo.Handlers{Store: demoStore, Storage: demoStorage, UserStore: userStore}
+	demoHandlers := &demo.Handlers{Store: demoStore, Storage: demoStorage}
 	mux.HandleFunc("/api/demos", session.RequireAuth(sessionStore, demoHandlers.Index))
 	mux.HandleFunc("/api/demos/file", session.OptionalAuth(sessionStore, demoHandlers.GetFile))
 	mux.HandleFunc("/api/demos/", session.OptionalAuth(sessionStore, demoHandlers.ByID))

@@ -165,7 +165,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.RoleStore != nil {
-		_, _, quotaLimit := h.RoleStore.GetEffectiveRole(u.ID)
+		_, _, quotaLimit := h.RoleStore.GetEffectiveRole(u.UID)
 		count, err := h.Store.CountByOwnerID(u.ID)
 		if err != nil {
 			log.Printf("[Note] Create: CountByOwnerID failed for user_id=%d: %v", u.ID, err)

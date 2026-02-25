@@ -44,13 +44,13 @@ func (s *Store) EnsureDefaultRoles() error {
 	return nil
 }
 
-// GetEffectiveRole returns the effective role name, priority, and quota limit for the user.
+// GetEffectiveRole returns the effective role name, priority, and quota limit for the user (by UID).
 // Queries valid subscriptions (is_active=true, ends_at >= now), takes highest priority;
 // if none, returns normal (0, 5).
-func (s *Store) GetEffectiveRole(userID uint) (roleName string, priority int, quotaLimit int) {
+func (s *Store) GetEffectiveRole(userUID string) (roleName string, priority int, quotaLimit int) {
 	var subs []Subscription
 	now := time.Now()
-	err := s.db.Where("user_id = ? AND is_active = ? AND ends_at >= ?", userID, true, now).
+	err := s.db.Where("user_uid = ? AND is_active = ? AND ends_at >= ?", userUID, true, now).
 		Order("ends_at DESC").
 		Find(&subs).Error
 	if err != nil || len(subs) == 0 {
@@ -69,10 +69,10 @@ func (s *Store) GetEffectiveRole(userID uint) (roleName string, priority int, qu
 }
 
 // CreateSubscription creates a subscription record (pro/pro+). OrderID must be unique.
-func (s *Store) CreateSubscription(orderID string, userID uint, role string, startedAt, endsAt time.Time) error {
+func (s *Store) CreateSubscription(orderID string, userUID string, role string, startedAt, endsAt time.Time) error {
 	sub := &Subscription{
 		OrderID:   orderID,
-		UserID:    userID,
+		UserUID:   userUID,
 		Role:      role,
 		StartedAt: startedAt,
 		EndsAt:    endsAt,

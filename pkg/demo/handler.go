@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/bugkingzht/cs-demobox/pkg/session"
-	"github.com/bugkingzht/cs-demobox/pkg/user"
 )
 
 const maxUploadBytes = 200 << 20 // 200MB for multi-round demo upload
@@ -19,9 +18,8 @@ var roundFileKeyRegex = regexp.MustCompile(`^round_(\d+)(\.pb\.gz)?$`)
 
 // Handlers holds dependencies for demo HTTP handlers.
 type Handlers struct {
-	Store     *Store
-	Storage   *FileStorage
-	UserStore *user.Store // for resolving owner UID when streaming public demo rounds
+	Store   *Store
+	Storage *FileStorage
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -64,16 +62,24 @@ func (h *Handlers) Index(w http.ResponseWriter, r *http.Request) {
 	writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
-// List returns current user's demos.
+// List returns current user's demos. Supports query ?uid= to request by uid; uid must match session user (鉴权).
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	u := session.UserFromContext(r.Context())
 	if u == nil {
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	list, err := h.Store.ListByUser(u.ID)
+	listUID := u.UID
+	if q := strings.TrimSpace(r.URL.Query().Get("uid")); q != "" {
+		if q != u.UID {
+			writeJSONErr(w, http.StatusForbidden, "uid does not match session")
+			return
+		}
+		listUID = q
+	}
+	list, err := h.Store.ListByUser(listUID)
 	if err != nil {
-		log.Printf("[Demo] List: ListByUser failed user_id=%d: %v", u.ID, err)
+		log.Printf("[Demo] List: ListByUser failed uid=%s: %v", listUID, err)
 		writeJSONErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -116,20 +122,13 @@ func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	if u.ID != d.UserID && d.Permission != PermissionPublic {
+	if u.UID != d.UserUID && d.Permission != PermissionPublic {
 		writeJSONErr(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	var ownerUID string
-	if u.ID == d.UserID {
-		ownerUID = u.UID
-	} else {
-		owner, err := h.UserStore.GetByID(d.UserID)
-		if err != nil || owner == nil {
-			writeJSONErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		ownerUID = owner.UID
+	ownerUID := u.UID
+	if u.UID != d.UserUID && d.Permission == PermissionPublic {
+		ownerUID = d.UserUID
 	}
 	rc, err := h.Storage.GetRound(ownerUID, d.DemoUUID, round)
 	if err != nil {
@@ -211,7 +210,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// If same user already has this demo_uuid, return 409
-	existing, err := h.Store.GetByUserAndUUID(u.ID, demoUUID)
+	existing, err := h.Store.GetByUserAndUUID(u.UID, demoUUID)
 	if err != nil {
 		log.Printf("[Demo] Create: GetByUserAndUUID failed: %v", err)
 		writeJSONErr(w, http.StatusInternalServerError, "internal error")
@@ -229,7 +228,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		totalSize += rf.size
 	}
 	d := &Demo{
-		UserID:     u.ID,
+		UserUID:    u.UID,
 		DemoUUID:   demoUUID,
 		DemoMeta:   meta,
 		FilePath:   dirPath,
@@ -251,7 +250,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("[Demo] Create: SaveRound failed round=%d: %v", rf.round, err)
 			_ = h.Storage.DeleteDemo(u.UID, demoUUID)
-			_ = h.Store.Delete(d.ID, u.ID)
+			_ = h.Store.Delete(d.ID, u.UID)
 			writeJSONErr(w, http.StatusInternalServerError, "failed to save round file")
 			return
 		}
@@ -299,42 +298,17 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			writeJSONErr(w, http.StatusBadRequest, "invalid round number")
 			return
 		}
-		// Permission: owner or public
-		if u == nil || (u.ID != d.UserID && d.Permission != PermissionPublic) {
-			writeJSONErr(w, http.StatusForbidden, "forbidden")
-			return
-		}
-		// Resolve UID for storage path - we have UserID in d, need UID. We don't have user store here.
-		// So we must pass UID from client or store UID in Demo. Plan says FilePath = USER_uid/demoUUID.
-		// We store only relative path in DB (dir path). So we need to get user UID. Handler doesn't have user store.
-		// Option: store UID in Demo model (redundant) or add UserStore to Handlers. For GetRound we need full path.
-		// Actually path is root + USER_uid + demoUUID + round_N.pb.gz. We have demoUUID in d. We need uid string.
-		// Simplest: add UserStore to Handlers and get UID by d.UserID. Let me add UserStore to demo Handlers.
-		// But the plan didn't mention it - let me check. Storage.Path(uid, demoUUID, round) needs uid. So we need
-		// to get uid from somewhere. I'll add a dependency on user store to get UID by UserID, or we could store
-		// a "user_uid" in the Demo table. Actually looking at note, they use u.UID from context. So when we're
-		// streaming for "current user" we have u.UID. When we're streaming for "other user" (public demo), we
-		// have d.UserID but not UID. So we must have a way to get UID from UserID. Add UserStore to Handlers.
-		// For now, only allow download when requester is owner (u != nil && u.ID == d.UserID) so we have u.UID.
-		// Public read: we need UID of the demo owner. So add UserStore to get owner UID.
 		if u == nil {
 			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 			return
 		}
-		var ownerUID string
-		if u.ID == d.UserID {
-			ownerUID = u.UID
-		} else if d.Permission == PermissionPublic {
-			// Need owner UID for path (UserStore is set in main when registering demo routes)
-			owner, err := h.UserStore.GetByID(d.UserID)
-			if err != nil || owner == nil {
-				writeJSONErr(w, http.StatusNotFound, "not found")
-				return
-			}
-			ownerUID = owner.UID
-		} else {
+		if u.UID != d.UserUID && d.Permission != PermissionPublic {
 			writeJSONErr(w, http.StatusForbidden, "forbidden")
 			return
+		}
+		ownerUID := u.UID
+		if u.UID != d.UserUID && d.Permission == PermissionPublic {
+			ownerUID = d.UserUID
 		}
 		rc, err := h.Storage.GetRound(ownerUID, d.DemoUUID, round)
 		if err != nil {
@@ -351,7 +325,7 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 	// GET /api/demos/:id (metadata), PATCH (update meta/permission), or DELETE
 	switch r.Method {
 	case http.MethodGet:
-		if u == nil || (u.ID != d.UserID && d.Permission != PermissionPublic) {
+		if u == nil || (u.UID != d.UserUID && d.Permission != PermissionPublic) {
 			writeJSONErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
@@ -361,7 +335,7 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 			return
 		}
-		if u.ID != d.UserID {
+		if u.UID != d.UserUID {
 			writeJSONErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
@@ -388,7 +362,7 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			writeJSONErr(w, http.StatusBadRequest, "no updates")
 			return
 		}
-		if err := h.Store.Update(d.ID, u.ID, updates); err != nil {
+		if err := h.Store.Update(d.ID, u.UID, updates); err != nil {
 			log.Printf("[Demo] Patch: Update failed: %v", err)
 			writeJSONErr(w, http.StatusInternalServerError, "internal error")
 			return
@@ -400,14 +374,14 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 			return
 		}
-		if u.ID != d.UserID {
+		if u.UID != d.UserUID {
 			writeJSONErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		if err := h.Storage.DeleteDemo(u.UID, d.DemoUUID); err != nil {
 			log.Printf("[Demo] Delete: DeleteDemo failed: %v", err)
 		}
-		if err := h.Store.Delete(d.ID, u.ID); err != nil {
+		if err := h.Store.Delete(d.ID, u.UID); err != nil {
 			log.Printf("[Demo] Delete: Store.Delete failed: %v", err)
 			writeJSONErr(w, http.StatusInternalServerError, "internal error")
 			return
