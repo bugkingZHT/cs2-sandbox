@@ -206,7 +206,7 @@
             </button>
             <div v-if="showQuotaDropdown" class="quota-dropdown ds-card ds-card-elevated">
               <div class="quota-dropdown-header">
-                <span class="quota-label">Demo 存储用量：{{ demoCount }} / {{ quotaLimit }}</span>
+                <span class="quota-label">云存储 Demo 数量</span>
               </div>
               <div class="quota-progress-container">
                 <div class="quota-progress-bar">
@@ -216,7 +216,7 @@
                   ></div>
                 </div>
                 <div class="quota-percentage">
-                  {{ quotaPercentage }}%
+                  {{ demoCount }}/{{ quotaLimit }}
                 </div>
               </div>
             </div>
@@ -2518,7 +2518,7 @@ const scoreLeftRightMap = computed(() => {
 }
 
 .quota-btn.active {
-  background: var(--ds-primary);
+  background: var(--ds-surface-active);
   border-color: var(--ds-primary);
   color: var(--ds-primary-text);
   box-shadow: 0 2px 8px rgba(var(--ds-primary-rgb), 0.3);
