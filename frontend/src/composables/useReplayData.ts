@@ -7,8 +7,8 @@ import { decodeReplayMeta, decodeReplayRound, encodeReplayRound } from './proto-
 import { useAuth } from './useAuth';
 import { PARSER_CONFIG } from '@/config/parser';
 import {
-  MAX_SURGE_DEMO_NUM_KEY,
-  MAX_SURGE_DEMO_NUM_DEFAULT,
+  MAX_DEMO_CACHE_NUM_KEY,
+  MAX_DEMO_CACHE_NUM_DEFAULT,
   PARSING_ROUND_LIMIT_KEY,
   PARSE_FRAME_RATIO_KEY,
 } from '@/config/debug';
@@ -207,8 +207,8 @@ function createReplayData() {
 
   // Replay list is from server only; this only runs orphan cleanup for round storage.
   const loadAllReplays = async () => {
-    const maxSurge = Math.max(0, parseInt(localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY) ?? String(MAX_SURGE_DEMO_NUM_DEFAULT), 10)) || MAX_SURGE_DEMO_NUM_DEFAULT;
-    await cleanupOrphanedReplayStorage(maxSurge);
+    const maxCacheNum = Math.max(0, parseInt(localStorage.getItem(MAX_DEMO_CACHE_NUM_KEY) ?? String(MAX_DEMO_CACHE_NUM_DEFAULT), 10)) || MAX_DEMO_CACHE_NUM_DEFAULT;
+    await cleanupOrphanedReplayStorage(maxCacheNum);
     replayList.value = [];
   };
 

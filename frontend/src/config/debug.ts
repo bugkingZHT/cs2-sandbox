@@ -94,7 +94,7 @@ export const PARSE_FRAME_RATIO_KEY = 'demoParsingFrameRatio';
 /** Default parse frame ratio when not set (1=1:1, 2=1:2, positive integer). */
 export const PARSE_FRAME_RATIO_DEFAULT = 2;
 
-/** localStorage key for orphan round cleanup max surge (debug panel). */
-export const MAX_SURGE_DEMO_NUM_KEY = 'maxSurgeDemoNum';
-/** Default max orphan replays to keep when cleaning storage (non-negative integer). */
-export const MAX_SURGE_DEMO_NUM_DEFAULT = 16;
+/** localStorage key for max demo cache number (debug panel). */
+export const MAX_DEMO_CACHE_NUM_KEY = 'maxDemoCacheNum';
+/** Default max demo cache number when not set (non-negative integer). */
+export const MAX_DEMO_CACHE_NUM_DEFAULT = 256;

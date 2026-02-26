@@ -55,7 +55,9 @@
         </div>
         <!-- 5. 暂无回放数据（兜底） -->
         <div v-else class="empty-state-content">
-          <div class="empty-icon">·</div>
+          <div class="empty-icon empty-icon-no-selection" aria-hidden="true">
+            <img src="/icons/wait.svg" alt="" class="empty-icon-img" />
+          </div>
           <h3>暂无回放数据</h3>
           <p>请从 Demo 库选择文件</p>
         </div>
@@ -3031,6 +3033,7 @@ onBeforeUnmount(() => {
   animation: float 3s ease-in-out infinite;
 }
 
+.empty-icon-no-selection,
 .empty-icon-not-found,
 .empty-icon-forbidden {
   width: 80px;

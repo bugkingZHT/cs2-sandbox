@@ -438,13 +438,13 @@
                 class="parse-option-cell"
               >
                 <div class="input-group">
-                  <label class="input-label">Max Surge Demo Num</label>
+                  <label class="input-label">Max Demo Cache Num</label>
                   <input
-                    v-model.number="maxSurgeDemoNum"
+                    v-model.number="maxDemoCacheNum"
                     type="number"
                     min="0"
                     class="ds-input round-limit-input"
-                    @change="saveMaxSurgeDemoNum"
+                    @change="saveMaxDemoCacheNum"
                   />
                 </div>
               </div>
@@ -510,8 +510,8 @@ import {
   PARSING_ROUND_LIMIT_DEFAULT,
   PARSE_FRAME_RATIO_KEY,
   PARSE_FRAME_RATIO_DEFAULT,
-  MAX_SURGE_DEMO_NUM_KEY,
-  MAX_SURGE_DEMO_NUM_DEFAULT,
+  MAX_DEMO_CACHE_NUM_KEY,
+  MAX_DEMO_CACHE_NUM_DEFAULT,
 } from '@/config/debug';
 import { FRONTEND_VERSION, COMPATIBLE_ENGINE_VERSIONS } from '@/config/version';
 import { cleanupOrphanedReplayStorage } from '@/composables/indexdb-storage';
@@ -790,7 +790,7 @@ const updateStorageQuota = async () => {
 // Round limit / parse frame ratio / max surge: keys and defaults from @/config/debug
 const roundLimit = ref<number>(PARSING_ROUND_LIMIT_DEFAULT);
 const parseFrameRatio = ref<number>(PARSE_FRAME_RATIO_DEFAULT);
-const maxSurgeDemoNum = ref<number>(MAX_SURGE_DEMO_NUM_DEFAULT);
+const maxDemoCacheNum = ref<number>(MAX_DEMO_CACHE_NUM_DEFAULT);
 
 // Real-time update for usage info when debug tab is open (1s refresh)
 watch(activeTab, (tab) => {
@@ -831,12 +831,12 @@ onMounted(() => {
     }
   }
 
-  // Load maxSurgeDemoNum from localStorage (default 32)
+  // Load maxDemoCacheNum from localStorage (default 16)
   if (DEBUG_CONFIG.enableStorageViewer) {
-    const savedSurge = localStorage.getItem(MAX_SURGE_DEMO_NUM_KEY);
-    if (savedSurge !== null) {
-      const n = parseInt(savedSurge, 10);
-      if (!isNaN(n) && n >= 0) maxSurgeDemoNum.value = n;
+    const savedCache = localStorage.getItem(MAX_DEMO_CACHE_NUM_KEY);
+    if (savedCache !== null) {
+      const n = parseInt(savedCache, 10);
+      if (!isNaN(n) && n >= 0) maxDemoCacheNum.value = n;
     }
   }
 
@@ -924,17 +924,17 @@ const saveParseFrameRatio = () => {
   localStorage.setItem(PARSE_FRAME_RATIO_KEY, String(v));
 };
 
-// Save maxSurgeDemoNum to localStorage (non-negative integer)
-const saveMaxSurgeDemoNum = () => {
-  let v = maxSurgeDemoNum.value;
+// Save maxDemoCacheNum to localStorage (non-negative integer)
+const saveMaxDemoCacheNum = () => {
+  let v = maxDemoCacheNum.value;
   if (typeof v !== 'number' || isNaN(v) || v < 0) {
-    v = MAX_SURGE_DEMO_NUM_DEFAULT;
-    maxSurgeDemoNum.value = MAX_SURGE_DEMO_NUM_DEFAULT;
+    v = MAX_DEMO_CACHE_NUM_DEFAULT;
+    maxDemoCacheNum.value = MAX_DEMO_CACHE_NUM_DEFAULT;
   } else {
     v = Math.max(0, Math.floor(v));
-    maxSurgeDemoNum.value = v;
+    maxDemoCacheNum.value = v;
   }
-  localStorage.setItem(MAX_SURGE_DEMO_NUM_KEY, String(v));
+  localStorage.setItem(MAX_DEMO_CACHE_NUM_KEY, String(v));
 };
 
 let memoryUpdateInterval: number | null = null;
@@ -973,8 +973,8 @@ const handleCleanStorageLeak = async () => {
     cleanupMessageTimer = null;
   }
   try {
-    const surge = Math.max(0, Math.floor(Number(maxSurgeDemoNum.value))) || MAX_SURGE_DEMO_NUM_DEFAULT;
-    const result = await cleanupOrphanedReplayStorage(surge);
+    const cacheNum = Math.max(0, Math.floor(Number(maxDemoCacheNum.value))) || MAX_DEMO_CACHE_NUM_DEFAULT;
+    const result = await cleanupOrphanedReplayStorage(cacheNum);
     if (result.count === 0) {
       cleanupMessage.value = '没有发现泄露（所有 round 均有对应 meta）';
       cleanupMessageType.value = 'info';

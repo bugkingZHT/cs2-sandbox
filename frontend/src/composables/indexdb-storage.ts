@@ -1,4 +1,5 @@
 import type { ReplayMeta } from '../types/replay';
+import { MAX_DEMO_CACHE_NUM_DEFAULT } from '../config/debug';
 
 // Replay meta is no longer stored in IndexedDB; it is always loaded from cloud (GET /api/demos, note item, etc.).
 // Only replay-rounds are cached in IndexedDB for faster re-load.
@@ -101,6 +102,14 @@ export class IndexedDBReplayStorage {
 
   async saveRound(uuid: string, roundNum: number, roundBytes: Uint8Array): Promise<void> {
     if (!this.db) throw new Error('DB not initialized');
+    
+    // Check cache limit before saving
+    const maxCacheNum = this.getMaxCacheNum();
+    const currentDemoCount = (await this.listAllReplays()).length;
+    for (let i = 0; i < currentDemoCount - maxCacheNum + 1; i++) {
+      await this.removeOldestDemo();
+    }
+    
     const key = roundKey(uuid, roundNum);
     const lastModified = Date.now();
     const value = { uuid, roundNum, bytes: roundBytes, lastModified };
@@ -223,6 +232,43 @@ export class IndexedDBReplayStorage {
       }
     }
     return { deleted, count: deleted.length };
+  }
+
+  private getMaxCacheNum(): number {
+    // Try to get from localStorage, fallback to default
+    try {
+      const saved = localStorage.getItem('maxDemoCacheNum');
+      if (saved !== null) {
+        const n = parseInt(saved, 10);
+        if (!isNaN(n) && n >= 0) {
+          return n;
+        }
+      }
+    } catch (e) {
+      console.warn('[IndexedDB] Failed to read maxDemoCacheNum from localStorage:', e);
+    }
+    return MAX_DEMO_CACHE_NUM_DEFAULT;
+  }
+
+  private async removeOldestDemo(): Promise<void> {
+    const demoUuids = await this.listAllReplays();
+    if (demoUuids.length === 0) return;
+
+    // Get the oldest demo (by last modified time)
+    const demoAges = await Promise.all(
+      demoUuids.map(async (uuid) => ({
+        uuid,
+        oldestTime: await this.getReplayOldestTime(uuid)
+      }))
+    );
+
+    // Sort by oldest time (ascending)
+    demoAges.sort((a, b) => a.oldestTime - b.oldestTime);
+    
+    // Remove the oldest demo
+    const oldestUuid = demoAges[0].uuid;
+    console.log(`[IndexedDB] Cache limit reached, removing oldest demo: ${oldestUuid}`);
+    await this.deleteReplay(oldestUuid);
   }
 
   private async getReplayOldestTime(uuid: string): Promise<number> {
