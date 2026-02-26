@@ -199,7 +199,7 @@ watch(
 );
 
 function getShareUrl(demo: ShareDemo): string {
-  return `${window.location.origin}/replayer?demo_uuid=${encodeURIComponent(demo.uuid)}&round=_&tab=player`;
+  return `${window.location.origin}/replayer?demo_uuid=${encodeURIComponent(demo.uuid)}&round=_&tab=player&pure=true`;
 }
 
 async function copyShareLink() {

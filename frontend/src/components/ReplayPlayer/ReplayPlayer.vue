@@ -137,19 +137,19 @@
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'players' }"
-                @click="toggleLeftPanelTab('players')"
+                @click.prevent="toggleLeftPanelTab('players')"
               >玩家</button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
-                @click="toggleLeftPanelTab('rounds')"
+                @click.prevent="toggleLeftPanelTab('rounds')"
               >回合</button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'settings' }"
-                @click="toggleLeftPanelTab('settings')"
+                @click.prevent="toggleLeftPanelTab('settings')"
               >设置</button>
             </div>
           </div>
@@ -609,9 +609,20 @@
               class="left-panel-footer-btn clip-mode-btn"
               :class="{ active: isClipMode }"
               title="导演剪辑：多选回合在一条时间线并行播放"
-              @click="isClipMode = !isClipMode"
+              @click="toggleClipMode"
             >
               <img src="/icons/slip.svg" class="left-panel-footer-btn-icon" alt="" />
+            </button>
+            <button
+              v-if="!pureMode && isClipMode && effectiveReplay && effectiveFrames.length > 0"
+              type="button"
+              class="left-panel-footer-btn export-demo-btn"
+              :class="{ 'converting': isExporting, 'export-success': exportSuccess }"
+              :disabled="isExporting"
+              @click="exportAsNewDemo"
+            >
+              <span v-if="isExporting" class="converting-progress-fill" :style="{ width: `${exportProgress}%` }"></span>
+              <span class="converting-text">{{ exportButtonText }}</span>
             </button>
           </div>
         </div>
@@ -669,30 +680,47 @@ import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaReco
 import { useReplayData } from '@/composables/useReplayData';
 import { useClipMerge } from '@/composables/useClipMerge';
 import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
-import type { Frame, PlayerState, ReplayData, ProjectileState, ClipRoundConfig } from '@/types/replay';
+import type { Frame, PlayerState, ReplayData, ReplayMeta, ProjectileState, ClipRoundConfig } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
+import { useAuth } from '@/composables/useAuth';
+import { getReplayStorage } from '@/composables/indexdb-storage';
+import { encodeReplayRound } from '@/composables/proto-converters';
 
 const emit = defineEmits<{
   (e: 'clip-publish-available', payload: { available: boolean }): void;
 }>();
+
+// 初始化认证信息
+const { currentUser } = useAuth();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
 // 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 设置
 const leftPanelTab = ref<'players' | 'rounds' | 'settings' | null>(null);
 
+//切换左侧面板标签页（玩家/回合/设置）
 function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'settings') {
   leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
 }
 
+//切换纯净模式（隐藏左侧面板）
 function togglePureMode() {
   pureMode.value = !pureMode.value;
   // 在进入纯净模式时，关闭任何已打开的标签页
   if (pureMode.value) {
     leftPanelTab.value = null;
+  }
+}
+
+//切换剪辑模式
+function toggleClipMode() {
+  isClipMode.value = !isClipMode.value;
+  // 当启用剪辑模式时，自动切换到回合标签页
+  if (isClipMode.value) {
+    leftPanelTab.value = 'rounds';
   }
 }
 // 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
@@ -710,6 +738,19 @@ const clipDeletedPlayerIds = ref<Set<number>>(new Set());
 const clipRangeStartIndex = ref(0);
 const clipRangeEndIndex = ref(0);
 
+// 导出新 Demo 的状态变量
+const isExporting = ref(false);
+const exportProgress = ref(0);
+const exportSuccess = ref(false);
+
+// 导出按钮文本
+const exportButtonText = computed(() => {
+  if (exportSuccess.value) return '导出成功!';
+  if (isExporting.value) return '正在导出...';
+  return '导出为新 Demo';
+});
+
+//更新剪辑时间范围选中
 function onClipRangeUpdate(payload: { start: number; end: number }) {
   clipRangeStartIndex.value = payload.start;
   clipRangeEndIndex.value = payload.end;
@@ -721,6 +762,7 @@ const hiddenPlayerIdsBeforeAnalyze = ref<Set<number> | null>(null);
 /** 设置里「玩家」取消勾选时保存的隐藏状态，勾选时恢复 */
 const hiddenPlayerIdsBeforeSettingsHideAll = ref<number[] | null>(null);
 
+//切换玩家可见性（隐藏/显示）
 function togglePlayerVisibility(playerId: number) {
   const next = new Set(hiddenPlayerIds.value);
   if (next.has(playerId)) next.delete(playerId);
@@ -728,16 +770,19 @@ function togglePlayerVisibility(playerId: number) {
   hiddenPlayerIds.value = next;
 }
 
+//检查玩家是否被隐藏
 function isPlayerHidden(playerId: number) {
   return hiddenPlayerIds.value.has(playerId);
 }
 
+//从剪辑中移除玩家
 function removePlayerFromClip(playerId: number) {
   const next = new Set(clipDeletedPlayerIds.value);
   next.add(playerId);
   clipDeletedPlayerIds.value = next;
 }
 
+//复制玩家坐标到剪贴板
 async function copyPlayerPosition(p: PlayerState) {
   const x = (p.x ?? 0).toFixed(6);
   const y = (p.y ?? 0).toFixed(6);
@@ -755,83 +800,7 @@ async function copyPlayerPosition(p: PlayerState) {
 
 const hiddenPlayerIdsArray = computed(() => Array.from(hiddenPlayerIds.value));
 
-function isNoteContentHtml(content: string | null | undefined): boolean {
-  const t = content || '';
-  return t.includes('<') && t.includes('>');
-}
-
-function isContentHtml(content: string | null | undefined): boolean {
-  return isNoteContentHtml(content);
-}
-
-/** Display file name: prefer fileName from demo meta (original .dem name), else API file_name */
-function getDemoFileName(demo: { demo_meta?: string; file_name?: string }): string {
-  if (demo.demo_meta) {
-    try {
-      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
-      const fn = meta.fileName;
-      if (typeof fn === 'string' && fn.trim()) return fn.trim();
-    } catch {
-      /* ignore */
-    }
-  }
-  return typeof demo.file_name === 'string' && demo.file_name.trim() ? demo.file_name.trim() : '';
-}
-
-function getDemoMapName(demo: { demo_meta?: string }): string {
-  if (demo.demo_meta) {
-    try {
-      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
-      return (meta.mapName as string) || 'Unknown Map';
-    } catch {
-      return 'Unknown Map';
-    }
-  }
-  return 'Unknown Map';
-}
-
-function getDemoTeamCT(demo: { demo_meta?: string }): string {
-  if (demo.demo_meta) {
-    try {
-      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
-      return (meta.teamCT as string) || 'CT';
-    } catch {
-      return 'CT';
-    }
-  }
-  return 'CT';
-}
-
-function getDemoTeamT(demo: { demo_meta?: string }): string {
-  if (demo.demo_meta) {
-    try {
-      const meta = JSON.parse(demo.demo_meta) as Record<string, unknown>;
-      return (meta.teamT as string) || 'T';
-    } catch {
-      return 'T';
-    }
-  }
-  return 'T';
-}
-
-function getDemoAddTime(demo: { created_at?: string }): number {
-  if (demo.created_at) return new Date(demo.created_at).getTime();
-  return Date.now();
-}
-
-/** 时间格式 YYYY-MM-DD HH:mm:ss */
-function formatNoteTime(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${y}-${m}-${day} ${h}:${min}:${s}`;
-}
-
-/** 复制内嵌分享链接（当前页面链接 + pure=1） */
+//复制内嵌分享链接（当前页面链接 + pure=1）
 async function copyEmbedLink() {
   let url = typeof window !== 'undefined' ? window.location.href : '';
   const sep = url.includes('?') ? '&' : '?';
@@ -1771,13 +1740,244 @@ const isRifleWeapon = (weaponId: string | null): boolean => {
 };
 
 // 导演剪辑：按选中顺序维护列表，最先选中的回合作为 baseRound
-function toggleClipRound(roundNumber: number) {
+async function toggleClipRound(roundNumber: number) {
   const idx = clipRounds.value.findIndex((c) => c.round === roundNumber);
   if (idx >= 0) {
+    // Removing a round from clip selection
     clipRounds.value = clipRounds.value.filter((_, i) => i !== idx);
   } else {
+    // Adding a round to clip selection - first load the round data
+    if (replay.value?.uuid) {
+      console.log(`[ToggleClipRound] Loading round ${roundNumber} data for clip mode`);
+      await loadRoundDataFromDB(replay.value.uuid, roundNumber);
+    }
     clipRounds.value = [...clipRounds.value, { round: roundNumber }];
   }
+}
+
+// 获取当前用户 demo 数量
+const getUserDemoCount = async (): Promise<number> => {
+  if (!currentUser.value) return 0;
+  
+  try {
+    const res = await fetch('/api/demos', { credentials: 'include' });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status === 'OK' && json?.data?.items) {
+      return Array.isArray(json.data.items) ? json.data.items.length : 0;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+};
+
+// 导出剪辑后的 demo 为新 demo
+async function exportAsNewDemo() {
+  if (!effectiveReplay.value || effectiveFrames.value.length === 0) {
+    console.warn('[ExportAsNewDemo] No effective replay data to export');
+    return;
+  }
+
+  // 检查配额限制
+  const demoCount = await getUserDemoCount();
+  const quotaLimit = currentUser.value?.quota_limit ?? 0;
+  
+  if (demoCount >= quotaLimit) {
+    window.dispatchEvent(new CustomEvent('app:toast', { 
+      detail: { message: '当前 Demo 数量已到达用户上限', type: 'error' } 
+    }));
+    return;
+  }
+
+  isExporting.value = true;
+  exportProgress.value = 0;
+  exportSuccess.value = false;
+
+  try {
+    // 更新进度：开始导出
+    exportProgress.value = 10;
+    
+    // 生成新的 UUID
+    const newUuid = crypto.randomUUID();
+    
+    // 对于剪辑模式，使用选中时间范围的帧数据
+    const clippedFrames = effectiveFrames.value.slice(
+      clipRangeStartIndex.value,
+      clipRangeEndIndex.value + 1 // slice is end-exclusive, so +1 to include end frame
+    );
+    
+    // Build meta from ReplayMeta fields only (following clipForkForNote.ts pattern)
+    const newReplayMeta: ReplayMeta = {
+      uuid: newUuid,
+      uploaderUid: effectiveReplay.value.uploaderUid ?? '',
+      uploadTime: Date.now(),
+      engineVersion: effectiveReplay.value.engineVersion,
+      serverPlayer: effectiveReplay.value.serverPlayer,
+      mapName: effectiveReplay.value.mapName ?? '',
+      teamCT: effectiveReplay.value.teamCT ?? '',
+      teamT: effectiveReplay.value.teamT ?? '',
+      scoreCT: effectiveReplay.value.scoreCT ?? 0,
+      scoreT: effectiveReplay.value.scoreT ?? 0,
+      totalRounds: 1,
+      roundResults: [
+        {
+          round: 1,
+          result: 'ct_win',
+          costT: 0,
+          costCT: 0,
+          countT: 0,
+          countCT: 0,
+        },
+      ],
+      totalFrames: clippedFrames.length,
+      totalDurationMs:
+        clippedFrames.length > 1
+          ? (clippedFrames[clippedFrames.length - 1]?.timeMs ?? 0) - 
+            (clippedFrames[0]?.timeMs ?? 0)
+          : 0,
+      status: 1,
+      totalRawFrames: effectiveReplay.value.totalRawFrames,
+      totalParsedFrames: effectiveReplay.value.totalParsedFrames,
+      projectileRenderConfig: effectiveReplay.value.projectileRenderConfig,
+      fileName: `${effectiveReplay.value.fileName || 'clipped'}_exported`,
+      originPath: effectiveReplay.value.originPath,
+      parsingProgress: effectiveReplay.value.parsingProgress,
+      parsingStatus: effectiveReplay.value.parsingStatus,
+      lastTickTime: effectiveReplay.value.lastTickTime,
+      replaySettings: effectiveReplay.value.replaySettings,
+    };
+    
+    // 更新进度：准备数据
+    exportProgress.value = 30;
+    
+    // 创建回合数据（使用剪辑后的帧）
+    const roundData = {
+      uuid: newUuid,
+      round: 1,
+      frames: clippedFrames
+    };
+    
+    // 将合并后的帧数据转换为字节数组 (这里使用 protobuf 编码)
+    const encodedData = await encodeReplayRound(roundData);
+    
+    // 更新进度：编码完成
+    exportProgress.value = 50;
+    
+    // 使用 IndexedDB 存储回合数据
+    const storage = await getReplayStorage();
+    await storage.saveRound(newUuid, 1, encodedData); // 保存为 round_1
+    
+    // 更新进度：本地存储完成
+    exportProgress.value = 70;
+    
+    // 准备上传到云端的数据
+    const formData = new FormData();
+    formData.append('demo_uuid', newUuid);
+    formData.append('meta', JSON.stringify(newReplayMeta));
+    formData.append('permission', '0'); // 默认私有
+    
+    // 添加回合文件
+    const blob = new Blob([encodedData], { type: 'application/octet-stream' });
+    formData.append('round_1', blob, `round_1.pb.gz`);
+    
+    // 上传到云端 (with progress tracking)
+    const uploadRes = await fetchWithProgress('/api/demos', {
+      method: 'POST',
+      body: formData,
+      credentials: 'include'
+    }, (loaded, total) => {
+      // 计算上传进度 (70% to 90% of total progress)
+      const uploadPercentage = (loaded / total) * 20; // 20% of the total progress (from 70% to 90%)
+      exportProgress.value = 70 + Math.floor(uploadPercentage);
+    });
+    
+    const uploadJson = await uploadRes.json().catch(() => ({}));
+    
+    if (!uploadRes.ok || uploadJson?.status !== 'OK') {
+      console.error('[ExportAsNewDemo] Upload failed:', uploadJson?.error || 'Unknown error');
+      window.dispatchEvent(new CustomEvent('app:toast', { 
+        detail: { message: '导出失败: ' + (uploadJson?.error || '未知错误'), type: 'error' } 
+      }));
+      return;
+    }
+    
+    // 更新进度：完成
+    exportProgress.value = 100;
+    
+    console.log('[ExportAsNewDemo] Successfully exported new demo with UUID:', newUuid);
+    window.dispatchEvent(new CustomEvent('app:toast', { 
+      detail: { message: '成功导出为新 Demo', type: 'info' } 
+    }));
+    
+    // 标记成功并稍后重置状态
+    exportSuccess.value = true;
+    setTimeout(() => {
+      isExporting.value = false;
+      exportProgress.value = 0;
+      setTimeout(() => {
+        exportSuccess.value = false;
+      }, 1000);
+    }, 2000);
+    
+  } catch (error) {
+    console.error('[ExportAsNewDemo] Error exporting demo:', error);
+    window.dispatchEvent(new CustomEvent('app:toast', { 
+      detail: { message: '导出失败: ' + (error as Error).message, type: 'error' } 
+    }));
+    isExporting.value = false;
+    exportProgress.value = 0;
+  }
+}
+
+// Fetch with progress tracking
+async function fetchWithProgress(url: string, options: RequestInit, onProgress: (loaded: number, total: number) => void) {
+  return new Promise<Response>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    
+    xhr.open(options.method || 'GET', url);
+    
+    // Copy headers
+    if (options.headers) {
+      for (const [key, value] of Object.entries(options.headers)) {
+        xhr.setRequestHeader(key, value as string);
+      }
+    }
+    
+    // Set credentials
+    if (options.credentials === 'include') {
+      xhr.withCredentials = true;
+    }
+    
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        // Create a Response-like object from xhr.response
+        resolve(new Response(xhr.response, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+        }));
+      } else {
+        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+      }
+    };
+    
+    xhr.onerror = function() {
+      reject(new Error('Network error'));
+    };
+    
+    xhr.upload.onprogress = function(event) {
+      if (event.lengthComputable) {
+        onProgress(event.loaded, event.total);
+      }
+    };
+    
+    // Type guard: XMLHttpRequest doesn't accept ReadableStream
+    const body = options.body;
+    if (body && typeof body === 'object' && 'getReader' in body) {
+      reject(new Error('ReadableStream is not supported with XMLHttpRequest'));
+      return;
+    }
+    xhr.send(body as XMLHttpRequestBodyInit | null | undefined);
+  });
 }
 
 // Load specific round data from IndexedDB
@@ -1829,7 +2029,6 @@ const loadRoundData = async (roundNumber: number) => {
     console.error(`[LoadRoundData] Error loading round ${roundNumber}:`, error);
   }
 };
-
 
 watch(
   () => totalFrames.value,
@@ -2088,66 +2287,7 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.7);
 }
 
-.left-panel-note {
-  width: 420px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 
-.left-panel-note-inner {
-  padding: 8px;
-  flex: 1;
-  min-height: 0;
-}
-
-.left-panel-note-title {
-  margin: 0 0 var(--ds-space-sm);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--gh-text);
-  line-height: 1.4;
-}
-
-.left-panel-note-content {
-  font-size: 13px;
-  color: var(--gh-text-muted);
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.left-panel-note-content:not(.left-panel-note-content-rich) {
-  white-space: pre-wrap;
-}
-
-.left-panel-note-content-rich :deep(strong),
-.left-panel-note-content-rich :deep(b) { font-weight: 600; font-size: calc(1em + 2px); }
-.left-panel-note-content-rich :deep(em),
-.left-panel-note-content-rich :deep(i) { font-style: italic; }
-.left-panel-note-content-rich :deep(u) { text-decoration: underline; }
-.left-panel-note-content-rich :deep(s) { text-decoration: line-through; }
-.left-panel-note-content-rich :deep(.text-color-white) { color: #FFFFFF !important; }
-.left-panel-note-content-rich :deep(.text-color-yellow) { color: #F5C518 !important; }
-.left-panel-note-content-rich :deep(.text-color-green) { color: #00C853 !important; }
-.left-panel-note-content-rich :deep(.text-color-blue) { color: #2196F3 !important; }
-.left-panel-note-content-rich :deep(.text-color-purple) { color: #9C27B0 !important; }
-.left-panel-note-content-rich :deep(.text-color-orange) { color: #FF6D00 !important; }
-.left-panel-note-content-rich :deep(.equipment-inline-icon) {
-  width: 18px;
-  height: 18px;
-  vertical-align: middle;
-  margin: 0 2px;
-  object-fit: contain;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
-}
-
-.left-panel-note-empty {
-  margin: 0;
-  font-size: 13px;
-  color: var(--gh-text-muted);
-}
 
 /* 设置 tab：与回合 tab 同宽、同滚动，内容用卡片展示 */
 .left-panel-settings {
@@ -3216,5 +3356,50 @@ onBeforeUnmount(() => {
   .team-score {
     font-size: 18px;
   }
+}
+
+/* Export demo button with progress indicator (similar to tab recorder) */
+.export-demo-btn {
+  position: relative;
+  overflow: hidden;
+  min-width: 120px;
+  justify-content: center;
+  color: white;
+  background: rgba(34, 197, 94, 0.8);
+  text-decoration: none;
+}
+
+.export-demo-btn:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 1);
+}
+
+.export-demo-btn.converting {
+  position: relative;
+}
+
+.converting-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(100, 200, 120, 0.3), rgba(80, 180, 100, 0.5));
+  transition: width 0.2s ease;
+  z-index: 1;
+}
+
+.converting-text {
+  position: relative;
+  z-index: 2;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  min-width: 100px;
+}
+
+.export-demo-btn.export-success {
+  border-color: rgba(100, 200, 120, 0.5);
+  background: rgba(80, 180, 100, 0.2);
+  color: #7dd87d;
 }
 </style>
