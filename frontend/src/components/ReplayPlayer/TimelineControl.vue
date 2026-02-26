@@ -1,38 +1,5 @@
 <template>
   <div class="timeline-widget-container">
-    <!-- 一、上方：回合选择进度条（已移至左侧面板，此处隐藏） -->
-    <div v-if="!pureMode && !hideRoundSelector" class="round-selection-module">
-      <!-- 核心进度条主体 -->
-      <div class="round-nav-wrapper">
-        <div class="round-buttons-grid">
-          <template v-for="r in totalRoundsCount" :key="r">
-            <div class="round-btn-cell" :class="{ 'active': currentRound === r, 'disabled': cloudReplay && r !== currentRound }">
-              <button class="round-square-btn" :disabled="cloudReplay && r !== currentRound" @click="seekToRound(r)" :class="getFlexDirectionClass(r)">
-                <!-- Icon on top or bottom based on logic -->
-                <img 
-v-if="getRoundResultIconLocal(r) && shouldIconBeFirstLocal(r)"
-                  :src="getRoundResultIconLocal(r)!"
-                  class="round-result-icon"
-                  :alt="getRoundResultLocal(r) || ''"
-                />
-                <span class="round-number">{{ r }}</span>
-                <img 
-v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
-                  :src="getRoundResultIconLocal(r)!"
-                  class="round-result-icon"
-                  :alt="getRoundResultLocal(r) || ''"
-                />
-              </button>
-              <div class="round-underline-static"></div>
-            </div>
-            <!-- 12和13号之间的纵向虚线 -->
-            <div v-if="r === 12" class="v-dashed-divider"></div>
-          </template>
-        </div>
-      </div>
-    </div>
-
-    <!-- 二、下方：时间轴进度条 -->
     <div class="playback-control-module">
       <!-- 左侧控制区：播放按钮 + 倍速 + 时间显示（第一行） -->
       <div class="playback-info-box-row">
@@ -188,33 +155,6 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             @mousedown.stop="onClipHandleMouseDown('right', $event)"
             @touchstart.stop="onClipHandleTouchStart('right', $event)"
           ></div>
-        </div>
-      </div>
-
-      <!-- 右侧：时间显示 -->
-      <div class="time-display-box">
-        <div class="time-display">
-          <!-- Show C4 icon when bomb is planted -->
-          <img 
-            v-if="currentRoundTime.phase === 'planted'" 
-            src="/utility/c4.svg" 
-            class="icon-c4" 
-            alt="C4"
-          />
-          <!-- Show clock icon for other phases -->
-          <svg 
-            v-else
-            class="icon-stopwatch" 
-            width="14" 
-            height="14" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            :stroke="roundTimeColor" 
-            stroke-width="2"
-          >
-            <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
-          </svg>
-          <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
         </div>
       </div>
     </div>
@@ -1524,7 +1464,7 @@ const speedOptions = [0.5, 1, 2] as const;
   }
 }
 
-/* === 移动端：响应式布局 + 倍速单按钮循环 === */
+/* ===移动端：响应式布局 +倍速单按钮循环 === */
 @media (max-width: 640px) {
   .timeline-widget-container {
     padding: 2px 6px;
@@ -1537,6 +1477,8 @@ const speedOptions = [0.5, 1, 2] as const;
     gap: 6px;
     min-width: 0;
     flex: 1 1 auto;
+    /*确保有足够的垂直空间容纳两行内容 */
+    min-height: 80px;
   }
 
   .playback-info-box-row {
@@ -1546,18 +1488,23 @@ const speedOptions = [0.5, 1, 2] as const;
     padding: 0 6px;
     flex: 0 0 auto;
     min-width: 0;
+    /*移动端固定高度，避免与时间轴重叠 */
+    height: 32px;
   }
-
+  
   .timeline-track-main {
     flex: 1 1 0;
     min-width: 0;
-    height: 32px; /* 固定高度确保一致性 */
+    height: 32px;
+    max-height: 32px;
   }
 
   .time-display-box {
     flex: 0 0 auto;
     padding: 0 6px;
     min-width: 0;
+    /*移动端右对齐 */
+    margin-left: auto;
   }
 
   .time-font {

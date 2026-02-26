@@ -2052,6 +2052,7 @@ const scoreLeftRightMap = computed(() => {
   width: 100%;
   height: 2px;
   background: var(--gh-border);
+  margin-top: 4px;
 }
 
 .demo-bar-round-cell.is-playing .demo-bar-round-underline {

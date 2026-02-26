@@ -592,6 +592,7 @@
           <div class="left-panel-footer">
             <div class="embed-link-wrap">
               <button
+                v-if="!pureMode"
                 type="button"
                 class="left-panel-footer-btn embed-link-btn"
                 title="复制内嵌分享链接"
@@ -800,11 +801,20 @@ async function copyPlayerPosition(p: PlayerState) {
 
 const hiddenPlayerIdsArray = computed(() => Array.from(hiddenPlayerIds.value));
 
-//复制内嵌分享链接（当前页面链接 + pure=1）
+//复制内嵌分享链接
 async function copyEmbedLink() {
-  let url = typeof window !== 'undefined' ? window.location.href : '';
-  const sep = url.includes('?') ? '&' : '?';
-  url = `${url}${sep}pure=1`;
+  let url = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
+  const params = new URLSearchParams();
+  // 追加参数
+  if (replay.value?.uuid) {
+    params.set('demo_uuid', replay.value.uuid);
+  }
+  if (currentRound.value !== undefined) {
+    params.set('round', currentRound.value.toString());
+  }
+  params.set('pure', '1');
+  // 返回完整 URL
+  url = `${url}?${params.toString()}`;
   try {
     await navigator.clipboard.writeText(url);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
@@ -3311,6 +3321,14 @@ onBeforeUnmount(() => {
   .timeline-panel {
     height: 41px;
     padding: 3px var(--ds-space-xs);
+  }
+}
+
+/* ===移动端适配 === */
+@media (max-width: 640px) {
+  .timeline-panel {
+    height: 100px; /* 两倍高度 */
+    padding: 8px var(--ds-space-sm);
   }
 
   .players-panel.top-left {

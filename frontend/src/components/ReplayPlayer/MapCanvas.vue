@@ -558,12 +558,23 @@ const ensureApp = async () => {
 
   host.value.addEventListener('wheel', onWheel, { passive: false });
 
+  //移动端双指手势支持
+  setupTouchGestures();
+
   // 监听容器大小变化，实现自适应缩放
   setupResizeObserver();
   centerWorld(true);
 };
 
 let resizeObserver: ResizeObserver | null = null;
+
+//移动端双指手势状态
+let touchState = {
+  initialDistance: 0,
+  initialScale: 0,
+  isPinching: false
+};
+
 const setupResizeObserver = () => {
   if (!host.value || resizeObserver) return;
   
@@ -576,6 +587,102 @@ const setupResizeObserver = () => {
   });
   
   resizeObserver.observe(host.value);
+};
+
+/**移动端双指手势支持 */
+const setupTouchGestures = () => {
+  if (!host.value) return;
+  
+  let startTouches: Touch[] = [];
+  
+  const handleTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      startTouches = Array.from(e.touches);
+      touchState.initialDistance = getTouchDistance(e.touches[0], e.touches[1]);
+      touchState.initialScale = state.scale;
+      touchState.isPinching = true;
+      e.preventDefault();
+    } else if (e.touches.length === 1 && !state.dragging) {
+      //单指触摸开始拖拽
+      const touch = e.touches[0];
+      onPointerDown({
+        global: {
+          x: touch.clientX,
+          y: touch.clientY
+        }
+      });
+      e.preventDefault();
+    }
+  };
+  
+  const handleTouchMove = (e: TouchEvent) => {
+    if (touchState.isPinching && e.touches.length === 2) {
+      //双指缩放
+      const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+      if (touchState.initialDistance > 0) {
+        const scaleRatio = currentDistance / touchState.initialDistance;
+        const newScale = Math.min(1.5, Math.max(state.defaultScale, touchState.initialScale * scaleRatio));
+        
+        //以双指中心点为中心进行缩放
+        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        
+        const rect = app!.canvas.getBoundingClientRect();
+        const pivotX = centerX - rect.left;
+        const pivotY = centerY - rect.top;
+        
+        const worldPosBefore = {
+          x: (pivotX - worldContainer!.position.x) / state.scale,
+          y: (pivotY - worldContainer!.position.y) / state.scale,
+        };
+        
+        state.scale = newScale;
+        worldContainer!.scale.set(state.scale);
+        
+        const worldPosAfter = {
+          x: worldPosBefore.x * state.scale,
+          y: worldPosBefore.y * state.scale,
+        };
+        
+        worldContainer!.position.x = pivotX - worldPosAfter.x;
+        worldContainer!.position.y = pivotY - worldPosAfter.y;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    } else if (e.touches.length === 1 && state.dragging) {
+      //单指拖拽
+      const touch = e.touches[0];
+      onPointerMove({
+        global: {
+          x: touch.clientX,
+          y: touch.clientY
+        }
+      });
+      e.preventDefault();
+    }
+  };
+  
+  const handleTouchEnd = (e: TouchEvent) => {
+    if (touchState.isPinching) {
+      touchState.isPinching = false;
+      e.preventDefault();
+    }
+    if (state.dragging && e.touches.length === 0) {
+      onPointerUp();
+    }
+  };
+  
+  host.value.addEventListener('touchstart', handleTouchStart, { passive: false });
+  host.value.addEventListener('touchmove', handleTouchMove, { passive: false });
+  host.value.addEventListener('touchend', handleTouchEnd, { passive: false });
+  host.value.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+};
+
+/**计算两个触摸点之间的距离 */
+const getTouchDistance = (touch1: Touch, touch2: Touch): number => {
+  const dx = touch1.clientX - touch2.clientX;
+  const dy = touch1.clientY - touch2.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
 };
 
 /** SVG 纹理为 2x 逻辑尺寸（MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE），zoom 按逻辑尺寸换算 */
