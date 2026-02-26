@@ -22,9 +22,9 @@ var DefaultRoles = []struct {
 	Priority   int
 	QuotaLimit int
 }{
-	{RoleNormal, RolePriority[RoleNormal], RoleQuotaLimit[RoleNormal]},
-	{RolePro, RolePriority[RolePro], RoleQuotaLimit[RolePro]},
-	{RoleProPlus, RolePriority[RoleProPlus], RoleQuotaLimit[RoleProPlus]},
+	{RoleNormal, DefaultRolePriority[RoleNormal], DefaultRoleQuotaLimit[RoleNormal]},
+	{RolePro, DefaultRolePriority[RolePro], DefaultRoleQuotaLimit[RolePro]},
+	{RoleProPlus, DefaultRolePriority[RoleProPlus], DefaultRoleQuotaLimit[RoleProPlus]},
 }
 
 // EnsureDefaultRoles inserts normal, pro, pro+ into the roles table if missing (idempotent on every startup).
@@ -46,7 +46,7 @@ func (s *Store) EnsureDefaultRoles() error {
 
 // GetEffectiveRole returns the effective role name, priority, and quota limit for the user (by UID).
 // Queries valid subscriptions (is_active=true, ends_at >= now), takes highest priority;
-// if none, returns normal (0, 5).
+// if none, returns normal role from database (or fallback values if DB unavailable).
 func (s *Store) GetEffectiveRole(userUID string) (roleName string, priority int, quotaLimit int) {
 	var subs []Subscription
 	now := time.Now()
@@ -54,18 +54,36 @@ func (s *Store) GetEffectiveRole(userUID string) (roleName string, priority int,
 		Order("ends_at DESC").
 		Find(&subs).Error
 	if err != nil || len(subs) == 0 {
-		return RoleNormal, RolePriority[RoleNormal], RoleQuotaLimit[RoleNormal]
+		// No active subscriptions, get default role from database
+		return s.getDefaultRole()
 	}
 	bestRole := RoleNormal
-	bestPriority := RolePriority[RoleNormal]
+	bestPriority := DefaultRolePriority[RoleNormal]
 	for _, sub := range subs {
-		p := RolePriority[sub.Role]
+		p := DefaultRolePriority[sub.Role]
 		if p > bestPriority {
 			bestPriority = p
 			bestRole = sub.Role
 		}
 	}
-	return bestRole, bestPriority, RoleQuotaLimit[bestRole]
+
+	// Get quota limit from roles table
+	var role Role
+	if err := s.db.Where("name = ?", bestRole).First(&role).Error; err != nil {
+		// Fallback to hardcoded values if role not found in DB
+		return bestRole, bestPriority, DefaultRoleQuotaLimit[bestRole]
+	}
+	return bestRole, role.Priority, role.QuotaLimit
+}
+
+// getDefaultRole returns the default role from database, or fallback values if DB unavailable
+func (s *Store) getDefaultRole() (roleName string, priority int, quotaLimit int) {
+	var role Role
+	if err := s.db.Where("name = ?", RoleNormal).First(&role).Error; err != nil {
+		// Fallback to hardcoded values if DB unavailable
+		return RoleNormal, DefaultRolePriority[RoleNormal], DefaultRoleQuotaLimit[RoleNormal]
+	}
+	return role.Name, role.Priority, role.QuotaLimit
 }
 
 // CreateSubscription creates a subscription record (pro/pro+). OrderID must be unique.

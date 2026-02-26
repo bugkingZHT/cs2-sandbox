@@ -138,7 +138,7 @@ func seedDefaultUserIfEmpty(db *gorm.DB, userStore *user.Store, roleStore *role.
 	log.Println("[DB] Seed admin granted pro role")
 }
 
-func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoStore *demo.Store, userStore *user.Store) {
+func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoStore *demo.Store, userStore *user.Store, roleStore *role.Store) {
 	storageRoot := utils.GetStorageRootPath()
 	if storageRoot == "" {
 		log.Printf("[Demo] %s not set; /api/demos/* will return 503", constants.EnvSnowboStorageRootPath)
@@ -150,7 +150,7 @@ func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoSto
 		return
 	}
 	demoStorage := demo.NewFileStorage(storageRoot)
-	demoHandlers := &demo.Handlers{Store: demoStore, Storage: demoStorage}
+	demoHandlers := &demo.Handlers{Store: demoStore, Storage: demoStorage, RoleStore: roleStore}
 	mux.HandleFunc("/api/demos", session.RequireAuth(sessionStore, demoHandlers.Index))
 	mux.HandleFunc("/api/demos/by-uuid", session.OptionalAuth(sessionStore, demoHandlers.ByUUID))
 	mux.HandleFunc("/api/demos/file", session.OptionalAuth(sessionStore, demoHandlers.GetFile))
@@ -166,7 +166,7 @@ func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, demoSt
 	mux.HandleFunc("/api/auth/logout", authHandlers.Logout)
 	mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 	mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
-	registerDemoRoutes(mux, sessionStore, demoStore, userStore)
+	registerDemoRoutes(mux, sessionStore, demoStore, userStore, roleStore)
 	return mux
 }
 

@@ -290,7 +290,6 @@ function onClipPublishAvailable(payload: { available: boolean }) {
   canPublishClip.value = payload.available;
 }
 
-
 /** 侧边栏使用刷新跳转，保证完整加载目标页 */
 function navigateWithReload(path: string) {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
@@ -323,7 +322,7 @@ function showToast(message: string, type: 'info' | 'warning' | 'error' = 'info')
   toastTimer = setTimeout(() => {
     toast.value = false;
     toastTimer = null;
-  }, 2000);
+  }, 3000);
 }
 
 function onAppToast(e: Event) {

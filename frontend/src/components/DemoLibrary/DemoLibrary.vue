@@ -195,6 +195,32 @@
             @change="onFileSelected"
             style="display: none"
           />
+          <!-- Quota Button with Dropdown -->
+          <div class="quota-btn-container">
+            <button 
+              class="ds-btn quota-btn" 
+              @click="toggleQuotaDropdown"
+              :class="{ active: showQuotaDropdown }"
+            >
+              <img src="/icons/quota.svg" alt="Quota" width="20" height="20" />
+            </button>
+            <div v-if="showQuotaDropdown" class="quota-dropdown ds-card ds-card-elevated">
+              <div class="quota-dropdown-header">
+                <span class="quota-label">Demo 存储用量：{{ demoCount }} / {{ quotaLimit }}</span>
+              </div>
+              <div class="quota-progress-container">
+                <div class="quota-progress-bar">
+                  <div 
+                    class="quota-progress-fill" 
+                    :style="{ width: quotaPercentage + '%' }"
+                  ></div>
+                </div>
+                <div class="quota-percentage">
+                  {{ quotaPercentage }}%
+                </div>
+              </div>
+            </div>
+          </div>
           <button class="ds-btn ds-btn-primary" @click="openUploadModal" :disabled="parsing">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -464,6 +490,8 @@ import { useReplayData } from '@/composables/useReplayData';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
 // Removed import for resolveTeamDisplayName to avoid fallback to player names
 import { navigate, getQuery, replaceLocation, pathRef, searchRef, getReplayerPlayingLocal } from '@/location';
+import { isMobileBrowser } from '@/composables/browserUtils';
+import { useAuth } from '@/composables/useAuth';
 import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
 
 const props = defineProps<{
@@ -480,6 +508,23 @@ const emit = defineEmits<{
 }>();
 
 const { parsing, showUploadBlockedWarning } = useReplayData();
+const { currentUser } = useAuth();
+
+// 获取当前用户 demo 数量
+const getUserDemoCount = async (): Promise<number> => {
+  if (!currentUser.value) return 0;
+  
+  try {
+    const res = await fetch('/api/demos', { credentials: 'include' });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status === 'OK' && json?.data?.items) {
+      return Array.isArray(json.data.items) ? json.data.items.length : 0;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+};
 
 // Watch for upload blocked warnings from composable
 watch(showUploadBlockedWarning, (warning) => {
@@ -515,6 +560,24 @@ const currentPlayingLocal = computed(() => {
   return getReplayerPlayingLocal();
 });
 
+// Toggle quota dropdown
+function toggleQuotaDropdown() {
+  showQuotaDropdown.value = !showQuotaDropdown.value;
+}
+
+// Close quota dropdown when clicking outside
+function closeQuotaDropdown() {
+  showQuotaDropdown.value = false;
+}
+
+// Update demo count when demo list changes
+watch(() => props.demoList.length, async () => {
+  if (currentUser.value) {
+    // Count non-fork demos for current user
+    demoCount.value = props.demoList.filter(demo => !demo.fork).length;
+  }
+}, { immediate: true });
+
 function openReplayer(demo: ReplayData, round: number) {
   const tab = 'players';
   navigate('/replayer', `demo_uuid=${encodeURIComponent(demo.uuid)}&round=${round}&tab=${tab}`);
@@ -523,6 +586,15 @@ function openReplayer(demo: ReplayData, round: number) {
 // Upload modal state (dashed drop zone)
 const showUploadModal = ref(false);
 const isUploadDragOver = ref(false);
+
+// Quota dropdown state
+const showQuotaDropdown = ref(false);
+const demoCount = ref(0);
+const quotaLimit = computed(() => currentUser.value?.quota_limit ?? 0);
+const quotaPercentage = computed(() => {
+  if (quotaLimit.value <= 0) return 0;
+  return Math.min(100, Math.round((demoCount.value / quotaLimit.value) * 100));
+});
 
 // Filter state (real-time filtering)，与 URL 同步
 
@@ -838,6 +910,10 @@ const handleClickOutside = (event: MouseEvent) => {
   if (!target.closest('.demo-bar-more-wrap') && !target.closest('.demo-bar-more-menu')) {
     openMenuDemoId.value = null;
   }
+  // Close quota dropdown when clicking outside
+  if (!target.closest('.quota-btn-container')) {
+    closeQuotaDropdown();
+  }
 };
 
 function toggleDemoMenu(demoId: string, e?: Event) {
@@ -995,8 +1071,36 @@ const sortedDemoList = computed(() => {
   });
 });
 
-const openUploadModal = () => {
+const openUploadModal = async () => {
   if (parsing.value) return;
+  
+  // 检查是否为移动端浏览器
+  if (isMobileBrowser()) {
+    window.dispatchEvent(new CustomEvent('app:toast', { 
+      detail: { message: '解析功能需要使用桌面端', type: 'warning' } 
+    }));
+    return;
+  }
+  
+  // 检查用户是否已登录
+  if (!currentUser.value) {
+    window.dispatchEvent(new CustomEvent('app:toast', { 
+      detail: { message: '解析功能需要登录', type: 'info' } 
+    }));
+    return;
+  }
+  
+  // 检查配额限制
+  const demoCount = await getUserDemoCount();
+  const quotaLimit = currentUser.value.quota_limit ?? 0;
+  
+  if (demoCount >= quotaLimit) {
+    window.dispatchEvent(new CustomEvent('app:toast', { 
+      detail: { message: '当前 Demo 数量已到达用户上限', type: 'error' } 
+    }));
+    return;
+  }
+  
   showUploadModal.value = true;
 };
 
@@ -2387,7 +2491,7 @@ const scoreLeftRightMap = computed(() => {
   height: 16px;
 }
 
-/* === Storage Quota Button Styles === */
+/* === Storage Quota Dropdown Styles === */
 .quota-btn-container {
   position: relative;
 }
@@ -2413,9 +2517,87 @@ const scoreLeftRightMap = computed(() => {
   transform: translateY(-1px);
 }
 
-.quota-btn svg {
+.quota-btn.active {
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: var(--ds-primary-text);
+  box-shadow: 0 2px 8px rgba(var(--ds-primary-rgb), 0.3);
+}
+
+.quota-btn img {
   width: 20px;
   height: 20px;
+  filter: brightness(0.8);
+}
+
+.quota-btn:hover img,
+.quota-btn.active img {
+  filter: brightness(1);
+}
+
+.quota-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 240px;
+  padding: var(--ds-space-md);
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: dropdownFadeIn 0.2s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quota-dropdown-header {
+  margin-bottom: var(--ds-space-sm);
+}
+
+.quota-label {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.quota-progress-container {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  margin-bottom: var(--ds-space-xs);
+}
+
+.quota-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.quota-progress-fill {
+  height: 100%;
+  background: var(--ds-primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.quota-percentage {
+  font-size: var(--ds-text-xs);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  min-width: 32px;
+  text-align: right;
 }
 
 /* Quota Tooltip */

@@ -2,6 +2,7 @@ package demo
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -18,8 +19,11 @@ var roundFileKeyRegex = regexp.MustCompile(`^round_(\d+)(\.pb\.gz)?$`)
 
 // Handlers holds dependencies for demo HTTP handlers.
 type Handlers struct {
-	Store   *Store
-	Storage *FileStorage
+	Store     *Store
+	Storage   *FileStorage
+	RoleStore interface {
+		GetEffectiveRole(userUID string) (roleName string, priority int, quotaLimit int)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -38,14 +42,14 @@ func writeJSONErr(w http.ResponseWriter, code int, msg string) {
 
 func demoToMap(d *Demo) map[string]interface{} {
 	return map[string]interface{}{
-		"id":          d.ID,
-		"demo_uuid":   d.DemoUUID,
-		"demo_meta":   d.DemoMeta,
-		"file_path":   d.FilePath,
-		"file_size":   d.FileSize,
-		"permission":  d.Permission,
-		"created_at":  d.CreatedAt,
-		"updated_at":  d.UpdatedAt,
+		"id":         d.ID,
+		"demo_uuid":  d.DemoUUID,
+		"demo_meta":  d.DemoMeta,
+		"file_path":  d.FilePath,
+		"file_size":  d.FileSize,
+		"permission": d.Permission,
+		"created_at": d.CreatedAt,
+		"updated_at": d.UpdatedAt,
 	}
 }
 
@@ -198,6 +202,31 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
+
+	// Check user quota before processing upload
+	userDemos, err := h.Store.ListByUser(u.UID)
+	if err != nil {
+		log.Printf("[Demo] Create: ListByUser failed for uid=%s: %v", u.UID, err)
+		writeJSONErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Count non-deleted demos (active demos)
+	activeDemoCount := 0
+	for _, demo := range userDemos {
+		if demo.DeletedAt.Time.IsZero() {
+			activeDemoCount++
+		}
+	}
+
+	// Get user quota limit from role system
+	_, _, quotaLimit := h.RoleStore.GetEffectiveRole(u.UID)
+
+	if activeDemoCount >= quotaLimit {
+		writeJSONErr(w, http.StatusForbidden, fmt.Sprintf("quota exceeded: %d/%d demos used", activeDemoCount, quotaLimit))
+		return
+	}
+
 	if !h.Storage.IsConfigured() {
 		writeJSONErr(w, http.StatusServiceUnavailable, "storage not configured")
 		return
@@ -398,7 +427,7 @@ func (h *Handlers) ByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Permission *int8  `json:"permission"`
+			Permission *int8   `json:"permission"`
 			DemoMeta   *string `json:"demo_meta"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

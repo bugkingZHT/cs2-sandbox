@@ -13,14 +13,14 @@ const (
 	RoleProPlus = "pro+"
 )
 
-// Priority and quota for each role (used when no DB roles table or as fallback).
+// Default priority and quota for each role (used when no DB roles table or as fallback).
 var (
-	RolePriority = map[string]int{
+	DefaultRolePriority = map[string]int{
 		RoleNormal:  0,
 		RolePro:     50,
 		RoleProPlus: 100,
 	}
-	RoleQuotaLimit = map[string]int{
+	DefaultRoleQuotaLimit = map[string]int{
 		RoleNormal:  5,
 		RolePro:     100,
 		RoleProPlus: 1024,

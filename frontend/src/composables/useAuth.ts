@@ -17,7 +17,7 @@ function parseMeData(data: Record<string, unknown>): AuthUser {
     uid: String(data?.uid ?? ''),
     username: String(data?.username ?? ''),
     role: data?.role === 'pro' || data?.role === 'pro+' ? data.role : 'normal',
-    quota_limit: typeof data?.quota_limit === 'number' ? data.quota_limit : 5,
+    quota_limit: typeof data?.quota_limit === 'number' ? data.quota_limit : 0,
     quota_used: typeof data?.quota_used === 'number' ? data.quota_used : 0,
   };
 }
