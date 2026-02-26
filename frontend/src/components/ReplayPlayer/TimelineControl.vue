@@ -34,8 +34,8 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
 
     <!-- 二、下方：时间轴进度条 -->
     <div class="playback-control-module">
-      <!-- 左侧控制区：播放按钮 + 倍速（桌面端多 tab，移动端单按钮循环） -->
-      <div class="playback-info-box">
+      <!-- 左侧控制区：播放按钮 + 倍速 + 时间显示（第一行） -->
+      <div class="playback-info-box-row">
         <div class="controls-stack">
           <button
             class="circle-play-btn"
@@ -50,8 +50,8 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             </svg>
           </button>
         </div>
-        <!-- 桌面端：倍速多 tab -->
-        <div class="speed-tabs speed-tabs-desktop">
+        <!-- 倍速多 tab（移动端和桌面端都使用） -->
+        <div class="speed-tabs speed-tabs-all">
           <button
             v-for="s in speedOptions"
             :key="s"
@@ -62,17 +62,35 @@ v-if="getRoundResultIconLocal(r) && !shouldIconBeFirstLocal(r)"
             {{ s }}x
           </button>
         </div>
-        <!-- 移动端：单按钮点击循环切换倍速 -->
-        <button
-          class="speed-cycle-btn speed-cycle-mobile"
-          :title="`${playbackSpeed}x，点击切换`"
-          @click="cycleSpeed"
-        >
-          {{ playbackSpeed }}x
-        </button>
+        <!-- 右侧：时间显示 -->
+        <div class="time-display-box">
+          <div class="time-display">
+            <!-- Show C4 icon when bomb is planted -->
+            <img 
+              v-if="currentRoundTime.phase === 'planted'" 
+              src="/utility/c4.svg" 
+              class="icon-c4" 
+              alt="C4"
+            />
+            <!-- Show clock icon for other phases -->
+            <svg 
+              v-else
+              class="icon-stopwatch" 
+              width="14" 
+              height="14" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              :stroke="roundTimeColor" 
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
+            </svg>
+            <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- 中间时间轴主体 -->
+      <!-- 中间时间轴主体（第二行） -->
       <div 
         class="timeline-track-main" 
         @mousedown="onTimelineMouseDown"
@@ -643,13 +661,6 @@ function onClipHandleTouchStart(which: 'left' | 'right', e: TouchEvent) {
 }
 
 const speedOptions = [0.5, 1, 2] as const;
-
-/** 移动端：点击倍速按钮循环切换到下一档 */
-function cycleSpeed() {
-  const idx = speedOptions.indexOf(props.playbackSpeed as typeof speedOptions[number]);
-  const nextIdx = idx < 0 ? 0 : (idx + 1) % speedOptions.length;
-  emit('update-speed', speedOptions[nextIdx]);
-}
 </script>
 
 <style scoped>
@@ -862,6 +873,10 @@ function cycleSpeed() {
     min-width: 0;
     gap: var(--ds-space-xs);
   }
+  
+  .speed-tabs-all {
+    height: 100%;
+  }
 }
 
 @media (max-width: 640px) {
@@ -874,6 +889,20 @@ function cycleSpeed() {
   }
 }
 
+.playback-info-box-row {
+  height: 100%;
+  background: var(--ds-bg-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-sm);
+  padding: 0 var(--ds-space-sm);
+  border-radius: 2px;
+  flex-shrink: 0;
+  min-width: 0; /* 小屏时可收缩 */
+  position: relative;
+}
+
+/* 旧类名兼容（以防其他地方引用） */
 .playback-info-box {
   height: 100%;
   background: var(--ds-bg-secondary);
@@ -941,31 +970,18 @@ function cycleSpeed() {
   overflow: hidden;
 }
 
-/* 移动端单按钮循环倍速：默认隐藏，仅在小屏显示 */
-.speed-cycle-mobile {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  height: 80%;
-  min-width: 36px;
-  padding: 0 8px;
-  font-family: var(--ds-font-mono);
-  font-size: 12px;
-  font-weight: bold;
-  color: var(--ds-text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: 2px;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  user-select: none;
+/* 移动端和桌面端统一使用相同的倍速标签样式 */
+.speed-tabs-all {
+  display: flex;
+  align-items: stretch;
   flex-shrink: 0;
+  height: 80%;
+  background: var(--ds-bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
-.speed-cycle-mobile:hover {
-  color: var(--ds-primary);
-  background: rgba(var(--ds-primary-rgb), 0.12);
-}
+
 
 .speed-tab-btn {
   padding: 0 12px;
@@ -1516,14 +1532,14 @@ function cycleSpeed() {
   }
 
   .playback-control-module {
-    display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: 6px;
     min-width: 0;
     flex: 1 1 auto;
   }
 
-  .playback-info-box {
+  .playback-info-box-row {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1532,18 +1548,10 @@ function cycleSpeed() {
     min-width: 0;
   }
 
-  /* 隐藏多 tab，显示单按钮循环 */
-  .speed-tabs-desktop {
-    display: none !important;
-  }
-
-  .speed-cycle-mobile {
-    display: flex !important;
-  }
-
   .timeline-track-main {
     flex: 1 1 0;
     min-width: 0;
+    height: 32px; /* 固定高度确保一致性 */
   }
 
   .time-display-box {
@@ -1563,6 +1571,10 @@ function cycleSpeed() {
 
   .circle-play-btn {
     flex-shrink: 0;
+  }
+  
+  .speed-tabs-all {
+    height: 100%;
   }
 }
 

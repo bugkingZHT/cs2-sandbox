@@ -81,7 +81,7 @@
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
           @toggle-grenade-tracking="toggleGrenadeTracking"
           @projectile-click="handleProjectileClick"
-          @toggle-pure-mode="pureMode = !pureMode"
+          @toggle-pure-mode="togglePureMode"
           :tab-recorder-supported="tabRecorder.isSupported"
           :tab-recorder-recording="tabRecorder.isRecording.value"
           :tab-recorder-converting="tabRecorder.isConverting.value"
@@ -130,7 +130,7 @@
         </div>
 
         <!-- Left Panel: Tab (玩家/回合) + Player Cards or Round Selector + 剪辑/发布 -->
-        <div v-if="coverType === 'none' && !pureMode" class="players-panel top-left">
+        <div v-if="coverType === 'none'" class="players-panel top-left">
           <div class="left-panel-header">
             <div class="left-panel-tabs">
               <button
@@ -604,7 +604,7 @@
               </button>
             </div>
             <button
-              v-if="!replayerNoteId"
+              v-if="!pureMode"
               type="button"
               class="left-panel-footer-btn clip-mode-btn"
               :class="{ active: isClipMode }"
@@ -686,6 +686,14 @@ const leftPanelTab = ref<'players' | 'rounds' | 'settings' | null>(null);
 
 function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'settings') {
   leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
+}
+
+function togglePureMode() {
+  pureMode.value = !pureMode.value;
+  // 在进入纯净模式时，关闭任何已打开的标签页
+  if (pureMode.value) {
+    leftPanelTab.value = null;
+  }
 }
 // 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
 const showMapProjectiles = ref(true);
@@ -847,7 +855,6 @@ function syncReplayerUrl() {
   const q = getQuery();
   if (pureMode.value) {
     q.pure = '1';
-    q.tab = 'disable';
   } else {
     delete q.pure;
     if (leftPanelTab.value != null) q.tab = leftPanelTab.value;
@@ -1810,7 +1817,7 @@ const loadRoundData = async (roundNumber: number) => {
       q.demo_uuid = replay.value.uuid;
       q.round = String(roundNumber);
     }
-    if (pureMode.value) { q.pure = '1'; q.tab = 'disable'; } else { delete q.pure; if (leftPanelTab.value != null) q.tab = leftPanelTab.value; else delete q.tab; }
+    if (pureMode.value) { q.pure = '1'; } else { delete q.pure; if (leftPanelTab.value != null) q.tab = leftPanelTab.value; else delete q.tab; }
     replaceLocation('/replayer', new URLSearchParams(q).toString());
     
     // Resume playback if it was playing before
@@ -1934,9 +1941,9 @@ onBeforeUnmount(() => {
 }
 
 .players-panel.top-left {
-  top: var(--ds-space-xl);
+  top: var(--ds-space-lg);
   left: var(--ds-space-md);
-  bottom: var(--ds-space-xl);
+  bottom: var(--ds-space-md);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -2778,8 +2785,8 @@ onBeforeUnmount(() => {
 /* === Kill Feed === */
 .kill-feed-container {
   position: absolute;
-  top: var(--ds-space-xl);
-  right: var(--ds-space-xl);
+  top: var(--ds-space-lg);
+  right: var(--ds-space-lg);
   display: flex;
   flex-direction: column;
   align-items: flex-end;

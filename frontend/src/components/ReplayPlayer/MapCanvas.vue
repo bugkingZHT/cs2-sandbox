@@ -1024,8 +1024,8 @@ onBeforeUnmount(() => {
 
 .map-controls-panel {
   position: absolute;
-  bottom: var(--ds-space-xl);
-  right: var(--ds-space-xl);
+  bottom: var(--ds-space-md);
+  right: var(--ds-space-md);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
