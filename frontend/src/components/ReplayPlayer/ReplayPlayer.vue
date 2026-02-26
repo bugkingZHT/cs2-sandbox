@@ -115,7 +115,7 @@
         />
 
         <!-- 击杀回传 (Kill Feed) -->
-        <div v-if="!pureMode" class="kill-feed-container">
+        <div v-show="leftPanelTab === 'players'" class="kill-feed-container">
           <TransitionGroup name="list">
             <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
               <div class="kill-card">
