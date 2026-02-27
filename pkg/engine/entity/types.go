@@ -6,11 +6,12 @@ import (
 
 var ButtonWatching = []common.ButtonBitMask{
 	common.ButtonAttack,    // 鼠标左键 (攻击)
-	common.ButtonAttack2,   // 鼠标右键 (瞵准)
+	common.ButtonAttack2,   // 鼠标右键 (瞄准)
 	common.ButtonForward,   // W
 	common.ButtonBack,      // S
 	common.ButtonMoveLeft,  // A
 	common.ButtonMoveRight, // D
+	common.ButtonSpeed,		// Shift (静步)
 	common.ButtonJump,      // 跳跃
 	common.ButtonDuck,      // 蹲下
 }

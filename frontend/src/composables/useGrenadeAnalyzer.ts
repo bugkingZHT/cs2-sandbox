@@ -115,6 +115,7 @@ export function useGrenadeAnalyzer(
       attack2: isButtonPressed(buttons, BUTTON_MASKS.ATTACK2),
       jump: isButtonPressed(buttons, BUTTON_MASKS.JUMP),
       duck: isButtonPressed(buttons, BUTTON_MASKS.DUCK),
+      speed: isButtonPressed(buttons, BUTTON_MASKS.SPEED),
     };
   });
 

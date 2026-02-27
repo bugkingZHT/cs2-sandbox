@@ -1,54 +1,80 @@
 <template>
   <div class="keyboard-overlay">
-    <!-- WASD 区域 -->
+    <!-- 键盘区域 (3x4 网格) -->
     <div class="wasd-section">
-      <div class="wasd-grid">
-        <!-- W 键 -->
-        <div class="key-row top">
-          <div
-            class="key"
-            :class="{ active: buttonStates.forward }"
-          >
-            W
+      <div class="keyboard-grid">
+        <!-- 第一行 -->
+        <div class="grid-row">
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
+          <div class="grid-cell">
+            <div
+              class="key"
+              :class="{ active: buttonStates.forward }"
+            >
+              W
+            </div>
+          </div>
+          <div class="grid-cell"></div>
+        </div>
+        <!-- 第二行 -->
+        <div class="grid-row">
+          <div class="grid-cell">
+            <div
+              class="key medium"
+              :class="{ active: buttonStates.speed }"
+              title="静步"
+            >
+              SHIFT
+            </div>
+          </div>
+          <div class="grid-cell">
+            <div
+              class="key"
+              :class="{ active: buttonStates.left }"
+            >
+              A
+            </div>
+          </div>
+          <div class="grid-cell">
+            <div
+              class="key"
+              :class="{ active: buttonStates.back }"
+            >
+              S
+            </div>
+          </div>
+          <div class="grid-cell">
+            <div
+              class="key"
+              :class="{ active: buttonStates.right }"
+            >
+              D
+            </div>
           </div>
         </div>
-        <!-- A S D 键 -->
-        <div class="key-row middle">
-          <div
-            class="key"
-            :class="{ active: buttonStates.left }"
-          >
-            A
+        <!-- 第三行 -->
+        <div class="grid-row">
+          <div class="grid-cell">
+            <div
+              class="key medium"
+              :class="{ active: buttonStates.duck }"
+              title="蹲下"
+            >
+              CTRL
+            </div>
           </div>
-          <div
-            class="key"
-            :class="{ active: buttonStates.back }"
-          >
-            S
+          <div class="grid-cell space-cell">
+            <div
+              class="key wide"
+              :class="{ active: buttonStates.jump }"
+              title="跳跃"
+            >
+              SPACE
+            </div>
           </div>
-          <div
-            class="key"
-            :class="{ active: buttonStates.right }"
-          >
-            D
-          </div>
-        </div>
-      </div>
-      <!-- 额外按键：跳跃和蹲下 -->
-      <div class="extra-keys">
-        <div
-          class="key wide"
-          :class="{ active: buttonStates.jump }"
-          title="跳跃"
-        >
-          SPACE
-        </div>
-        <div
-          class="key medium"
-          :class="{ active: buttonStates.duck }"
-          title="蹲下"
-        >
-          CTRL
+          <div class="grid-cell"></div>
+          <div class="grid-cell"></div>
         </div>
       </div>
     </div>
@@ -105,6 +131,7 @@ defineProps<{
     attack2: boolean;
     jump: boolean;
     duck: boolean;
+    speed: boolean;
   };
 }>();
 </script>
@@ -120,27 +147,29 @@ defineProps<{
   backdrop-filter: blur(8px);
 }
 
-/* WASD 区域 */
-.wasd-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.wasd-grid {
+/* 键盘网格布局 */
+.keyboard-grid {
+  width: 180px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.key-row {
+.grid-row {
   display: flex;
+  gap: 4px;
+}
+
+.grid-cell {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 4px;
 }
 
-.key-row.middle {
-  justify-content: flex-start;
+.grid-cell.space-cell {
+  width: 116px; /* 36px * 3 + 4px * 2 gaps */
 }
 
 .key {
@@ -166,14 +195,14 @@ defineProps<{
 }
 
 .key.wide {
-  width: 72px;
-  height: 28px;
+  width: 116px;
+  height: 36px;
   font-size: 10px;
 }
 
 .key.medium {
-  width: 42px;
-  height: 28px;
+  width: 48px;
+  height: 36px;
   font-size: 10px;
 }
 
@@ -203,6 +232,12 @@ defineProps<{
   justify-content: center;
   gap: 4px;
   margin-top: 4px;
+}
+
+.key-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* 鼠标区域 */
