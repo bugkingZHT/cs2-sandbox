@@ -130,14 +130,14 @@
         </div>
 
         <!-- Left Panel: Tab (玩家/回合) + Player Cards or Round Selector + 剪辑/发布 -->
-        <div v-if="coverType === 'none'" class="players-panel top-left" @click="handlePanelClick">
+        <div v-if="coverType === 'none'" class="players-panel top-left">
           <div class="left-panel-header">
             <div class="left-panel-tabs">
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'players' }"
-                @click.stop="toggleLeftPanelTab('players')"
+                @click="toggleLeftPanelTab('players')"
               >
                 <span>玩家</span>
                 <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -148,7 +148,7 @@
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
-                @click.stop="toggleLeftPanelTab('rounds')"
+                @click="toggleLeftPanelTab('rounds')"
               >
                 <span>回合</span>
                 <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -159,7 +159,7 @@
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'settings' }"
-                @click.stop="toggleLeftPanelTab('settings')"
+                @click="toggleLeftPanelTab('settings')"
               >
                 <span>设置</span>
                 <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -720,13 +720,6 @@ const leftPanelTab = ref<'players' | 'rounds' | 'settings' | null>(null);
 //切换左侧面板标签页（玩家/回合/设置）
 function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'settings') {
   leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
-}
-
-//点击面板空白处关闭所有 tab
-function handlePanelClick() {
-  if (leftPanelTab.value !== null) {
-    leftPanelTab.value = null;
-  }
 }
 
 //切换纯净模式（隐藏左侧面板）
