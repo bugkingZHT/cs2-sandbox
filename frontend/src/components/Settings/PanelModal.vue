@@ -1277,12 +1277,12 @@ const handleCleanStorageLeak = async () => {
 
 .form-input {
   width: 100%;
-  padding: var(--ds-space-sm);
+  padding: var(--ds-space-md) var(--ds-space-lg);
   background: var(--ds-surface-base);
   border: 2px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: var(--ds-text-sm);
+  font-size: var(--ds-text-md);
   font-family: var(--ds-font-sans);
   outline: none;
   transition: all var(--ds-transition-base);

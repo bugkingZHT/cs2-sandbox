@@ -130,27 +130,42 @@
         </div>
 
         <!-- Left Panel: Tab (玩家/回合) + Player Cards or Round Selector + 剪辑/发布 -->
-        <div v-if="coverType === 'none'" class="players-panel top-left">
+        <div v-if="coverType === 'none'" class="players-panel top-left" @click="handlePanelClick">
           <div class="left-panel-header">
             <div class="left-panel-tabs">
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'players' }"
-                @click.prevent="toggleLeftPanelTab('players')"
-              >玩家</button>
+                @click.stop="toggleLeftPanelTab('players')"
+              >
+                <span>玩家</span>
+                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
-                @click.prevent="toggleLeftPanelTab('rounds')"
-              >回合</button>
+                @click.stop="toggleLeftPanelTab('rounds')"
+              >
+                <span>回合</span>
+                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'settings' }"
-                @click.prevent="toggleLeftPanelTab('settings')"
-              >设置</button>
+                @click.stop="toggleLeftPanelTab('settings')"
+              >
+                <span>设置</span>
+                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
             </div>
           </div>
           <!-- 无 tab 选中时占位，保持面板高度 -->
@@ -705,6 +720,13 @@ const leftPanelTab = ref<'players' | 'rounds' | 'settings' | null>(null);
 //切换左侧面板标签页（玩家/回合/设置）
 function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'settings') {
   leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
+}
+
+//点击面板空白处关闭所有 tab
+function handlePanelClick() {
+  if (leftPanelTab.value !== null) {
+    leftPanelTab.value = null;
+  }
 }
 
 //切换纯净模式（隐藏左侧面板）
@@ -2187,6 +2209,9 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .left-panel-tab:hover {
@@ -2197,6 +2222,14 @@ onBeforeUnmount(() => {
 .left-panel-tab.active {
   color: #fff;
   background: rgba(255, 255, 255, 0.2);
+}
+
+.left-panel-tab .tab-arrow {
+  transition: transform 0.15s ease;
+}
+
+.left-panel-tab.active .tab-arrow {
+  transform: rotate(180deg);
 }
 
 .left-panel-footer {
