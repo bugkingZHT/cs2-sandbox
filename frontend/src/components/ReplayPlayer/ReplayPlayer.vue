@@ -137,20 +137,35 @@
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'players' }"
-                @click.prevent="toggleLeftPanelTab('players')"
-              >玩家</button>
+                @click="toggleLeftPanelTab('players')"
+              >
+                <span>玩家</span>
+                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'rounds' }"
-                @click.prevent="toggleLeftPanelTab('rounds')"
-              >回合</button>
+                @click="toggleLeftPanelTab('rounds')"
+              >
+                <span>回合</span>
+                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
               <button
                 type="button"
                 class="left-panel-tab"
                 :class="{ active: leftPanelTab === 'settings' }"
-                @click.prevent="toggleLeftPanelTab('settings')"
-              >设置</button>
+                @click="toggleLeftPanelTab('settings')"
+              >
+                <span>设置</span>
+                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
             </div>
           </div>
           <!-- 无 tab 选中时占位，保持面板高度 -->
@@ -2187,6 +2202,9 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .left-panel-tab:hover {
@@ -2197,6 +2215,14 @@ onBeforeUnmount(() => {
 .left-panel-tab.active {
   color: #fff;
   background: rgba(255, 255, 255, 0.2);
+}
+
+.left-panel-tab .tab-arrow {
+  transition: transform 0.15s ease;
+}
+
+.left-panel-tab.active .tab-arrow {
+  transform: rotate(180deg);
 }
 
 .left-panel-footer {
