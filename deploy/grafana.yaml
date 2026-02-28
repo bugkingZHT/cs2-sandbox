@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      hostNetwork: true
+      dnsPolicy: Default  # hostDNS is required for demobox to access the database
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      containers:
+      - name: grafana
+        image: registry.cn-hangzhou.aliyuncs.com/snowbo/grafana:10.4.1
+        ports:
+        - containerPort: 3000
+          hostPort: 3000
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "hexing2#7"  # 管理员密码
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: grafana-storage
+        hostPath:
+          path: /data/grafana  # 节点本地目录，自动创建
+          type: DirectoryOrCreate
+      - name: datasources
+        configMap:
+          name: grafana-datasources

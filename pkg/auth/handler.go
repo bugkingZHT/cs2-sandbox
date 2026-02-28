@@ -137,6 +137,13 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
+
+	// Update the last login time for the authenticated user
+	if err := h.User.UpdateLastLoginAt(u.ID); err != nil {
+		// non-fatal, continue
+		log.Printf("[Auth] Me: UpdateLastLoginAt failed uid=%s: %v", u.UID, err)
+	}
+
 	resp := MeResponse{UID: u.UID, Username: u.Username, Role: role.RoleNormal, QuotaLimit: role.DefaultRoleQuotaLimit[role.RoleNormal], QuotaUsed: 0}
 	if h.RoleStore != nil {
 		resp.Role, _, resp.QuotaLimit = h.RoleStore.GetEffectiveRole(u.UID)

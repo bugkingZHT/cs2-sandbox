@@ -17,9 +17,9 @@ data:
         client_max_body_size 50M;
 
         return 301 https://$host$request_uri;
-    }
+      }
 
-    server {
+      server {
         listen 443 ssl;
         server_name snowbo.cn;  # 必须匹配证书域名
 
@@ -31,6 +31,24 @@ data:
         location / {
             proxy_pass http://127.0.0.1:8080;
             # 修复：为每个 proxy_set_header 补充正确的参数值
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+      }
+      
+      server {
+        listen 443 ssl;
+        server_name grafana.snowbo.cn;  # Grafana subdomain
+
+        client_max_body_size 50M;
+
+        ssl_certificate /etc/nginx/ssl/tls.crt;      # Secret 挂载路径
+        ssl_certificate_key /etc/nginx/ssl/tls.key;  # Secret 挂载路径
+
+        location / {
+            proxy_pass http://127.0.0.1:3000;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
