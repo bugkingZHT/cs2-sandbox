@@ -16,7 +16,7 @@ import (
 	"github.com/bugkingzht/cs-demobox/pkg/auth"
 	"github.com/bugkingzht/cs-demobox/pkg/database"
 	"github.com/bugkingzht/cs-demobox/pkg/demo"
-
+	"github.com/bugkingzht/cs-demobox/pkg/email"
 	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
 	"github.com/bugkingzht/cs-demobox/pkg/user"
@@ -101,7 +101,7 @@ func openDBAndMigrate(dbCfg database.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 	log.Println("[DB] Connected")
-	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &demo.Demo{}, &role.Role{}, &role.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&user.User{}, &session.Session{}, &demo.Demo{}, &role.Role{}, &role.Subscription{}, &email.EmailVerification{}); err != nil {
 		log.Printf("[DB] Migrate failed: %v", err)
 	}
 	return db, nil
@@ -158,20 +158,30 @@ func registerDemoRoutes(mux *http.ServeMux, sessionStore *session.Store, demoSto
 	log.Printf("[Demo] routes registered with %s", constants.EnvSnowboStorageRootPath)
 }
 
-func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, demoStore *demo.Store) http.Handler {
+func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, demoStore *demo.Store, emailStore *email.Store, emailSender *email.Sender) http.Handler {
 	sessionStore := session.NewStore(db)
-	authHandlers := &auth.Handlers{User: userStore, Session: sessionStore, RoleStore: roleStore}
+	authHandlers := &auth.Handlers{
+		User:        userStore,
+		Session:     sessionStore,
+		RoleStore:   roleStore,
+		EmailStore:  emailStore,
+		EmailSender: emailSender,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/login", authHandlers.Login)
 	mux.HandleFunc("/api/auth/logout", authHandlers.Logout)
 	mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 	mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
+	mux.HandleFunc("/api/auth/send-code", authHandlers.SendCode)
+	mux.HandleFunc("/api/auth/register", authHandlers.Register)
+	mux.HandleFunc("/api/auth/wechat/qrcode", authHandlers.WechatQRCode)
+	mux.HandleFunc("/api/auth/wechat/poll", authHandlers.WechatPoll)
 	registerDemoRoutes(mux, sessionStore, demoStore, userStore, roleStore)
 	return mux
 }
 
 // setupAPIHandler returns the API mux when DB is configured and connected, otherwise a 503 handler.
-func setupAPIHandler(dbCfg database.Config) http.Handler {
+func setupAPIHandler(dbCfg database.Config, emailCfg email.Config) http.Handler {
 	if !dbCfg.IsConfigured() {
 		log.Printf("[DB] Skipped: missing env %v (auth API will return 503)", utils.DBConfigMissingEnvKeys(dbCfg))
 		return apiUnavailableHandler()
@@ -184,9 +194,17 @@ func setupAPIHandler(dbCfg database.Config) http.Handler {
 	userStore := user.NewStore(db)
 	roleStore := role.NewStore(db)
 	demoStore := demo.NewStore(db)
+	emailStore := email.NewStore(db)
+	var emailSender *email.Sender
+	if emailCfg.IsConfigured() {
+		emailSender = email.NewSender(emailCfg)
+		log.Printf("[Email] SMTP configured: host=%s port=%s user=%s", emailCfg.Host, emailCfg.Port, emailCfg.User)
+	} else {
+		log.Println("[Email] SMTP not configured; verification codes will be printed to log (dev mode)")
+	}
 	ensureDefaultRoles(roleStore)
 	seedDefaultUserIfEmpty(db, userStore, roleStore)
-	return newAPIMux(db, userStore, roleStore, demoStore)
+	return newAPIMux(db, userStore, roleStore, demoStore, emailStore, emailSender)
 }
 
 func main() {
@@ -195,7 +213,7 @@ func main() {
 	static := staticHandler(root)
 
 	// API handler: auth routes when DB is configured, else 503
-	apiHandler := setupAPIHandler(utils.GetDBConfig())
+	apiHandler := setupAPIHandler(utils.GetDBConfig(), utils.GetEmailConfig())
 
 	// 显式监听前端页面路径，每个路径返回独立 HTML（便于追踪）；/api 走 API
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

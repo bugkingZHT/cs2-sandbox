@@ -6,12 +6,18 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/bugkingzht/cs-demobox/pkg/email"
 	"github.com/bugkingzht/cs-demobox/pkg/role"
 	"github.com/bugkingzht/cs-demobox/pkg/session"
 	"github.com/bugkingzht/cs-demobox/pkg/user"
 )
+
+var emailRegexp = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 
 const (
 	cookieName = "session_id"
@@ -22,13 +28,18 @@ const (
 
 // Handlers holds dependencies for auth HTTP handlers.
 type Handlers struct {
-	User      *user.Store
-	Session   *session.Store
-	RoleStore *role.Store
+	User        *user.Store
+	Session     *session.Store
+	RoleStore   *role.Store
+	EmailStore  *email.Store  // may be nil if DB not configured
+	EmailSender *email.Sender // may be nil if SMTP not configured
 }
 
 // LoginRequest is the JSON body for POST /api/auth/login.
 type LoginRequest struct {
+	// Identity accepts username or email address.
+	Identity string `json:"identity"`
+	// Username kept for backwards compatibility (deprecated, use Identity).
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -74,15 +85,20 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.Username == "" || req.Password == "" {
-		writeJSONErr(w, http.StatusBadRequest, "username and password required")
+	// Support both identity (new) and username (legacy) fields.
+	identity := strings.TrimSpace(req.Identity)
+	if identity == "" {
+		identity = strings.TrimSpace(req.Username)
+	}
+	if identity == "" || req.Password == "" {
+		writeJSONErr(w, http.StatusBadRequest, "identity and password required")
 		return
 	}
-	log.Printf("[Auth] Login: attempt username=%s", req.Username)
-	u, err := h.User.GetByUsername(req.Username)
+	log.Printf("[Auth] Login: attempt identity=%s", identity)
+	u, err := h.User.GetByUsernameOrEmail(identity)
 	if err != nil {
-		log.Printf("[Auth] Login: user not found username=%s", req.Username)
-		writeJSONErr(w, http.StatusUnauthorized, "invalid username or password")
+		log.Printf("[Auth] Login: user not found identity=%s", identity)
+		writeJSONErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
 	}
 	if u.Status != user.StatusActive {
@@ -91,8 +107,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ComparePassword(u.PasswordHash, req.Password) {
-		log.Printf("[Auth] Login: password mismatch username=%s", req.Username)
-		writeJSONErr(w, http.StatusUnauthorized, "invalid username or password")
+		log.Printf("[Auth] Login: password mismatch identity=%s", identity)
+		writeJSONErr(w, http.StatusUnauthorized, "账号或密码错误")
 		return
 	}
 	sessionID, err := newSessionID()
@@ -229,5 +245,175 @@ func clearSessionCookie(w http.ResponseWriter) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// ======================================================================
+// Registration & email verification
+// ======================================================================
+
+// SendCodeRequest is the JSON body for POST /api/auth/send-code.
+type SendCodeRequest struct {
+	Email   string `json:"email"`
+	Purpose string `json:"purpose"` // "register" | "reset_password"
+}
+
+// SendCode handles POST /api/auth/send-code.
+// If SMTP is not configured, the code is printed to the server log only (dev mode).
+func (h *Handlers) SendCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.EmailStore == nil {
+		writeJSONErr(w, http.StatusServiceUnavailable, "邮件服务不可用")
+		return
+	}
+	var req SendCodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	if !emailRegexp.MatchString(req.Email) {
+		writeJSONErr(w, http.StatusBadRequest, "邮箱格式不正确")
+		return
+	}
+	purpose := req.Purpose
+	if purpose == "" {
+		purpose = "register"
+	}
+	if purpose == "register" {
+		exists, err := h.User.EmailExists(req.Email)
+		if err == nil && exists {
+			writeJSONErr(w, http.StatusConflict, "该邮箱已注册")
+			return
+		}
+	}
+	v, err := h.EmailStore.CreateCode(req.Email, purpose)
+	if err != nil {
+		writeJSONErr(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
+	if h.EmailSender != nil {
+		if err := h.EmailSender.SendVerificationCode(req.Email, v.Code, purpose); err != nil {
+			log.Printf("[Auth] SendCode: SMTP error email=%s: %v", req.Email, err)
+			writeJSONErr(w, http.StatusInternalServerError, "邮件发送失败，请稍后重试")
+			return
+		}
+		log.Printf("[Auth] SendCode: sent to %s purpose=%s", req.Email, purpose)
+	} else {
+		// SMTP not configured: print code to log for local development.
+		log.Printf("[Auth] SendCode [DEV - no SMTP]: email=%s code=%s purpose=%s", req.Email, v.Code, purpose)
+	}
+	writeJSONOK(w, nil)
+}
+
+// RegisterRequest is the JSON body for POST /api/auth/register.
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Code     string `json:"code"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// Register handles POST /api/auth/register.
+func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.EmailStore == nil {
+		writeJSONErr(w, http.StatusServiceUnavailable, "注册服务不可用")
+		return
+	}
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Username = strings.TrimSpace(req.Username)
+	req.Code = strings.TrimSpace(req.Code)
+
+	if !emailRegexp.MatchString(req.Email) {
+		writeJSONErr(w, http.StatusBadRequest, "邮箱格式不正确")
+		return
+	}
+	if req.Code == "" {
+		writeJSONErr(w, http.StatusBadRequest, "验证码不能为空")
+		return
+	}
+	if req.Username == "" || utf8.RuneCountInString(req.Username) < 2 || utf8.RuneCountInString(req.Username) > 32 {
+		writeJSONErr(w, http.StatusBadRequest, "用户名长度需在 2-32 个字符之间")
+		return
+	}
+	if len(req.Password) < 6 {
+		writeJSONErr(w, http.StatusBadRequest, "密码至少 6 位")
+		return
+	}
+
+	// Validate verification code.
+	if err := h.EmailStore.VerifyCode(req.Email, req.Code, "register"); err != nil {
+		writeJSONErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Check duplicates.
+	if exists, _ := h.User.EmailExists(req.Email); exists {
+		writeJSONErr(w, http.StatusConflict, "该邮箱已注册")
+		return
+	}
+	if exists, _ := h.User.UsernameExists(req.Username); exists {
+		writeJSONErr(w, http.StatusConflict, "用户名已被使用")
+		return
+	}
+
+	hash, err := HashPassword(req.Password)
+	if err != nil {
+		writeJSONErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	u, err := h.User.Create(req.Username, req.Email, "", hash)
+	if err != nil {
+		log.Printf("[Auth] Register: Create failed email=%s: %v", req.Email, err)
+		writeJSONErr(w, http.StatusInternalServerError, "注册失败，请重试")
+		return
+	}
+
+	// Auto-login after registration.
+	sessionID, err := newSessionID()
+	if err != nil {
+		writeJSONErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	expiresAt := time.Now().Add(sessionTTL)
+	if err := h.Session.Create(sessionID, u.ID, expiresAt); err != nil {
+		writeJSONErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	setSessionCookie(w, sessionID, expiresAt)
+	log.Printf("[Auth] Register: ok uid=%s username=%s email=%s", u.UID, u.Username, u.Email)
+	writeJSONOK(w, UserSummary{UID: u.UID, Username: u.Username})
+}
+
+// ======================================================================
+// WeChat login placeholder (not yet implemented)
+// ======================================================================
+
+// WechatQRCode handles GET /api/auth/wechat/qrcode.
+// Returns available=false until WeChat Open Platform integration is added.
+func (h *Handlers) WechatQRCode(w http.ResponseWriter, r *http.Request) {
+	writeJSONOK(w, map[string]interface{}{
+		"available": false,
+		"message":   "微信登录即将开放，敬请期待",
+	})
+}
+
+// WechatPoll handles GET /api/auth/wechat/poll.
+func (h *Handlers) WechatPoll(w http.ResponseWriter, r *http.Request) {
+	writeJSONOK(w, map[string]interface{}{
+		"available": false,
+		"status":    "not_implemented",
 	})
 }
