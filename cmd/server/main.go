@@ -174,6 +174,7 @@ func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, demoSt
 	mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
 	mux.HandleFunc("/api/auth/send-code", authHandlers.SendCode)
 	mux.HandleFunc("/api/auth/register", authHandlers.Register)
+	mux.HandleFunc("/api/auth/reset-password", authHandlers.ResetPassword)
 	mux.HandleFunc("/api/auth/wechat/qrcode", authHandlers.WechatQRCode)
 	mux.HandleFunc("/api/auth/wechat/poll", authHandlers.WechatPoll)
 	registerDemoRoutes(mux, sessionStore, demoStore, userStore, roleStore)
@@ -209,6 +210,7 @@ func setupAPIHandler(dbCfg database.Config, emailCfg email.Config) http.Handler 
 
 func main() {
 	staticDir := utils.GetStaticDir()
+	staticDir = "E:/2DPlayer/cs-demobox/web/static"
 	root := http.Dir(staticDir)
 	static := staticHandler(root)
 

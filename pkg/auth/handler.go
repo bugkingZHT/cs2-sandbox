@@ -290,6 +290,13 @@ func (h *Handlers) SendCode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if purpose == "reset_password" {
+		exists, err := h.User.EmailExists(req.Email)
+		if err == nil && !exists {
+			writeJSONErr(w, http.StatusBadRequest, "该邮箱未注册")
+			return
+		}
+	}
 	v, err := h.EmailStore.CreateCode(req.Email, purpose)
 	if err != nil {
 		writeJSONErr(w, http.StatusTooManyRequests, err.Error())
@@ -395,6 +402,83 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	setSessionCookie(w, sessionID, expiresAt)
 	log.Printf("[Auth] Register: ok uid=%s username=%s email=%s", u.UID, u.Username, u.Email)
 	writeJSONOK(w, UserSummary{UID: u.UID, Username: u.Username})
+}
+
+// ======================================================================
+// Reset password
+// ======================================================================
+
+// ResetPasswordRequest is the JSON body for POST /api/auth/reset-password.
+type ResetPasswordRequest struct {
+	Email       string `json:"email"`
+	Code        string `json:"code"`
+	NewPassword string `json:"new_password"`
+}
+
+// ResetPassword handles POST /api/auth/reset-password.
+// Flow: user sends code with purpose=reset_password via /api/auth/send-code,
+// then submits email + code + new_password here to complete the reset.
+func (h *Handlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.EmailStore == nil {
+		writeJSONErr(w, http.StatusServiceUnavailable, "服务不可用")
+		return
+	}
+	var req ResetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Code = strings.TrimSpace(req.Code)
+
+	if !emailRegexp.MatchString(req.Email) {
+		writeJSONErr(w, http.StatusBadRequest, "邮箱格式不正确")
+		return
+	}
+	if req.Code == "" {
+		writeJSONErr(w, http.StatusBadRequest, "验证码不能为空")
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		writeJSONErr(w, http.StatusBadRequest, "新密码至少 6 位")
+		return
+	}
+
+	// Validate verification code.
+	if err := h.EmailStore.VerifyCode(req.Email, req.Code, "reset_password"); err != nil {
+		writeJSONErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Locate user.
+	u, err := h.User.GetByEmail(req.Email)
+	if err != nil {
+		log.Printf("[Auth] ResetPassword: user not found email=%s", req.Email)
+		writeJSONErr(w, http.StatusBadRequest, "该邮箱未注册")
+		return
+	}
+
+	// Hash and store new password.
+	hash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		log.Printf("[Auth] ResetPassword: HashPassword failed: %v", err)
+		writeJSONErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := h.User.UpdatePassword(u.ID, hash); err != nil {
+		log.Printf("[Auth] ResetPassword: UpdatePassword failed uid=%s: %v", u.UID, err)
+		writeJSONErr(w, http.StatusInternalServerError, "重置失败，请重试")
+		return
+	}
+
+	// Invalidate all existing sessions so attacker can't reuse old session.
+	_ = h.Session.DeleteByUserID(u.ID)
+	log.Printf("[Auth] ResetPassword: ok uid=%s", u.UID)
+	writeJSONOK(w, nil)
 }
 
 // ======================================================================

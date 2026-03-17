@@ -30,8 +30,8 @@
           <span class="auth-card-logo-text">Snowbo</span>
         </div>
 
-        <!-- Tab 切换 -->
-        <div class="auth-tabs">
+        <!-- Tab 切换（找回密码时隐藏） -->
+        <div v-if="activeTab !== 'reset'" class="auth-tabs">
           <button
             class="auth-tab-btn"
             :class="{ active: activeTab === 'login' }"
@@ -47,6 +47,14 @@
             :class="{ active: activeTab === 'wechat' }"
             @click="activeTab = 'wechat'"
           >微信</button>
+        </div>
+        <!-- 找回密码时显示返回标题 -->
+        <div v-else class="auth-reset-header">
+          <button class="auth-back-btn" @click="activeTab = 'login'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            返回登录
+          </button>
+          <span class="auth-reset-title">找回密码</span>
         </div>
 
         <!-- ===== 登录 Tab ===== -->
@@ -82,10 +90,13 @@
             <span v-if="loginLoading" class="auth-spinner"></span>
             {{ loginLoading ? '登录中…' : '登录' }}
           </button>
-          <p class="auth-switch">
-            还没有账号？
-            <button class="auth-link-btn" @click="activeTab = 'register'">立即注册</button>
-          </p>
+          <div class="auth-login-footer">
+            <p class="auth-switch">
+              还没有账号？
+              <button class="auth-link-btn" @click="activeTab = 'register'">立即注册</button>
+            </p>
+            <button class="auth-link-btn auth-forgot-btn" @click="goToReset">忘记密码？</button>
+          </div>
         </div>
 
         <!-- ===== 注册 Tab ===== -->
@@ -192,6 +203,76 @@
             <button class="auth-link-btn" @click="activeTab = 'login'">账号登录</button>
           </p>
         </div>
+
+        <!-- ===== 找回密码 Tab ===== -->
+        <div v-else-if="activeTab === 'reset'" class="auth-form">
+          <div class="auth-field">
+            <label class="auth-label">注册邮箱</label>
+            <div class="auth-row">
+              <input
+                v-model="resetEmail"
+                class="auth-input"
+                type="email"
+                placeholder="your@email.com"
+                autocomplete="email"
+              />
+              <button
+                class="auth-code-btn"
+                :disabled="resetCodeSending || resetCodeCountdown > 0"
+                @click="doSendResetCode"
+              >
+                <span v-if="resetCodeSending" class="auth-spinner sm"></span>
+                <span v-else-if="resetCodeCountdown > 0">{{ resetCodeCountdown }}s</span>
+                <span v-else>发送验证码</span>
+              </button>
+            </div>
+          </div>
+          <Transition name="slide-down">
+            <div v-if="resetCodeSent" class="auth-field">
+              <label class="auth-label">验证码</label>
+              <input
+                v-model="resetCode"
+                class="auth-input code-input"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                placeholder="6 位数字验证码"
+                autocomplete="one-time-code"
+              />
+            </div>
+          </Transition>
+          <div class="auth-field">
+            <label class="auth-label">新密码</label>
+            <input
+              v-model="resetNewPassword"
+              class="auth-input"
+              type="password"
+              placeholder="至少 6 位"
+              autocomplete="new-password"
+            />
+          </div>
+          <div class="auth-field">
+            <label class="auth-label">确认新密码</label>
+            <input
+              v-model="resetNewPasswordConfirm"
+              class="auth-input"
+              type="password"
+              placeholder="再次输入新密码"
+              autocomplete="new-password"
+              @keydown.enter="doResetPassword"
+            />
+          </div>
+          <p v-if="resetError" class="auth-error">{{ resetError }}</p>
+          <p v-if="resetSuccess" class="auth-success">{{ resetSuccess }}</p>
+          <button
+            class="auth-submit-btn"
+            :disabled="resetLoading"
+            @click="doResetPassword"
+          >
+            <span v-if="resetLoading" class="auth-spinner"></span>
+            {{ resetLoading ? '重置中…' : '重置密码' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -204,7 +285,7 @@ import { useAuth } from '@/composables/useAuth';
 const { setUser } = useAuth();
 
 // ---- tab ----
-const activeTab = ref<'login' | 'register' | 'wechat'>('login');
+const activeTab = ref<'login' | 'register' | 'wechat' | 'reset'>('login');
 
 // ---- login ----
 const loginIdentity = ref('');
@@ -326,6 +407,104 @@ async function doRegister() {
     regError.value = '网络异常，请稍后重试';
   } finally {
     regLoading.value = false;
+  }
+}
+
+// ---- reset password ----
+const resetEmail = ref('');
+const resetCode = ref('');
+const resetNewPassword = ref('');
+const resetNewPasswordConfirm = ref('');
+const resetError = ref('');
+const resetSuccess = ref('');
+const resetLoading = ref(false);
+const resetCodeSent = ref(false);
+const resetCodeSending = ref(false);
+const resetCodeCountdown = ref(0);
+let resetCountdownTimer: ReturnType<typeof setInterval> | null = null;
+
+function goToReset() {
+  resetEmail.value = '';
+  resetCode.value = '';
+  resetNewPassword.value = '';
+  resetNewPasswordConfirm.value = '';
+  resetError.value = '';
+  resetSuccess.value = '';
+  resetCodeSent.value = false;
+  resetCodeCountdown.value = 0;
+  if (resetCountdownTimer) { clearInterval(resetCountdownTimer); resetCountdownTimer = null; }
+  activeTab.value = 'reset';
+}
+
+function startResetCountdown(seconds = 60) {
+  resetCodeCountdown.value = seconds;
+  if (resetCountdownTimer) clearInterval(resetCountdownTimer);
+  resetCountdownTimer = setInterval(() => {
+    resetCodeCountdown.value--;
+    if (resetCodeCountdown.value <= 0) {
+      clearInterval(resetCountdownTimer!);
+      resetCountdownTimer = null;
+    }
+  }, 1000);
+}
+
+async function doSendResetCode() {
+  resetError.value = '';
+  const email = resetEmail.value.trim().toLowerCase();
+  if (!email) { resetError.value = '请输入邮箱'; return; }
+  resetCodeSending.value = true;
+  try {
+    const res = await fetch('/api/auth/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, purpose: 'reset_password' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status === 'OK') {
+      resetCodeSent.value = true;
+      startResetCountdown(60);
+    } else {
+      resetError.value = json?.error || '发送失败，请稍后重试';
+    }
+  } catch {
+    resetError.value = '网络异常，请稍后重试';
+  } finally {
+    resetCodeSending.value = false;
+  }
+}
+
+async function doResetPassword() {
+  resetError.value = '';
+  resetSuccess.value = '';
+  if (!resetEmail.value.trim()) { resetError.value = '请输入邮箱'; return; }
+  if (!resetCodeSent.value || !resetCode.value.trim()) { resetError.value = '请先获取并填写验证码'; return; }
+  if (resetNewPassword.value.length < 6) { resetError.value = '新密码至少 6 位'; return; }
+  if (resetNewPassword.value !== resetNewPasswordConfirm.value) { resetError.value = '两次密码不一致'; return; }
+
+  resetLoading.value = true;
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        email: resetEmail.value.trim().toLowerCase(),
+        code: resetCode.value.trim(),
+        new_password: resetNewPassword.value,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status === 'OK') {
+      resetSuccess.value = '密码重置成功！请使用新密码登录';
+      setTimeout(() => { activeTab.value = 'login'; }, 1800);
+    } else {
+      resetError.value = json?.error || '重置失败，请稍后重试';
+    }
+  } catch {
+    resetError.value = '网络异常，请稍后重试';
+  } finally {
+    resetLoading.value = false;
   }
 }
 
@@ -726,5 +905,59 @@ function onLogoError(e: Event) {
   max-height: 0;
   opacity: 0;
   transform: translateY(-6px);
+}
+
+/* =====================================================
+   Login footer (立即注册 + 忘记密码)
+   ===================================================== */
+.auth-login-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auth-forgot-btn {
+  font-size: 12px;
+  color: var(--ds-text-muted);
+  text-decoration: none;
+}
+
+.auth-forgot-btn:hover {
+  color: #4dabf7;
+}
+
+/* =====================================================
+   Reset password header
+   ===================================================== */
+.auth-reset-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  padding-bottom: 12px;
+}
+
+.auth-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--ds-text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.auth-back-btn:hover {
+  color: #4dabf7;
+}
+
+.auth-reset-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ds-text-primary);
 }
 </style>
