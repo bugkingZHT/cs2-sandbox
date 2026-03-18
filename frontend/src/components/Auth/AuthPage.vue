@@ -29,7 +29,7 @@
         </div>
 
         <!-- 功能亮点 -->
-        <div class="auth-features">
+        <!-- <div class="auth-features">
           <div class="auth-feature-item">
             <span class="auth-feature-icon">🎯</span>
             <span class="auth-feature-text">2D 战术回放</span>
@@ -42,7 +42,7 @@
             <span class="auth-feature-icon">✏️</span>
             <span class="auth-feature-text">战术板标注</span>
           </div>
-        </div>
+        </div> -->
 
         <!-- 移动端 Logo（左侧隐藏时展示） -->
         <div class="auth-card-logo">
@@ -585,7 +585,7 @@ function onLogoError(e: Event) {
   align-items: center;
   justify-content: center;
   background: var(--ds-bg-secondary);
-  padding: 32px 24px;
+  padding: 0px 24px 64px 24px;
   overflow-y: auto;
 }
 
@@ -720,7 +720,6 @@ function onLogoError(e: Event) {
 .auth-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid var(--ds-border-subtle);
   margin-bottom: 24px;
 }
 

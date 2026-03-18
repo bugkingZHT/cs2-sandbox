@@ -210,7 +210,6 @@ func setupAPIHandler(dbCfg database.Config, emailCfg email.Config) http.Handler 
 
 func main() {
 	staticDir := utils.GetStaticDir()
-	staticDir = "E:/2DPlayer/cs-demobox/web/static"
 	root := http.Dir(staticDir)
 	static := staticHandler(root)
 
