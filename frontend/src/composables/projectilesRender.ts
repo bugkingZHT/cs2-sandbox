@@ -763,11 +763,8 @@ const renderFire = async (proj: ProjectileState, typeKey: string, ctx: RenderCon
     const pixelRadius = calculatePixelRadius(logicConfig.explosionRadius, { x: proj.x, y: proj.y, z: proj.z }, worldToMap);
     const explosionG = new Graphics();
     
-    // 橙色实心小圆圈铺开 (#FFA500)
-    renderParticles(explosionG, mapPos.x, mapPos.y, pixelRadius, 0xFFA500, 0.7, proj.entityID);
+    renderParticles(explosionG, mapPos.x, mapPos.y, pixelRadius, 0xFF6B6B, 0.7, proj.entityID);
     
-    // 火不再显示倒计时环 (根据用户要求移除)
-
     projectileLayer.addChild(explosionG);
   } else {
     drawTrajectory(proj, ctx);

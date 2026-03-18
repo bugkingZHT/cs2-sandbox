@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
+	"github.com/bugkingzht/cs-demobox/pkg/engine/utils"
 )
 
 type Engine interface {
@@ -518,7 +519,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		pos := proj.Position()
 		entityID := proj.Entity.ID()
 
-		// Build trajectory from checkpoints
+		// Build trajectory from checkpoints using helper function
 		// Strategy: Try to find valid checkpoints from proj.Trajectory that are ahead of current position
 		// If found, use them; otherwise, reuse previous frame's trajectory
 		var trajectory []entity.Point
@@ -529,28 +530,8 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			prevTrajectory = prevProj.Trajectory
 		}
 
-		// Iterate through all checkpoints from proj.Trajectory to find valid ones ahead of current position
-		const reachedThreshold = 100.0 // Approximately 10 units squared distance
-		for _, checkpoint := range proj.Trajectory {
-			// Skip invalid checkpoint positions
-			if checkpoint.Position.X == 0 && checkpoint.Position.Y == 0 && checkpoint.Position.Z == 0 {
-				continue
-			}
-
-			checkX, checkY, checkZ := checkpoint.Position.X, checkpoint.Position.Y, checkpoint.Position.Z
-			distToCheckpoint := distance(pos.X, pos.Y, pos.Z, checkX, checkY, checkZ)
-
-			// Only include checkpoints that are not yet reached (beyond threshold)
-			if distToCheckpoint >= reachedThreshold {
-				trajectory = append(trajectory, entity.Point{X: checkX, Y: checkY, Z: checkZ})
-			}
-		}
-
-		// If we found valid checkpoints from proj.Trajectory, use them
-		// Otherwise, reuse previous trajectory (maintains stability when proj.Trajectory is empty/invalid)
-		if len(trajectory) == 0 && len(prevTrajectory) > 0 {
-			trajectory = prevTrajectory
-		}
+		// Use encapsulated logic from projectile.go
+		trajectory = entity.BuildTrajectoryFromCheckpoints(pos.X, pos.Y, pos.Z, proj.Trajectory, prevTrajectory)
 
 		throwerName := ""
 		throwerID := 0
@@ -604,6 +585,13 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	projectiles := make(map[int]entity.ProjectileFrame)
 
 	for id, proj := range combinedProjectiles {
+		// Resolve unknown equipment type using helper function
+		if proj.Type == common.EqUnknown {
+			resolvedType := entity.ResolveUnknownEquipmentType(proj, prevFrameProjectiles)
+			if resolvedType != common.EqUnknown {
+				proj.Type = resolvedType
+			}
+		}
 		// Determine if this projectile comes from active projectiles
 		isFromActive := false
 		if _, exists := activeProjectiles[id]; exists {
@@ -771,13 +759,13 @@ func (b *replayBuilder) calculateRoundTime(gs demoinfocs.GameState, currentTick 
 
 	if convars != nil {
 		if ft, ok := convars["mp_freezetime"]; ok {
-			freezeTime = parseFloat(ft)
+			freezeTime = utils.ParseFloat(ft)
 		}
 		if rt, ok := convars["mp_roundtime"]; ok {
-			roundTime = parseFloat(rt) * 60 // ConVar is in minutes, convert to seconds
+			roundTime = utils.ParseFloat(rt) * 60 // ConVar is in minutes, convert to seconds
 		}
 		if c4, ok := convars["mp_c4timer"]; ok {
-			c4Timer = parseFloat(c4)
+			c4Timer = utils.ParseFloat(c4)
 		}
 	}
 

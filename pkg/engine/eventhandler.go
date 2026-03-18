@@ -137,7 +137,7 @@ func (b *replayBuilder) registerEventHandlers() {
 			throwerID = thrower.UserID
 		}
 		b.activeProjectiles[e.Inferno.Entity.ID()] = entity.ProjectileFrame{
-			Type:        common.EqMolotov, // Explicitly set equipment type
+			Type:        common.EqUnknown,
 			X:           e.Inferno.Entity.Position().X,
 			Y:           e.Inferno.Entity.Position().Y,
 			Z:           e.Inferno.Entity.Position().Z,
@@ -145,7 +145,6 @@ func (b *replayBuilder) registerEventHandlers() {
 			ThrowerID:   throwerID,
 			EntityID:    e.Inferno.Entity.ID(),
 			IsExploded:  true,
-			TTL:         entity.GetProjectileConfigByType(common.EqMolotov).DurationInMs,
 		}
 	})
 	b.parser.RegisterEventHandler(func(e events.InfernoExpired) {

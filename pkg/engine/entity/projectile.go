@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
+	"github.com/bugkingzht/cs-demobox/pkg/engine/utils"
 )
 
 // 投掷物渲染配置
@@ -156,4 +157,82 @@ func IsGrenadeOrThrowable(equipType common.EquipmentType) bool {
 		return true
 	}
 	return false
+}
+
+// BuildTrajectoryFromCheckpoints builds trajectory from checkpoints that are ahead of current position
+// It filters out checkpoints that have already been reached and returns valid future checkpoints
+// Parameters:
+//   - currentX, currentY, currentZ: current position of the projectile
+//   - checkpoints: list of potential trajectory checkpoints
+//   - prevTrajectory: trajectory from previous frame (used as fallback)
+//   - reachedThreshold: distance threshold to determine if checkpoint is reached (default: 100.0)
+//
+// Returns the built trajectory, either from valid checkpoints or fallback to previous trajectory
+func BuildTrajectoryFromCheckpoints(currentX, currentY, currentZ float64, checkpoints []common.TrajectoryEntry, prevTrajectory []Point, reachedThreshold ...float64) []Point {
+	// Default threshold
+	threshold := 100.0
+	if len(reachedThreshold) > 0 {
+		threshold = reachedThreshold[0]
+	}
+
+	var trajectory []Point
+
+	// Iterate through all checkpoints to find valid ones ahead of current position
+	for _, checkpoint := range checkpoints {
+		// Skip invalid checkpoint positions
+		if checkpoint.Position.X == 0 && checkpoint.Position.Y == 0 && checkpoint.Position.Z == 0 {
+			continue
+		}
+
+		checkX, checkY, checkZ := checkpoint.Position.X, checkpoint.Position.Y, checkpoint.Position.Z
+		distToCheckpoint := utils.Distance(currentX, currentY, currentZ, checkX, checkY, checkZ)
+
+		// Only include checkpoints that are not yet reached (beyond threshold)
+		if distToCheckpoint >= threshold {
+			trajectory = append(trajectory, Point{X: checkX, Y: checkY, Z: checkZ})
+		}
+	}
+
+	// If no valid checkpoints found, reuse previous trajectory for stability
+	if len(trajectory) == 0 && len(prevTrajectory) > 0 {
+		trajectory = prevTrajectory
+	}
+
+	return trajectory
+}
+
+// ResolveUnknownEquipmentType attempts to resolve unknown equipment type by comparing with previous frame projectiles
+// It finds the closest previous projectile and inherits its type if within distance threshold
+// Parameters:
+//   - currentProj: current projectile with unknown type
+//   - prevProjectiles: map of projectiles from previous frame
+//   - maxDistance: maximum squared distance to consider as match (default: 10000.0, approximately 100 units)
+//
+// Returns the resolved equipment type, or EqUnknown if no match found
+func ResolveUnknownEquipmentType(currentProj ProjectileFrame, prevProjectiles map[int]ProjectileFrame, maxDistance ...float64) common.EquipmentType {
+	// Default max distance (squared)
+	maxDist := 200.0
+	if len(maxDistance) > 0 {
+		maxDist = maxDistance[0]
+	}
+
+	// Find closest previous projectile
+	minDist := maxDist
+	closestType := common.EqUnknown
+
+	for _, prevProj := range prevProjectiles {
+		if prevProj.Type == common.EqUnknown {
+			continue
+		}
+		if prevProj.Type != common.EqMolotov && prevProj.Type != common.EqIncendiary {
+			continue
+		}
+		dist := utils.Distance(currentProj.X, currentProj.Y, currentProj.Z, prevProj.X, prevProj.Y, prevProj.Z)
+		if dist < minDist && prevProj.Type != common.EqUnknown {
+			minDist = dist
+			closestType = prevProj.Type
+		}
+	}
+
+	return closestType
 }
