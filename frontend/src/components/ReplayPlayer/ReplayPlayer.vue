@@ -1173,6 +1173,12 @@ const buildKillList = (framesArray: Frame[]) => {
   console.log(`[ReplayPlayer] Built kill list with ${killList.length} events`);
 };
 
+// 检查 URL 是否包含 autoplay 参数
+const shouldAutoPlay = () => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('autoplay') === '1' || params.get('autoplay') === 'true';
+};
+
 // 监听 replay 与有效帧（单回合 frames 或剪辑 mergedFrames）变化
 watch(
   () => ({ replay: effectiveReplay.value, frames: effectiveFrames.value }),
@@ -1182,15 +1188,22 @@ watch(
       mapName: data.replay?.mapName,
       frameCount: data.frames?.length || 0
     });
-    
+
     if (data.replay && data.frames && data.frames.length > 0) {
       currentFrameIndex.value = 0;
       currentPlaybackTimeMs.value = data.frames[0]?.timeMs ?? 0;
-      isPlaying.value = false;
-      cancelAnimation();
-      lastTimestamp = 0;
       buildKillList(data.frames);
       checkUrlFrameId();
+
+      // 如果 URL 包含 autoplay 参数，自动开始播放
+      if (shouldAutoPlay()) {
+        isPlaying.value = true;
+        startAnimation();
+      } else {
+        isPlaying.value = false;
+        cancelAnimation();
+      }
+      lastTimestamp = 0;
     }
   },
   { immediate: true }

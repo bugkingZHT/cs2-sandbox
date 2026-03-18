@@ -1,29 +1,49 @@
 <template>
   <div class="auth-root">
     <!-- =====================================================
-         左侧：品牌 / 内容区
-         图片不存在时自动显示渐变兜底背景。
-         未来可在 .auth-left 内部自由添加 iframe、视频、公告等内容。
+         左侧：Demo iframe 嵌入区
+         嵌入一个可交互的 demo 播放器，让用户可以直接体验功能
          ===================================================== -->
-    <div class="auth-left" :style="authLeftStyle">
-      <div class="auth-left-overlay">
-        <div class="auth-brand">
-          <img src="/logo/logo.png" class="auth-logo" alt="Snowbo" @error="onLogoError" />
-          <div>
-            <h1 class="auth-brand-title">Snowbo | 雪豹</h1>
-            <p class="auth-brand-sub">CS2 战术工坊</p>
-          </div>
-        </div>
-        <!-- 未来可在此处添加自定义内容，例如：
-          <iframe src="..." class="auth-promo-video" allowfullscreen />
-          <div class="auth-announcement">...</div>
-        -->
-      </div>
+    <div class="auth-left">
+      <iframe
+        src="https://snowbo.cn/replayer?demo_uuid=9775ee2a-58cc-4628-a1eb-4c106b78231f&round=8&pure=1&autoplay=1"
+        class="auth-demo-iframe"
+        frameborder="0"
+        allow="fullscreen"
+        sandbox="allow-scripts allow-same-origin allow-popups"
+        title="Snowbo Demo 预览"
+      ></iframe>
+
     </div>
 
     <!-- 右侧：认证卡片 -->
     <div class="auth-right">
       <div class="auth-card">
+        <!-- 品牌标题区 -->
+        <div class="auth-card-brand-header">
+          <img src="/logo/logo.png" class="auth-card-brand-logo" alt="Snowbo" @error="onLogoError" />
+          <div class="auth-card-brand-text">
+            <h1 class="auth-card-brand-title">Snowbo | 雪豹</h1>
+            <p class="auth-card-brand-sub">像职业队一样研究 Demo</p>
+          </div>
+        </div>
+
+        <!-- 功能亮点 -->
+        <div class="auth-features">
+          <div class="auth-feature-item">
+            <span class="auth-feature-icon">🎯</span>
+            <span class="auth-feature-text">2D 战术回放</span>
+          </div>
+          <div class="auth-feature-item">
+            <span class="auth-feature-icon">💣</span>
+            <span class="auth-feature-text">投掷物分析</span>
+          </div>
+          <div class="auth-feature-item">
+            <span class="auth-feature-icon">✏️</span>
+            <span class="auth-feature-text">战术板标注</span>
+          </div>
+        </div>
+
         <!-- 移动端 Logo（左侧隐藏时展示） -->
         <div class="auth-card-logo">
           <img src="/logo/logo.png" class="auth-card-logo-img" alt="Snowbo" @error="onLogoError" />
@@ -509,12 +529,6 @@ async function doResetPassword() {
 }
 
 // ---- helpers ----
-// 背景图通过 CSS background-image 引用，避免 Vite 构建期资产解析报错。
-// 用多背景写法：图片在前（优先显示），渐变在后（图片 404 时自动兜底）。
-const authLeftStyle = {
-  backgroundImage: "url('/auth-bg/auth-bg.jpg'), linear-gradient(135deg, #0d1117 0%, #161b22 60%, #1c2a3a 100%)",
-};
-
 function onLogoError(e: Event) {
   (e.target as HTMLImageElement).style.display = 'none';
 }
@@ -540,44 +554,18 @@ function onLogoError(e: Event) {
   position: relative;
   display: flex;
   align-items: flex-end;
-  background-size: cover;
-  background-position: center;
+  background: linear-gradient(135deg, #0d1117 0%, #161b22 60%, #1c2a3a 100%);
   overflow: hidden;
 }
 
-.auth-left-overlay {
-  position: relative;
-  z-index: 1;
-  padding: 48px;
+.auth-demo-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-}
-
-.auth-brand {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.auth-logo {
-  width: 52px;
-  height: 52px;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
-}
-
-.auth-brand-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0;
-  letter-spacing: 0.5px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.auth-brand-sub {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.65);
-  margin: 4px 0 0;
+  height: 100%;
+  border: none;
+  z-index: 0;
 }
 
 /* 移动端隐藏左侧 */
@@ -615,6 +603,92 @@ function onLogoError(e: Event) {
   max-width: 360px;
 }
 
+/* 品牌标题区（桌面端显示在登录卡顶部） */
+.auth-card-brand-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.auth-card-brand-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+}
+
+.auth-card-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auth-card-brand-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+.auth-card-brand-sub {
+  font-size: 13px;
+  color: var(--ds-text-tertiary);
+  margin: 0;
+}
+
+/* 功能亮点 */
+.auth-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+.auth-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(77, 171, 247, 0.08);
+  border: 1px solid rgba(77, 171, 247, 0.2);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+  transition: all 0.2s ease;
+}
+
+.auth-feature-item:hover {
+  background: rgba(77, 171, 247, 0.15);
+  border-color: rgba(77, 171, 247, 0.35);
+  transform: translateY(-1px);
+}
+
+.auth-feature-icon {
+  font-size: 14px;
+}
+
+.auth-feature-text {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 移动端隐藏桌面品牌标题 */
+@media (max-width: 768px) {
+  .auth-card-brand-header {
+    display: none;
+  }
+
+  .auth-features {
+    display: none;
+  }
+}
+
+/* 移动端 Logo（左侧隐藏时展示） */
 .auth-card-logo {
   display: none;
   align-items: center;
@@ -765,7 +839,7 @@ function onLogoError(e: Event) {
 .auth-submit-btn {
   width: 100%;
   padding: 12px;
-  background: #4dabf7;
+  background: linear-gradient(135deg, #4dabf7 0%, #339af0 100%);
   border: none;
   border-radius: 8px;
   color: #0d1117;
@@ -776,17 +850,26 @@ function onLogoError(e: Event) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: background 0.2s, opacity 0.2s;
+  transition: all 0.2s ease;
   margin-top: 4px;
+  box-shadow: 0 4px 14px rgba(77, 171, 247, 0.35);
 }
 
 .auth-submit-btn:hover:not(:disabled) {
-  background: #74c0fc;
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
+  box-shadow: 0 6px 20px rgba(77, 171, 247, 0.5);
+  transform: translateY(-1px);
+}
+
+.auth-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(77, 171, 247, 0.35);
 }
 
 .auth-submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* =====================================================
