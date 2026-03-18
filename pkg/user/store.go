@@ -97,3 +97,37 @@ func (s *Store) UpdateLastLoginAt(id uint) error {
 func (s *Store) UpdatePassword(id uint, hashedNewPassword string) error {
 	return s.db.Model(&User{}).Where("id = ?", id).Update("password_hash", hashedNewPassword).Error
 }
+
+// GetByEmail returns the user with the given email, or gorm.ErrRecordNotFound.
+func (s *Store) GetByEmail(email string) (*User, error) {
+	var u User
+	err := s.db.Where("email = ?", email).First(&u).Error
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// GetByUsernameOrEmail looks up a user by username first, then by email.
+func (s *Store) GetByUsernameOrEmail(identity string) (*User, error) {
+	var u User
+	err := s.db.Where("username = ? OR email = ?", identity, identity).First(&u).Error
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// EmailExists returns true if the email is already associated with an active user.
+func (s *Store) EmailExists(email string) (bool, error) {
+	var count int64
+	err := s.db.Model(&User{}).Where("email = ? AND deleted_at IS NULL", email).Count(&count).Error
+	return count > 0, err
+}
+
+// UsernameExists returns true if the username is already taken.
+func (s *Store) UsernameExists(username string) (bool, error) {
+	var count int64
+	err := s.db.Model(&User{}).Where("username = ? AND deleted_at IS NULL", username).Count(&count).Error
+	return count > 0, err
+}

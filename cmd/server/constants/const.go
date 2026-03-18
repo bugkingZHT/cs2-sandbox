@@ -35,3 +35,19 @@ const EnvSnowboDBPasswd = "SNOWBO_DB_PASSWD"
 
 // SNOWBO_DB_NAME: Database name.
 const EnvSnowboDBName = "SNOWBO_DB_NAME"
+
+// --- Email / SMTP ---
+// SNOWBO_SMTP_HOST: SMTP server host, e.g. smtp.qq.com
+const EnvSnowboSMTPHost = "SNOWBO_SMTP_HOST"
+
+// SNOWBO_SMTP_PORT: SMTP server port, e.g. 465 (SSL) or 587 (STARTTLS). Default: 465
+const EnvSnowboSMTPPort = "SNOWBO_SMTP_PORT"
+
+// SNOWBO_SMTP_USER: SMTP login user (sender email address).
+const EnvSnowboSMTPUser = "SNOWBO_SMTP_USER"
+
+// SNOWBO_SMTP_PASS: SMTP authorization code (for QQ mail: the authorization code, NOT login password).
+const EnvSnowboSMTPPass = "SNOWBO_SMTP_PASS"
+
+// SNOWBO_SMTP_FROM: Optional display name for sender, e.g. "Snowbo <no-reply@example.com>".
+const EnvSnowboSMTPFrom = "SNOWBO_SMTP_FROM"

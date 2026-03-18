@@ -7,6 +7,7 @@ import (
 
 	"github.com/bugkingzht/cs-demobox/cmd/server/constants"
 	"github.com/bugkingzht/cs-demobox/pkg/database"
+	"github.com/bugkingzht/cs-demobox/pkg/email"
 )
 
 // EnvOr returns os.Getenv(key), or def if unset or empty.
@@ -124,4 +125,18 @@ func GetStaticDir() string {
 		return p
 	}
 	return ""
+}
+
+// GetEmailConfig builds an email.Config from environment variables.
+// Set SNOWBO_SMTP_HOST, SNOWBO_SMTP_PORT, SNOWBO_SMTP_USER, SNOWBO_SMTP_PASS.
+// If any required field is empty, IsConfigured() will return false and emails
+// will not be sent (verification codes are printed to the server log instead).
+func GetEmailConfig() email.Config {
+	return email.Config{
+		Host: os.Getenv(constants.EnvSnowboSMTPHost),
+		Port: EnvOr(constants.EnvSnowboSMTPPort, "465"),
+		User: os.Getenv(constants.EnvSnowboSMTPUser),
+		Pass: os.Getenv(constants.EnvSnowboSMTPPass),
+		From: os.Getenv(constants.EnvSnowboSMTPFrom),
+	}
 }

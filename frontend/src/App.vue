@@ -1,5 +1,9 @@
 <template>
-  <div class="app">
+  <!-- 未登录：开屏认证页 -->
+  <AuthPage v-if="!currentUser" />
+
+  <!-- 已登录：主应用界面 -->
+  <div v-else-if="currentUser" class="app">
     <!-- Collapsible Sidebar（replayer 纯净模式下隐藏） -->
     <aside v-show="currentPage !== 'player' || !replayerPureMode" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- Sidebar Header -->
@@ -213,6 +217,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, de
 
 const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlayer/ReplayPlayer.vue'));
 const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
+const AuthPage = defineAsyncComponent(() => import('@/components/Auth/AuthPage.vue'));
 
 import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
 const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
