@@ -643,6 +643,28 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		projectiles[id] = finalProj
 	}
 
+	// Remove Active Molotovs and Incendiaries if Active Smoke is present in scale
+	// Only check active projectiles (exploded with positive TTL)
+	activeSmokeProjectiles := make(map[int]entity.ProjectileFrame)
+	for id, proj := range projectiles {
+		if proj.Type == common.EqSmoke && proj.IsExploded && proj.TTL > 0 {
+			activeSmokeProjectiles[id] = proj
+		}
+	}
+
+	// If there are active smokes, check each fire projectile
+	if len(activeSmokeProjectiles) > 0 {
+		for id, proj := range projectiles {
+			if (proj.Type == common.EqMolotov || proj.Type == common.EqIncendiary) && proj.IsExploded {
+				fireRadius := entity.GetProjectileConfigByType(proj.Type).ExplosionRadius
+				if entity.HasSmokeInRadius(proj, activeSmokeProjectiles, fireRadius) {
+					// Remove fire from projectiles (smoke extinguished it)
+					delete(projectiles, id)
+				}
+			}
+		}
+	}
+
 	// Clear activeProjectiles and rebuild it based on current frame
 	// Active projectiles are those that are exploded and have positive TTL
 	newActiveProjectiles := make(map[int]entity.ProjectileFrame)

@@ -206,7 +206,7 @@ func BuildTrajectoryFromCheckpoints(currentX, currentY, currentZ float64, checkp
 // Parameters:
 //   - currentProj: current projectile with unknown type
 //   - prevProjectiles: map of projectiles from previous frame
-//   - maxDistance: maximum squared distance to consider as match (default: 10000.0, approximately 100 units)
+//   - maxDistance: maximum squared distance to consider as match (default: 200.0)
 //
 // Returns the resolved equipment type, or EqUnknown if no match found
 func ResolveUnknownEquipmentType(currentProj ProjectileFrame, prevProjectiles map[int]ProjectileFrame, maxDistance ...float64) common.EquipmentType {
@@ -235,4 +235,33 @@ func ResolveUnknownEquipmentType(currentProj ProjectileFrame, prevProjectiles ma
 	}
 
 	return closestType
+}
+
+// HasSmokeInRadius checks if there's any smoke grenade within the specified radius of a fire projectile
+// This is used to determine if fire should be extinguished by smoke
+// Parameters:
+//   - fireProj: fire projectile (Molotov or Incendiary)
+//   - allProjectiles: map of all projectiles in current frame
+//   - radius: explosion radius of the fire (in game coordinates)
+//
+// Returns true if smoke is found within the fire's radius, false otherwise
+func HasSmokeInRadius(fireProj ProjectileFrame, allProjectiles map[int]ProjectileFrame, radius float64) bool {
+	radiusSquared := radius * radius // Use squared distance for comparison
+
+	for _, proj := range allProjectiles {
+		// Only check smoke grenades
+		if proj.Type != common.EqSmoke {
+			continue
+		}
+
+		// Calculate distance from fire to smoke
+		dist := utils.Distance(fireProj.X, fireProj.Y, fireProj.Z, proj.X, proj.Y, proj.Z)
+
+		// If smoke is within fire's radius, return true
+		if dist <= radiusSquared {
+			return true
+		}
+	}
+
+	return false
 }
