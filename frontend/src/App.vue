@@ -1,9 +1,9 @@
 <template>
-  <!-- 未登录：开屏认证页 -->
-  <AuthPage v-if="!currentUser" />
+  <!-- 未登录且在根路径：开屏认证页 -->
+  <AuthPage v-if="!currentUser && sidebarPath === '/'" />
 
-  <!-- 已登录：主应用界面 -->
-  <div v-else-if="currentUser" class="app">
+  <!-- 已登录或其他路径：主应用界面 -->
+  <div v-else class="app">
     <!-- Collapsible Sidebar（replayer 纯净模式下隐藏） -->
     <aside v-show="currentPage !== 'player' || !replayerPureMode" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- Sidebar Header -->

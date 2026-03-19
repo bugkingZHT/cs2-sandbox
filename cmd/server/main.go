@@ -172,6 +172,7 @@ func newAPIMux(db *gorm.DB, userStore *user.Store, roleStore *role.Store, demoSt
 	mux.HandleFunc("/api/auth/logout", authHandlers.Logout)
 	mux.HandleFunc("/api/auth/me", session.RequireAuth(sessionStore, authHandlers.Me))
 	mux.HandleFunc("/api/auth/change-password", session.RequireAuth(sessionStore, authHandlers.ChangePassword))
+	mux.HandleFunc("/api/auth/check-registration", authHandlers.CheckRegistration)
 	mux.HandleFunc("/api/auth/send-code", authHandlers.SendCode)
 	mux.HandleFunc("/api/auth/register", authHandlers.Register)
 	mux.HandleFunc("/api/auth/reset-password", authHandlers.ResetPassword)

@@ -33,8 +33,12 @@ COPY --from=go-builder /build/web/static ./web/static
 RUN cd frontend && npm ci --ignore-scripts && npm run build
 
 # Stage 3: scratch 无依赖，无网络
-FROM --platform=linux/amd64 scratch
+FROM --platform=linux/amd64 docker.m.daocloud.io/library/alpine:3.20
+RUN apk add --no-cache ca-certificates
+
 COPY --from=go-builder /build/bin/cs-demobox-server /app/cs-demobox-server
 COPY --from=frontend-builder /build/web/static /app/web/static
+
+WORKDIR /app
 EXPOSE 8080
 ENTRYPOINT ["/app/cs-demobox-server"]

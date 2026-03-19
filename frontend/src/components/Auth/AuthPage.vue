@@ -6,7 +6,7 @@
          ===================================================== -->
     <div class="auth-left">
       <iframe
-        src="https://snowbo.cn/replayer?demo_uuid=9775ee2a-58cc-4628-a1eb-4c106b78231f&round=8&pure=1&autoplay=1"
+        :src="AUTH_PAGE_CONFIG.DEMO_PREVIEW_URL"
         class="auth-demo-iframe"
         frameborder="0"
         allow="fullscreen"
@@ -24,7 +24,7 @@
           <img src="/logo/logo.png" class="auth-card-brand-logo" alt="Snowbo" @error="onLogoError" />
           <div class="auth-card-brand-text">
             <h1 class="auth-card-brand-title">Snowbo | 雪豹</h1>
-            <p class="auth-card-brand-sub">像职业队一样研究 Demo</p>
+            <p class="auth-card-brand-sub">打职业呢？这样研究 Demo</p>
           </div>
         </div>
 
@@ -121,10 +121,10 @@
 
         <!-- ===== 注册 Tab ===== -->
         <div v-else-if="activeTab === 'register'" class="auth-form">
-          <!-- Step 1: 邮箱 + 发送验证码 -->
-          <div class="auth-field">
-            <label class="auth-label">邮箱</label>
-            <div class="auth-row">
+          <!-- Stage 1: Fill all fields and validate -->
+          <div v-if="!codeSent" class="reg-stage1">
+            <div class="auth-field">
+              <label class="auth-label">邮箱</label>
               <input
                 v-model="regEmail"
                 class="auth-input"
@@ -132,77 +132,111 @@
                 placeholder="your@email.com"
                 autocomplete="email"
               />
-              <button
-                class="auth-code-btn"
-                :disabled="codeSending || codeCountdown > 0"
-                @click="doSendCode"
-              >
-                <span v-if="codeSending" class="auth-spinner sm"></span>
-                <span v-else-if="codeCountdown > 0">{{ codeCountdown }}s</span>
-                <span v-else>发送验证码</span>
-              </button>
             </div>
-          </div>
-          <!-- Step 2: 验证码（发送后展开） -->
-          <Transition name="slide-down">
-            <div v-if="codeSent" class="auth-field">
-              <label class="auth-label">验证码</label>
+            <div class="auth-field">
+              <label class="auth-label">用户名</label>
               <input
-                v-model="regCode"
-                class="auth-input code-input"
+                v-model="regUsername"
+                class="auth-input"
                 type="text"
-                inputmode="numeric"
-                maxlength="6"
-                placeholder="6 位数字验证码"
-                autocomplete="one-time-code"
+                placeholder="2-32 个字符"
+                autocomplete="username"
               />
             </div>
-          </Transition>
-          <div class="auth-field">
-            <label class="auth-label">用户名</label>
-            <input
-              v-model="regUsername"
-              class="auth-input"
-              type="text"
-              placeholder="2-32 个字符"
-              autocomplete="username"
-            />
+            <div class="auth-field">
+              <label class="auth-label">密码</label>
+              <input
+                v-model="regPassword"
+                class="auth-input"
+                type="password"
+                placeholder="至少 6 位"
+                autocomplete="new-password"
+              />
+            </div>
+            <div class="auth-field">
+              <label class="auth-label">确认密码</label>
+              <input
+                v-model="regPasswordConfirm"
+                class="auth-input"
+                type="password"
+                placeholder="再次输入密码"
+                autocomplete="new-password"
+                @keydown.enter="handleStage1Submit"
+              />
+            </div>
+            <p v-if="regStage1Error" class="auth-error">{{ regStage1Error }}</p>
+            <button
+              class="auth-submit-btn"
+              :disabled="regStage1Loading"
+              @click="handleStage1Submit"
+            >
+              <span v-if="regStage1Loading" class="auth-spinner"></span>
+              {{ regStage1Loading ? '验证中…' : '获取验证码并注册' }}
+            </button>
+            <p class="auth-switch">
+              已有账号？
+              <button class="auth-link-btn" @click="activeTab = 'login'">直接登录</button>
+            </p>
           </div>
-          <div class="auth-field">
-            <label class="auth-label">密码</label>
-            <input
-              v-model="regPassword"
-              class="auth-input"
-              type="password"
-              placeholder="至少 6 位"
-              autocomplete="new-password"
-            />
+
+          <!-- Stage 2: Verification Code + Complete Registration -->
+          <div v-else-if="codeSent" class="reg-stage2">
+            <div class="reg-verification-panel">
+              <div class="reg-verification-header">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="reg-verification-icon">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <h3 class="reg-verification-title">验证邮箱</h3>
+                <p class="reg-verification-message">我们已向 <strong>{{ regEmail }}</strong> 发送了验证码</p>
+              </div>
+
+              <div class="auth-field">
+                <input
+                  v-model="regCode"
+                  class="auth-input code-input"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6 位数字验证码"
+                  autocomplete="one-time-code"
+                  @keydown.enter="completeRegistration"
+                />
+              </div>
+
+              <p v-if="regStage2Error" class="auth-error">{{ regStage2Error }}</p>
+
+              <div class="reg-stage2-actions">
+                <button
+                  class="auth-submit-btn"
+                  :disabled="regStage2Loading || !regCode.trim()"
+                  @click="completeRegistration"
+                >
+                  <span v-if="regStage2Loading" class="auth-spinner"></span>
+                  {{ regStage2Loading ? '注册中…' : '完成注册' }}
+                </button>
+
+                <div class="reg-resend-row">
+                  <button
+                    class="auth-link-btn reg-resend-btn"
+                    :disabled="codeSending || codeCountdown > 0"
+                    @click="resendCode"
+                  >
+                    <span v-if="codeSending" class="auth-spinner sm"></span>
+                    <span v-else-if="codeCountdown > 0">{{ codeCountdown }}s 后重发</span>
+                    <span v-else>重发验证码</span>
+                  </button>
+                  
+                  <button
+                    class="auth-link-btn reg-back-btn"
+                    @click="goBackToStage1"
+                  >
+                    返回修改
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="auth-field">
-            <label class="auth-label">确认密码</label>
-            <input
-              v-model="regPasswordConfirm"
-              class="auth-input"
-              type="password"
-              placeholder="再次输入密码"
-              autocomplete="new-password"
-              @keydown.enter="doRegister"
-            />
-          </div>
-          <p v-if="regError" class="auth-error">{{ regError }}</p>
-          <p v-if="regSuccess" class="auth-success">{{ regSuccess }}</p>
-          <button
-            class="auth-submit-btn"
-            :disabled="regLoading"
-            @click="doRegister"
-          >
-            <span v-if="regLoading" class="auth-spinner"></span>
-            {{ regLoading ? '注册中…' : '注册' }}
-          </button>
-          <p class="auth-switch">
-            已有账号？
-            <button class="auth-link-btn" @click="activeTab = 'login'">直接登录</button>
-          </p>
         </div>
 
         <!-- ===== 微信 Tab（预留） ===== -->
@@ -249,7 +283,6 @@
           </div>
           <Transition name="slide-down">
             <div v-if="resetCodeSent" class="auth-field">
-              <label class="auth-label">验证码</label>
               <input
                 v-model="resetCode"
                 class="auth-input code-input"
@@ -301,6 +334,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useAuth } from '@/composables/useAuth';
+import { AUTH_PAGE_CONFIG } from '@/config/auth';
 
 const { setUser } = useAuth();
 
@@ -341,14 +375,19 @@ async function doLogin() {
 }
 
 // ---- register ----
+// Stage 1 fields
 const regEmail = ref('');
-const regCode = ref('');
 const regUsername = ref('');
 const regPassword = ref('');
 const regPasswordConfirm = ref('');
-const regError = ref('');
+// Stage 1 state
+const regStage1Loading = ref(false);
+const regStage1Error = ref('');
+// Stage 2 state
+const regCode = ref('');
+const regStage2Loading = ref(false);
+const regStage2Error = ref('');
 const regSuccess = ref('');
-const regLoading = ref(false);
 const codeSent = ref(false);
 const codeSending = ref(false);
 const codeCountdown = ref(0);
@@ -366,45 +405,90 @@ function startCountdown(seconds = 60) {
   }, 1000);
 }
 
-async function doSendCode() {
-  regError.value = '';
-  const email = regEmail.value.trim().toLowerCase();
-  if (!email) {
-    regError.value = '请输入邮箱';
+/**
+ * Stage 1: Validate form and send verification code
+ */
+async function handleStage1Submit() {
+  regStage1Error.value = '';
+  
+  // Frontend validation
+  if (!regEmail.value.trim()) {
+    regStage1Error.value = '请输入邮箱';
     return;
   }
-  codeSending.value = true;
+  if (!regUsername.value.trim()) {
+    regStage1Error.value = '请输入用户名';
+    return;
+  }
+  if (regPassword.value.length < 6) {
+    regStage1Error.value = '密码至少 6 位';
+    return;
+  }
+  if (regPassword.value !== regPasswordConfirm.value) {
+    regStage1Error.value = '两次密码不一致';
+    return;
+  }
+
+  regStage1Loading.value = true;
   try {
-    const res = await fetch('/api/auth/send-code', {
+    // Step 1: Check if email and username are available
+    const checkRes = await fetch('/api/auth/check-registration', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, purpose: 'register' }),
+      body: JSON.stringify({
+        email: regEmail.value.trim().toLowerCase(),
+        username: regUsername.value.trim(),
+      }),
     });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && json?.status === 'OK') {
+    const checkJson = await checkRes.json().catch(() => ({}));
+    
+    // 后端返回格式：{ status: "error", error: "具体错误信息" } 或 { status: "OK", data: { available: true } }
+    if (!checkRes.ok || ((checkJson as any)?.status === 'error' && !(checkJson as any)?.data?.available)) {
+      // 优先显示 error 字段（邮箱/用户名重复时的明确提示）
+      regStage1Error.value = (checkJson as any)?.error || (checkJson as any)?.data?.message || '该邮箱或用户名已被使用';
+      regStage1Loading.value = false;
+      return;
+    }
+
+    // Step 2: Send verification code
+    const sendRes = await fetch('/api/auth/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ 
+        email: regEmail.value.trim().toLowerCase(), 
+        purpose: 'register' 
+      }),
+    });
+    const sendJson = await sendRes.json().catch(() => ({}));
+    
+    if (sendRes.ok && sendJson?.status === 'OK') {
       codeSent.value = true;
       startCountdown(60);
     } else {
-      regError.value = json?.error || '发送失败，请稍后重试';
+      regStage1Error.value = sendJson?.error || '验证码发送失败，请稍后重试';
     }
   } catch {
-    regError.value = '网络异常，请稍后重试';
+    regStage1Error.value = '网络异常，请稍后重试';
   } finally {
-    codeSending.value = false;
+    regStage1Loading.value = false;
   }
 }
 
-async function doRegister() {
-  regError.value = '';
+/**
+ * Stage 2: Complete registration with verification code
+ */
+async function completeRegistration() {
+  regStage2Error.value = '';
   regSuccess.value = '';
-  if (!regEmail.value.trim()) { regError.value = '请输入邮箱'; return; }
-  if (!codeSent.value || !regCode.value.trim()) { regError.value = '请先获取并填写验证码'; return; }
-  if (!regUsername.value.trim()) { regError.value = '请输入用户名'; return; }
-  if (regPassword.value.length < 6) { regError.value = '密码至少 6 位'; return; }
-  if (regPassword.value !== regPasswordConfirm.value) { regError.value = '两次密码不一致'; return; }
+  
+  if (!regCode.value.trim()) {
+    regStage2Error.value = '请输入验证码';
+    return;
+  }
 
-  regLoading.value = true;
+  regStage2Loading.value = true;
   try {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
@@ -421,12 +505,55 @@ async function doRegister() {
     if (res.ok && json?.status === 'OK' && json?.data) {
       setUser({ uid: json.data.uid, username: json.data.username });
     } else {
-      regError.value = json?.error || '注册失败，请稍后重试';
+      regStage2Error.value = json?.error || '注册失败，请稍后重试';
     }
   } catch {
-    regError.value = '网络异常，请稍后重试';
+    regStage2Error.value = '网络异常，请稍后重试';
   } finally {
-    regLoading.value = false;
+    regStage2Loading.value = false;
+  }
+}
+
+/**
+ * Resend verification code
+ */
+async function resendCode() {
+  regStage2Error.value = '';
+  codeSending.value = true;
+  try {
+    const res = await fetch('/api/auth/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ 
+        email: regEmail.value.trim().toLowerCase(), 
+        purpose: 'register' 
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status === 'OK') {
+      startCountdown(60);
+    } else {
+      regStage2Error.value = json?.error || '验证码发送失败，请稍后重试';
+    }
+  } catch {
+    regStage2Error.value = '网络异常，请稍后重试';
+  } finally {
+    codeSending.value = false;
+  }
+}
+
+/**
+ * Go back to Stage 1 from Stage 2
+ */
+function goBackToStage1() {
+  regCode.value = '';
+  regStage2Error.value = '';
+  codeSent.value = false;
+  codeCountdown.value = 0;
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
   }
 }
 
@@ -793,6 +920,11 @@ function onLogoError(e: Event) {
   letter-spacing: 4px;
   font-size: 18px;
   font-weight: 600;
+  text-align: center;
+}
+
+.code-input::placeholder {
+  text-align: center;
 }
 
 /* 邮箱行：输入框 + 发送按钮 */
@@ -987,6 +1119,84 @@ function onLogoError(e: Event) {
   max-height: 0;
   opacity: 0;
   transform: translateY(-6px);
+}
+
+/* =====================================================
+   Registration Two-Stage Flow
+   ===================================================== */
+.reg-stage1,
+.reg-stage2 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reg-verification-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 12px;
+  border: 1px solid var(--ds-border-default);
+}
+
+.reg-verification-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.reg-verification-icon {
+  color: var(--ds-success);
+  flex-shrink: 0;
+}
+
+.reg-verification-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+  margin: 0;
+}
+
+.reg-verification-message {
+  font-size: 13px;
+  color: var(--ds-text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.reg-verification-message strong {
+  color: var(--ds-text-primary);
+  font-weight: 600;
+}
+
+.reg-stage2-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.reg-resend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reg-resend-btn,
+.reg-back-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.reg-resend-btn:disabled,
+.reg-back-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* =====================================================

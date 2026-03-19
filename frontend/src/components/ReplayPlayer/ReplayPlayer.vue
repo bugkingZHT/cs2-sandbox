@@ -1195,10 +1195,14 @@ watch(
       buildKillList(data.frames);
       checkUrlFrameId();
 
-      // 如果 URL 包含 autoplay 参数，自动开始播放
+      // 如果 URL 包含 autoplay 参数，在下一帧调用 togglePlay，确保渲染系统已初始化
       if (shouldAutoPlay()) {
-        isPlaying.value = true;
-        startAnimation();
+        nextTick(() => {
+          // 确保初始状态为暂停，然后调用 togglePlay 来启动播放
+          isPlaying.value = false;
+          cancelAnimation();
+          togglePlay();
+        });
       } else {
         isPlaying.value = false;
         cancelAnimation();

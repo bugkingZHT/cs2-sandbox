@@ -316,6 +316,90 @@ func (h *Handlers) SendCode(w http.ResponseWriter, r *http.Request) {
 	writeJSONOK(w, nil)
 }
 
+// CheckRegistrationRequest is the JSON body for POST /api/auth/check-registration.
+type CheckRegistrationRequest struct {
+	Email    string `json:"email"`
+	Username string `json:"username"`
+}
+
+// CheckRegistrationResponse indicates if email and username are available.
+type CheckRegistrationResponse struct {
+	Available bool   `json:"available"`
+	Message   string `json:"message,omitempty"` // "邮箱已被注册" or "用户名已被使用"
+}
+
+// CheckRegistration handles POST /api/auth/check-registration.
+// Validates that both email and username are available for registration.
+func (h *Handlers) CheckRegistration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.User == nil {
+		writeJSONErr(w, http.StatusServiceUnavailable, "用户服务不可用")
+		return
+	}
+
+	var req CheckRegistrationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Username = strings.TrimSpace(req.Username)
+
+	// Validate email format
+	if !emailRegexp.MatchString(req.Email) {
+		writeJSONErr(w, http.StatusBadRequest, "邮箱格式不正确")
+		return
+	}
+
+	// Validate username length (2-32 chars)
+	if req.Username == "" || utf8.RuneCountInString(req.Username) < 2 || utf8.RuneCountInString(req.Username) > 32 {
+		writeJSONErr(w, http.StatusBadRequest, "用户名长度需在 2-32 个字符之间")
+		return
+	}
+
+	// Check if email already exists
+	emailExists, err := h.User.EmailExists(req.Email)
+	if err != nil {
+		log.Printf("[Auth] CheckRegistration: error checking email email=%s: %v", req.Email, err)
+		writeJSONErr(w, http.StatusInternalServerError, "数据库查询失败")
+		return
+	}
+	if emailExists {
+		log.Printf("[Auth] CheckRegistration: email already registered email=%s", req.Email)
+		writeJSON(w, http.StatusConflict, map[string]interface{}{
+			"status": "error",
+			"error":  "该邮箱已被注册",
+		})
+		return
+	}
+
+	// Check if username already exists
+	usernameExists, err := h.User.UsernameExists(req.Username)
+	if err != nil {
+		log.Printf("[Auth] CheckRegistration: error checking username username=%s: %v", req.Username, err)
+		writeJSONErr(w, http.StatusInternalServerError, "数据库查询失败")
+		return
+	}
+	if usernameExists {
+		log.Printf("[Auth] CheckRegistration: username already taken username=%s", req.Username)
+		writeJSON(w, http.StatusConflict, map[string]interface{}{
+			"status": "error",
+			"error":  "该用户名已被使用",
+		})
+		return
+	}
+
+	// Both email and username are available
+	log.Printf("[Auth] CheckRegistration: available email=%s username=%s", req.Email, req.Username)
+	writeJSONOK(w, CheckRegistrationResponse{
+		Available: true,
+	})
+}
+
 // RegisterRequest is the JSON body for POST /api/auth/register.
 type RegisterRequest struct {
 	Email    string `json:"email"`
