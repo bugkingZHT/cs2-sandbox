@@ -1173,11 +1173,7 @@ const buildKillList = (framesArray: Frame[]) => {
   console.log(`[ReplayPlayer] Built kill list with ${killList.length} events`);
 };
 
-// 检查 URL 是否包含 autoplay 参数
-const shouldAutoPlay = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('autoplay') === '1' || params.get('autoplay') === 'true';
-};
+
 
 // 监听 replay 与有效帧（单回合 frames 或剪辑 mergedFrames）变化
 watch(
@@ -1195,18 +1191,12 @@ watch(
       buildKillList(data.frames);
       checkUrlFrameId();
 
-      // 如果 URL 包含 autoplay 参数，在下一帧调用 togglePlay，确保渲染系统已初始化
-      if (shouldAutoPlay()) {
-        nextTick(() => {
-          // 确保初始状态为暂停，然后调用 togglePlay 来启动播放
-          isPlaying.value = false;
-          cancelAnimation();
-          togglePlay();
-        });
-      } else {
+      // 数据加载完成后自动开始播放
+      nextTick(() => {
         isPlaying.value = false;
         cancelAnimation();
-      }
+        togglePlay();
+      });
       lastTimestamp = 0;
     }
   },
