@@ -3,23 +3,18 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite --config vite.local.config.ts",
+    "build": "vite build --config vite.local.config.ts",
+    "preview": "vite preview --config vite.local.config.ts",
+    "test:local": "node test-local-data.mjs"
   },
   "dependencies": {
-    "@element-plus/icons-vue": "^2.3.0",
-    "@ffmpeg/core": "^0.12.10",
-    "@ffmpeg/ffmpeg": "^0.12.15",
-    "@ffmpeg/util": "^0.12.2",
-    "element-plus": "^2.8.0",
     "pixi.js": "^8.1.0",
-    "protobufjs": "^7.2.5",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
-    "protoc-gen-js": "^3.21.4-4",
+    "prettier": "^3.9.6",
     "typescript": "^5.4.0",
     "vite": "^5.0.0"
   }

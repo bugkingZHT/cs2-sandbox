@@ -22,7 +22,7 @@
         <!-- 2. 云端下载回合 -->
         <div v-else-if="coverType === 'cloud_download'" class="empty-state-content empty-state-cloud-download">
           <div class="empty-icon">↓</div>
-          <h3>正在从云端下载回合</h3>
+          <h3>正在读取本机回合</h3>
           <div class="empty-state-download-track">
             <div
               class="empty-state-download-bar"
@@ -43,7 +43,7 @@
             <img src="/icons/notfound.svg" alt="" class="empty-icon-img" />
           </div>
           <h3>未找到回放</h3>
-          <p>该回放不存在或尚未同步到本机</p>
+          <p>该回放不存在或已从本次运行中移除</p>
         </div>
         <!-- 4. 回放无权限 -->
         <div v-else-if="coverType === 'forbidden'" class="empty-state-content">
@@ -694,6 +694,7 @@ import TimelineControl from './TimelineControl.vue';
 import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
 import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaRecorder';
 import { useReplayData } from '@/composables/useReplayData';
+import { localAPI } from '@/local/api';
 import { useClipMerge } from '@/composables/useClipMerge';
 import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ReplayMeta, ProjectileState, ClipRoundConfig } from '@/types/replay';
@@ -701,16 +702,11 @@ import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
-import { useAuth } from '@/composables/useAuth';
-import { getReplayStorage } from '@/composables/indexdb-storage';
-import { encodeReplayRound } from '@/composables/proto-converters';
 
 const emit = defineEmits<{
   (e: 'clip-publish-available', payload: { available: boolean }): void;
 }>();
 
-// 初始化认证信息
-const { currentUser } = useAuth();
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
@@ -829,7 +825,7 @@ async function copyEmbedLink() {
   }
   params.set('pure', '1');
   // 返回完整 URL
-  url = `${url}?${params.toString()}`;
+  url = `${url}?${params.toString()}${window.location.hash}`;
   try {
     await navigator.clipboard.writeText(url);
     window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
@@ -1787,232 +1783,25 @@ async function toggleClipRound(roundNumber: number) {
   }
 }
 
-// 获取当前用户 demo 数量
-const getUserDemoCount = async (): Promise<number> => {
-  if (!currentUser.value) return 0;
-  
-  try {
-    const res = await fetch('/api/demos', { credentials: 'include' });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && json?.status === 'OK' && json?.data?.items) {
-      return Array.isArray(json.data.items) ? json.data.items.length : 0;
-    }
-    return 0;
-  } catch {
-    return 0;
-  }
-};
-
-// 导出剪辑后的 demo 为新 demo
+// Same export workflow, saving a replay in the local library instead of the cloud.
 async function exportAsNewDemo() {
-  if (!effectiveReplay.value || effectiveFrames.value.length === 0) {
-    console.warn('[ExportAsNewDemo] No effective replay data to export');
-    return;
-  }
-
-  // 检查配额限制
-  const demoCount = await getUserDemoCount();
-  const quotaLimit = currentUser.value?.quota_limit ?? 0;
-  
-  if (demoCount >= quotaLimit) {
-    window.dispatchEvent(new CustomEvent('app:toast', { 
-      detail: { message: '当前 Demo 数量已到达用户上限', type: 'error' } 
-    }));
-    return;
-  }
-
+  if (!effectiveReplay.value || !effectiveFrames.value.length) return;
   isExporting.value = true;
-  exportProgress.value = 0;
-  exportSuccess.value = false;
-
   try {
-    // 更新进度：开始导出
-    exportProgress.value = 10;
-    
-    // 生成新的 UUID
-    const newUuid = crypto.randomUUID();
-    
-    // 对于剪辑模式，使用选中时间范围的帧数据
-    const clippedFrames = effectiveFrames.value.slice(
-      clipRangeStartIndex.value,
-      clipRangeEndIndex.value + 1 // slice is end-exclusive, so +1 to include end frame
-    );
-    
-    // Build meta from ReplayMeta fields only (following clipForkForNote.ts pattern)
-    const newReplayMeta: ReplayMeta = {
-      uuid: newUuid,
-      uploaderUid: effectiveReplay.value.uploaderUid ?? '',
-      uploadTime: Date.now(),
-      engineVersion: effectiveReplay.value.engineVersion,
-      serverPlayer: effectiveReplay.value.serverPlayer,
-      mapName: effectiveReplay.value.mapName ?? '',
-      teamCT: effectiveReplay.value.teamCT ?? '',
-      teamT: effectiveReplay.value.teamT ?? '',
-      scoreCT: effectiveReplay.value.scoreCT ?? 0,
-      scoreT: effectiveReplay.value.scoreT ?? 0,
-      totalRounds: 1,
-      roundResults: [
-        {
-          round: 1,
-          result: 'ct_win',
-          costT: 0,
-          costCT: 0,
-          countT: 0,
-          countCT: 0,
-        },
-      ],
-      totalFrames: clippedFrames.length,
-      totalDurationMs:
-        clippedFrames.length > 1
-          ? (clippedFrames[clippedFrames.length - 1]?.timeMs ?? 0) - 
-            (clippedFrames[0]?.timeMs ?? 0)
-          : 0,
-      status: 1,
-      totalRawFrames: effectiveReplay.value.totalRawFrames,
-      totalParsedFrames: effectiveReplay.value.totalParsedFrames,
-      projectileRenderConfig: effectiveReplay.value.projectileRenderConfig,
-      fileName: `${effectiveReplay.value.fileName || 'clipped'}_exported`,
-      originPath: effectiveReplay.value.originPath,
-      parsingProgress: effectiveReplay.value.parsingProgress,
-      parsingStatus: effectiveReplay.value.parsingStatus,
-      lastTickTime: effectiveReplay.value.lastTickTime,
-      replaySettings: effectiveReplay.value.replaySettings,
-    };
-    
-    // 更新进度：准备数据
-    exportProgress.value = 30;
-    
-    // 创建回合数据（使用剪辑后的帧）
-    const roundData = {
-      uuid: newUuid,
-      round: 1,
-      frames: clippedFrames
-    };
-    
-    // 将合并后的帧数据转换为字节数组 (这里使用 protobuf 编码)
-    const encodedData = await encodeReplayRound(roundData);
-    
-    // 更新进度：编码完成
-    exportProgress.value = 50;
-    
-    // 使用 IndexedDB 存储回合数据
-    const storage = await getReplayStorage();
-    await storage.saveRound(newUuid, 1, encodedData); // 保存为 round_1
-    
-    // 更新进度：本地存储完成
-    exportProgress.value = 70;
-    
-    // 准备上传到云端的数据
-    const formData = new FormData();
-    formData.append('demo_uuid', newUuid);
-    formData.append('meta', JSON.stringify(newReplayMeta));
-    formData.append('permission', '0'); // 默认私有
-    
-    // 添加回合文件
-    const blob = new Blob([encodedData], { type: 'application/octet-stream' });
-    formData.append('round_1', blob, `round_1.pb.gz`);
-    
-    // 上传到云端 (with progress tracking)
-    const uploadRes = await fetchWithProgress('/api/demos', {
-      method: 'POST',
-      body: formData,
-      credentials: 'include'
-    }, (loaded, total) => {
-      // 计算上传进度 (70% to 90% of total progress)
-      const uploadPercentage = (loaded / total) * 20; // 20% of the total progress (from 70% to 90%)
-      exportProgress.value = 70 + Math.floor(uploadPercentage);
-    });
-    
-    const uploadJson = await uploadRes.json().catch(() => ({}));
-    
-    if (!uploadRes.ok || uploadJson?.status !== 'OK') {
-      console.error('[ExportAsNewDemo] Upload failed:', uploadJson?.error || 'Unknown error');
-      window.dispatchEvent(new CustomEvent('app:toast', { 
-        detail: { message: '导出失败: ' + (uploadJson?.error || '未知错误'), type: 'error' } 
-      }));
-      return;
-    }
-    
-    // 更新进度：完成
-    exportProgress.value = 100;
-    
-    console.log('[ExportAsNewDemo] Successfully exported new demo with UUID:', newUuid);
-    window.dispatchEvent(new CustomEvent('app:toast', { 
-      detail: { message: '成功导出为新 Demo', type: 'info' } 
-    }));
-    
-    // 标记成功并稍后重置状态
-    exportSuccess.value = true;
-    setTimeout(() => {
-      isExporting.value = false;
-      exportProgress.value = 0;
-      setTimeout(() => {
-        exportSuccess.value = false;
-      }, 1000);
-    }, 2000);
-    
-  } catch (error) {
-    console.error('[ExportAsNewDemo] Error exporting demo:', error);
-    window.dispatchEvent(new CustomEvent('app:toast', { 
-      detail: { message: '导出失败: ' + (error as Error).message, type: 'error' } 
-    }));
-    isExporting.value = false;
-    exportProgress.value = 0;
-  }
+    const selected = effectiveFrames.value.slice(clipRangeStartIndex.value, clipRangeEndIndex.value + 1);
+    const start = selected[0]?.timeMs || 0;
+    const {frames: _unused, ...meta} = effectiveReplay.value;
+    await localAPI('clips', {meta: {...meta,fileName:(meta.fileName || 'replay')+'_exported'}, frames:selected.map(f=>({...f,round:1,timeMs:f.timeMs-start}))});
+    await useReplayData().refreshLibrary();
+    window.dispatchEvent(new CustomEvent('app:toast',{detail:{message:'已导出到本地 Demo 库',type:'info'}}));
+    exportSuccess.value=true;
+    setTimeout(()=>exportSuccess.value=false,2000);
+  } catch(e) {
+    window.dispatchEvent(new CustomEvent('app:toast',{detail:{message:String(e),type:'error'}}));
+  } finally {isExporting.value=false;}
 }
 
-// Fetch with progress tracking
-async function fetchWithProgress(url: string, options: RequestInit, onProgress: (loaded: number, total: number) => void) {
-  return new Promise<Response>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    
-    xhr.open(options.method || 'GET', url);
-    
-    // Copy headers
-    if (options.headers) {
-      for (const [key, value] of Object.entries(options.headers)) {
-        xhr.setRequestHeader(key, value as string);
-      }
-    }
-    
-    // Set credentials
-    if (options.credentials === 'include') {
-      xhr.withCredentials = true;
-    }
-    
-    xhr.onload = function() {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        // Create a Response-like object from xhr.response
-        resolve(new Response(xhr.response, {
-          status: xhr.status,
-          statusText: xhr.statusText,
-        }));
-      } else {
-        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
-      }
-    };
-    
-    xhr.onerror = function() {
-      reject(new Error('Network error'));
-    };
-    
-    xhr.upload.onprogress = function(event) {
-      if (event.lengthComputable) {
-        onProgress(event.loaded, event.total);
-      }
-    };
-    
-    // Type guard: XMLHttpRequest doesn't accept ReadableStream
-    const body = options.body;
-    if (body && typeof body === 'object' && 'getReader' in body) {
-      reject(new Error('ReadableStream is not supported with XMLHttpRequest'));
-      return;
-    }
-    xhr.send(body as XMLHttpRequestBodyInit | null | undefined);
-  });
-}
-
-// Load specific round data from IndexedDB
+// Load a specific round from the native local backend.
 const loadRoundData = async (roundNumber: number) => {
   if (!replay.value?.uuid) {
     console.warn('[LoadRoundData] No replay UUID available');

@@ -11,7 +11,7 @@
         frameborder="0"
         allow="fullscreen"
         sandbox="allow-scripts allow-same-origin allow-popups"
-        title="Snowbo Demo 预览"
+        title="cs2-sandbox Demo 预览"
       ></iframe>
 
     </div>
@@ -21,9 +21,9 @@
       <div class="auth-card">
         <!-- 品牌标题区 -->
         <div class="auth-card-brand-header">
-          <img src="/logo/logo.png" class="auth-card-brand-logo" alt="Snowbo" @error="onLogoError" />
+          <img src="/logo/logo.png" class="auth-card-brand-logo" alt="cs2-sandbox" @error="onLogoError" />
           <div class="auth-card-brand-text">
-            <h1 class="auth-card-brand-title">Snowbo | 雪豹</h1>
+            <h1 class="auth-card-brand-title">cs2-sandbox</h1>
             <p class="auth-card-brand-sub">打职业呢？这样研究 Demo</p>
           </div>
         </div>
@@ -46,8 +46,8 @@
 
         <!-- 移动端 Logo（左侧隐藏时展示） -->
         <div class="auth-card-logo">
-          <img src="/logo/logo.png" class="auth-card-logo-img" alt="Snowbo" @error="onLogoError" />
-          <span class="auth-card-logo-text">Snowbo</span>
+          <img src="/logo/logo.png" class="auth-card-logo-img" alt="cs2-sandbox" @error="onLogoError" />
+          <span class="auth-card-logo-text">cs2-sandbox</span>
         </div>
 
         <!-- Tab 切换（找回密码时隐藏） -->

@@ -10,9 +10,17 @@ import (
 )
 
 func (b *replayBuilder) registerEventHandlers() {
-	// Register round start handler to increment round counter
+	// Warmup/restart RoundStart events are not additional competitive rounds.
 	b.parser.RegisterEventHandler(func(e events.RoundStart) {
-		b.currentRound++
+		gs := b.parser.GameState()
+		b.roundGeneration++
+		b.currentRound = 0
+		if gs.IsMatchStarted() && !gs.IsWarmupPeriod() {
+			b.currentRound = gs.TotalRoundsPlayed() + 1
+		}
+		b.prevFrame = nil
+		b.roundFreezeEndCostT = -1
+		b.roundFreezeEndCostCT = -1
 		b.bombState = "carried"
 		b.bombSite = ""
 		b.activeProjectiles = make(map[int]entity.ProjectileFrame)
@@ -25,7 +33,6 @@ func (b *replayBuilder) registerEventHandlers() {
 		// Reset dropped equipment blacklist - will be built at round frame 0
 		b.droppedEquipmentBlacklist = make(map[int]struct{})
 		b.droppedBlacklistBuiltRound = -1
-		// 不在 RoundStart 里重置 roundFreezeEndCost/Count，否则若事件顺序为 RoundFreezetimeEnd → RoundStart 会清掉本回合刚写入的数据；仅在 RoundFreezetimeEnd 写入，RoundEnd 使用即本回合数据
 	})
 
 	// Register freeze time end handler
@@ -36,6 +43,9 @@ func (b *replayBuilder) registerEventHandlers() {
 
 	// Register round end handler
 	b.parser.RegisterEventHandler(func(e events.RoundEnd) {
+		if b.currentRound == 0 || b.parser.GameState().IsWarmupPeriod() || !b.parser.GameState().IsMatchStarted() {
+			return
+		}
 		b.roundEndTick = b.parser.GameState().IngameTick()
 
 		log.Printf("[RoundEnd] Round %d ended. Winner: %v, BombState: %s", b.currentRound, e.Winner, b.bombState)
@@ -72,11 +82,20 @@ func (b *replayBuilder) registerEventHandlers() {
 			}
 		}
 
-		// 只写入 builder，不 append 到 roundResults；由 ParseNextRound 末尾统计经济后 append 到 meta
-		b.lastRoundResult = &entity.RoundResultInfo{
+		// Snapshot before the following RoundStart resets per-round state.
+		costT, costCT, countT, countCT := b.computeRoundCosts()
+		rr := entity.RoundResultInfo{
 			Round:  b.currentRound,
 			Result: result,
+			CostT:  costT, CostCT: costCT, CountT: countT, CountCT: countCT,
 		}
+		for i, existing := range b.roundResults {
+			if existing.Round == rr.Round {
+				b.roundResults[i] = rr
+				return
+			}
+		}
+		b.roundResults = append(b.roundResults, rr)
 		log.Printf("[RoundEnd] Recorded result for round %d: %s", b.currentRound, result)
 	})
 

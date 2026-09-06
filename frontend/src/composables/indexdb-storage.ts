@@ -5,7 +5,7 @@ import { MAX_DEMO_CACHE_NUM_DEFAULT } from '../config/debug';
 // Only replay-rounds are cached in IndexedDB for faster re-load.
 
 // Database schema
-const DB_NAME = 'cs-demobox';
+const DB_NAME = 'cs2-sandbox';
 const DB_VERSION = 13; // v12→v13: remove replay-meta store; meta comes from cloud only
 const ROUNDS_STORE = 'replay-rounds';
 const LEGACY_META_STORE = 'replay-meta';

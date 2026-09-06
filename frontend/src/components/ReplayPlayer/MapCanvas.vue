@@ -73,7 +73,7 @@
     </div>
     <!-- 投掷物 hover 提示：开启右下角道具追踪后，点击投掷物可解析（画笔模式下不展示） -->
     <div
-      v-if="hoverProjectile && !(isDrawingMode ?? false)"
+      v-if="projectileAnalysisEnabled && hoverProjectile && !(isDrawingMode ?? false)"
       class="projectile-tip"
       :style="{ left: `${hoverProjectilePos.x}px`, top: `${hoverProjectilePos.y}px` }"
     >
@@ -203,6 +203,7 @@ const props = withDefaults(
     isDrawingMode?: boolean;
     pureMode?: boolean;
     grenadeTrackingEnabled?: boolean;
+    projectileAnalysisEnabled?: boolean;
     tabRecorderSupported?: boolean;
     tabRecorderRecording?: boolean;
     tabRecorderConverting?: boolean;
@@ -220,6 +221,7 @@ const props = withDefaults(
     showMapProjectiles: true,
     showMapDropped: true,
     showMapBomb: true,
+    projectileAnalysisEnabled: true,
   }
 );
 

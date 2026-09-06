@@ -1,7 +1,7 @@
 <template>
   <div class="demo-library-page">
     <!-- Header 浮于 app 最上方，Teleport 到 App.vue 的 #app-page-header -->
-    <Teleport to="#app-page-header">
+    <Teleport defer to="#app-page-header">
       <div class="demo-library-header">
         <div class="header-content">
           <div class="filter-controls">
@@ -70,6 +70,8 @@
                 <div 
                   v-for="mapName in filteredMapOptions" 
                   :key="mapName"
+                  role="button" tabindex="0" :aria-label="'筛选地图 ' + mapName"
+                  @keydown.enter="toggleMapName(mapName)"
                   class="filter-dropdown-item"
                   :class="{ selected: filterMapNames.includes(mapName) }"
                   @click="toggleMapName(mapName)"
@@ -120,6 +122,8 @@
                 <div 
                   v-for="teamName in filteredTeamOptions" 
                   :key="teamName"
+                  role="button" tabindex="0" :aria-label="'筛选队伍 ' + teamName"
+                  @keydown.enter="toggleTeamName(teamName)"
                   class="filter-dropdown-item"
                   :class="{ selected: filterTeamNames.includes(teamName) }"
                   @click="toggleTeamName(teamName)"
@@ -170,6 +174,8 @@
                 <div 
                   v-for="playerName in filteredPlayerOptions" 
                   :key="playerName"
+                  role="button" tabindex="0" :aria-label="'筛选玩家 ' + playerName"
+                  @keydown.enter="togglePlayerName(playerName)"
                   class="filter-dropdown-item"
                   :class="{ selected: filterPlayerNames.includes(playerName) }"
                   @click="togglePlayerName(playerName)"
@@ -188,40 +194,7 @@
           </div>
         </div>
         <div class="library-actions">
-          <input
-            type="file"
-            ref="fileInputRef"
-            accept=".dem"
-            @change="onFileSelected"
-            style="display: none"
-          />
-          <!-- Quota Button with Dropdown -->
-          <div class="quota-btn-container">
-            <button 
-              class="ds-btn quota-btn" 
-              @click="toggleQuotaDropdown"
-              :class="{ active: showQuotaDropdown }"
-            >
-              <img src="/icons/quota.svg" alt="Quota" width="20" height="20" />
-            </button>
-            <div v-if="showQuotaDropdown" class="quota-dropdown ds-card ds-card-elevated">
-              <div class="quota-dropdown-header">
-                <span class="quota-label">云存储 Demo 数量</span>
-              </div>
-              <div class="quota-progress-container">
-                <div class="quota-progress-bar">
-                  <div 
-                    class="quota-progress-fill" 
-                    :style="{ width: quotaPercentage + '%' }"
-                  ></div>
-                </div>
-                <div class="quota-percentage">
-                  {{ demoCount }}/{{ quotaLimit }}
-                </div>
-              </div>
-            </div>
-          </div>
-          <button class="ds-btn ds-btn-primary" @click="openUploadModal" :disabled="parsing">
+          <button class="ds-btn ds-btn-primary" @click="emit('open-local')" :disabled="parsing">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
@@ -233,80 +206,6 @@
       </div>
     </Teleport>
 
-    <!-- Upload Demo Modal -->
-    <div v-if="showUploadModal" class="upload-modal-overlay" @click="closeUploadModal">
-      <div class="upload-modal ds-card ds-card-elevated" @click.stop>
-        <!-- Close Button -->
-        <button class="upload-modal-close" @click="closeUploadModal" aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-
-        <!-- Modal Header -->
-        <div class="upload-modal-header">
-          <h3 class="upload-modal-title">解析 DEMO</h3>
-          <p class="upload-modal-subtitle">导入您的 CS2 回放文件进行解析</p>
-        </div>
-
-        <!-- Drop Zone -->
-        <div
-          class="upload-drop-zone"
-          :class="{ 'is-dragover': isUploadDragOver }"
-          @click="triggerFileInput"
-          @dragover.prevent="isUploadDragOver = true"
-          @dragleave="isUploadDragOver = false"
-          @drop.prevent="onUploadDrop"
-        >
-          <div class="upload-drop-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1"/>
-              <polyline points="9 15 12 12 15 15"/>
-              <line x1="12" y1="12" x2="12" y2="21"/>
-            </svg>
-          </div>
-          <p class="upload-drop-text-primary">拖拽或点击选择 .dem 文件上传</p>
-          <p class="upload-drop-text-secondary">支持拖拽上传</p>
-        </div>
-
-        <!-- Supported Maps Info -->
-        <div class="upload-info-section">
-          <div class="upload-info-label">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="16" x2="12" y2="12"/>
-              <line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
-            <span>支持的地图（上传其他地图将导致解析失败）</span>
-          </div>
-          <p class="upload-info-text">{{ supportedMapNamesText }}</p>
-        </div>
-
-        <!-- Actions -->
-        <div class="modal-actions">
-          <!-- Cancel button removed as requested -->
-        </div>
-      </div>
-    </div>
-
-    <!-- Parsing Info Banner：仅在全局阻塞解析时显示，与 Cover 语义一致 -->
-    <div v-if="parsing && !isDismissed" class="parsing-info-banner">
-      <div class="banner-content">
-        <svg class="banner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-        <span class="banner-text">解析过程中请勿关闭或刷新页面</span>
-      </div>
-      <button class="banner-close" @click="dismissBanner" title="关闭提示">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="ds-empty">
@@ -317,7 +216,7 @@
     <!-- Empty State -->
     <div v-else-if="demoList.length === 0" class="ds-empty">
       <h3 class="ds-empty-title">暂无 Demo 文件</h3>
-      <p class="ds-empty-description">点击"上传"按钮开始解析 Demo</p>
+      <p class="ds-empty-description">点击“解析 DEMO”读取本机文件</p>
     </div>
 
     <!-- Demo Bar List -->
@@ -373,10 +272,7 @@
           </div>
           <!-- Parsing progress on bar -->
           <div v-if="demo.status === 0" class="demo-bar-parsing">
-            <div class="demo-bar-parsing-bar">
-              <div class="demo-bar-parsing-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
-            </div>
-            <span class="demo-bar-parsing-text">{{ demo.parsingProgress || 0 }}%</span>
+            <span class="demo-bar-parsing-text">{{ demo.parsingStatus || '正在打开文件…' }} · {{ demo.parsingProgress || 0 }}%</span>
           </div>
         </div>
         </div>
@@ -421,7 +317,7 @@
           <div v-else-if="demo.status === -1" class="demo-bar-failed-msg">{{ demo.parsingStatus || 'Parsing failed' }}</div>
           </div>
           <div class="demo-bar-footer-right">
-            <div class="demo-bar-more-wrap">
+            <div v-if="demo.status !== 0" class="demo-bar-more-wrap">
               <button
                 type="button"
                 class="demo-bar-more-btn"
@@ -437,22 +333,18 @@
             </div>
           </div>
         </div>
+        <div v-if="demo.status === 0" class="demo-card-progress" role="progressbar" :aria-label="demo.fileName + ' 解析进度'" :aria-valuenow="demo.parsingProgress || 0" aria-valuemin="0" aria-valuemax="100">
+          <div class="demo-card-progress-fill" :style="{ width: `${demo.parsingProgress || 0}%` }"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Demo 弹窗：删除确认 / 上传阻止 / 强制删除（解析与分享在 App 内用 DemoModal） -->
+    <!-- 仅保留删除本地缓存的确认弹窗 -->
     <DemoModal
       :show-delete-modal="showDeleteModal"
       :demo-to-delete="demoToDelete"
-      :show-upload-blocked-modal="showUploadBlockedModal"
-      :upload-blocked-info="uploadBlockedInfo"
-      :show-force-delete-modal="showForceDeleteModal"
-      :demo-to-force-delete="demoToForceDelete"
       @cancel-delete="cancelDelete"
       @confirm-delete="performDelete"
-      @close-upload-blocked="closeUploadBlockedModal"
-      @cancel-force-delete="cancelForceDelete"
-      @confirm-force-delete="performForceDelete"
     />
 
     <!-- Demo bar more menu (Share / Delete) Teleport to body -->
@@ -463,13 +355,6 @@
         :style="{ right: demoBarMoreMenuPosition.right + 'px', bottom: demoBarMoreMenuPosition.bottom + 'px' }"
         @click.stop
       >
-        <button type="button" class="demo-bar-more-menu-item" @click.stop="handleDemoMenuShare">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-          </svg>
-          <span>分享</span>
-        </button>
         <button type="button" class="demo-bar-more-menu-item demo-bar-more-menu-item-delete" @click.stop="handleDemoMenuDelete">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
@@ -485,13 +370,12 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue';
 import type { ReplayData } from '@/types/replay';
-import { MAP_CONFIGS, SUPPORTED_PARSING_MAP_NAMES } from '@/config/map';
+import { MAP_CONFIGS } from '@/config/map';
 import { useReplayData } from '@/composables/useReplayData';
 import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEconomyFilter } from '@/config/eco';
 // Removed import for resolveTeamDisplayName to avoid fallback to player names
 import { navigate, getQuery, replaceLocation, pathRef, searchRef, getReplayerPlayingLocal } from '@/location';
 import { isMobileBrowser } from '@/composables/browserUtils';
-import { useAuth } from '@/composables/useAuth';
 import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
 
 const props = defineProps<{
@@ -502,51 +386,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select-demo', id: string): void;
   (e: 'delete-demo', id: string): void;
-  (e: 'upload-demo', file: File): void;
-  (e: 'upload-blocked', info: { fileName: string; progress: number }): void;
-  (e: 'share-demo', demo: ReplayData): void;
+  (e: 'open-local'): void;
 }>();
 
-const { parsing, showUploadBlockedWarning } = useReplayData();
-const { currentUser } = useAuth();
-
-// 获取当前用户 demo 数量
-const getUserDemoCount = async (): Promise<number> => {
-  if (!currentUser.value) return 0;
-  
-  try {
-    const res = await fetch('/api/demos', { credentials: 'include' });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && json?.status === 'OK' && json?.data?.items) {
-      return Array.isArray(json.data.items) ? json.data.items.length : 0;
-    }
-    return 0;
-  } catch {
-    return 0;
-  }
-};
-
-// Watch for upload blocked warnings from composable
-watch(showUploadBlockedWarning, (warning) => {
-  if (warning) {
-    showUploadBlockedModal.value = true;
-    uploadBlockedInfo.value = warning;
-  }
-});
-const fileInputRef = ref<HTMLInputElement | null>(null);
+const { parsing } = useReplayData();
 const isLoadingDemo = ref(false);
 const selectedDemoId = ref<string | null>(null);
 const showDeleteModal = ref(false);
 const demoToDelete = ref<ReplayData | null>(null);
-const isDismissed = ref(false);
-
-// Upload blocked modal state
-const showUploadBlockedModal = ref(false);
-const uploadBlockedInfo = ref<{ fileName: string; progress: number } | null>(null);
-
-// Force delete modal state
-const showForceDeleteModal = ref(false);
-const demoToForceDelete = ref<ReplayData | null>(null);
 
 // Demo bar more menu (dropdown)
 const openMenuDemoId = ref<string | null>(null);
@@ -560,41 +407,10 @@ const currentPlayingLocal = computed(() => {
   return getReplayerPlayingLocal();
 });
 
-// Toggle quota dropdown
-function toggleQuotaDropdown() {
-  showQuotaDropdown.value = !showQuotaDropdown.value;
-}
-
-// Close quota dropdown when clicking outside
-function closeQuotaDropdown() {
-  showQuotaDropdown.value = false;
-}
-
-// Update demo count when demo list changes
-watch(() => props.demoList.length, async () => {
-  if (currentUser.value) {
-    // Count non-fork demos for current user
-    demoCount.value = props.demoList.filter(demo => !demo.fork).length;
-  }
-}, { immediate: true });
-
 function openReplayer(demo: ReplayData, round: number) {
   const tab = 'players';
   navigate('/replayer', `demo_uuid=${encodeURIComponent(demo.uuid)}&round=${round}&tab=${tab}`);
 }
-
-// Upload modal state (dashed drop zone)
-const showUploadModal = ref(false);
-const isUploadDragOver = ref(false);
-
-// Quota dropdown state
-const showQuotaDropdown = ref(false);
-const demoCount = ref(0);
-const quotaLimit = computed(() => currentUser.value?.quota_limit ?? 0);
-const quotaPercentage = computed(() => {
-  if (quotaLimit.value <= 0) return 0;
-  return Math.min(100, Math.round((demoCount.value / quotaLimit.value) * 100));
-});
 
 // Filter state (real-time filtering)，与 URL 同步
 
@@ -910,10 +726,6 @@ const handleClickOutside = (event: MouseEvent) => {
   if (!target.closest('.demo-bar-more-wrap') && !target.closest('.demo-bar-more-menu')) {
     openMenuDemoId.value = null;
   }
-  // Close quota dropdown when clicking outside
-  if (!target.closest('.quota-btn-container')) {
-    closeQuotaDropdown();
-  }
 };
 
 function toggleDemoMenu(demoId: string, e?: Event) {
@@ -932,31 +744,12 @@ function toggleDemoMenu(demoId: string, e?: Event) {
   openMenuDemoId.value = demoId;
 }
 
-function handleDemoMenuShare() {
-  if (openMenuDemo.value) emit('share-demo', openMenuDemo.value);
-  openMenuDemoId.value = null;
-}
-
 function handleDemoMenuDelete() {
   if (!openMenuDemo.value) return;
-  if (openMenuDemo.value.status === 0) confirmForceDelete(openMenuDemo.value);
-  else confirmDelete(openMenuDemo.value);
+  if (openMenuDemo.value.status !== 0) confirmDelete(openMenuDemo.value);
   openMenuDemoId.value = null;
 }
 
-// Defensive: list may briefly show status=0 before loadAllReplays marks them interrupted
-const hasParsingDemos = computed(() => props.demoList.some(demo => demo.status === 0));
-
-// Reset dismiss state when blocking parse starts
-watch(parsing, (newVal) => {
-  if (newVal) {
-    isDismissed.value = false;
-  }
-});
-
-const dismissBanner = () => {
-  isDismissed.value = true;
-};
 
 // Init filters from URL on mount
 onMounted(() => {
@@ -1029,6 +822,8 @@ watch(() => props.demoList.map(d => ({ id: d.id, status: d.status })), (newList,
 const sortedDemoList = computed(() => {
   // Filter out demos where fork is true
   let filteredList = [...props.demoList].filter(demo => !demo.fork);
+  const pending = filteredList.filter(demo => demo.status !== 1);
+  filteredList = filteredList.filter(demo => demo.status === 1);
   
   // Filter by map names (support multiple)
   if (filterMapNames.value.length > 0) {
@@ -1066,74 +861,10 @@ const sortedDemoList = computed(() => {
   }
   
   // Sort by timestamp (newest first)
-  return filteredList.sort((a, b) => {
+  return [...pending, ...filteredList.sort((a, b) => {
     return (b.timestamp || 0) - (a.timestamp || 0);
-  });
+  })];
 });
-
-const openUploadModal = async () => {
-  if (parsing.value) return;
-  
-  // 检查是否为移动端浏览器
-  if (isMobileBrowser()) {
-    window.dispatchEvent(new CustomEvent('app:toast', { 
-      detail: { message: '解析功能需要使用桌面端', type: 'warning' } 
-    }));
-    return;
-  }
-  
-  // 检查用户是否已登录
-  if (!currentUser.value) {
-    window.dispatchEvent(new CustomEvent('app:toast', { 
-      detail: { message: '解析功能需要登录', type: 'info' } 
-    }));
-    return;
-  }
-  
-  // 检查配额限制
-  const demoCount = await getUserDemoCount();
-  const quotaLimit = currentUser.value.quota_limit ?? 0;
-  
-  if (demoCount >= quotaLimit) {
-    window.dispatchEvent(new CustomEvent('app:toast', { 
-      detail: { message: '当前 Demo 数量已到达用户上限', type: 'error' } 
-    }));
-    return;
-  }
-  
-  showUploadModal.value = true;
-};
-
-const closeUploadModal = () => {
-  showUploadModal.value = false;
-  isUploadDragOver.value = false;
-};
-
-const supportedMapNamesText = computed(() =>
-  [...SUPPORTED_PARSING_MAP_NAMES].join('，')
-);
-
-const triggerFileInput = () => {
-  fileInputRef.value?.click();
-};
-
-const onFileSelected = (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (file) {
-    if (showUploadModal.value) closeUploadModal();
-    emit('upload-demo', file);
-    input.value = ''; // Reset input
-  }
-};
-
-const onUploadDrop = (e: DragEvent) => {
-  isUploadDragOver.value = false;
-  const file = e.dataTransfer?.files?.[0];
-  if (!file || !file.name.toLowerCase().endsWith('.dem')) return;
-  closeUploadModal();
-  emit('upload-demo', file);
-};
 
 const selectDemo = async (demo: ReplayData) => {
   // 阻止选择正在解析或失败的 demo
@@ -1180,66 +911,6 @@ const performDelete = () => {
   cancelDelete();
 };
 
-const confirmForceDelete = (demo: ReplayData) => {
-  demoToForceDelete.value = demo;
-  showForceDeleteModal.value = true;
-};
-
-const cancelForceDelete = () => {
-  showForceDeleteModal.value = false;
-  demoToForceDelete.value = null;
-};
-
-const performForceDelete = async () => {
-  if (!demoToForceDelete.value?.id) {
-    cancelForceDelete();
-    return;
-  }
-
-  const uuid = demoToForceDelete.value.id;
-  
-  try {
-    console.log(`[ForceDelete] Starting force delete for UUID: ${uuid}`);
-    
-    // Step 1: Close WASM parser to release Go memory
-    if (typeof (window as any).closeDemoParser === 'function') {
-      (window as any).closeDemoParser();
-      console.log('[ForceDelete] 🗑️ WASM parser closed');
-    }
-    
-    // Step 2: Trigger GC to clean up memory
-    if (typeof (globalThis as any).gc === 'function') {
-      (globalThis as any).gc();
-      console.log('[ForceDelete] 🗑️ Explicit GC triggered');
-    }
-    
-    // Step 3: Delete demo (this will clean up IndexedDB meta + rounds)
-    emit('delete-demo', uuid);
-    console.log('[ForceDelete] ✅ Demo deleted successfully');
-    
-    // Step 4: Force page reload to kill all worker threads
-    console.log('[ForceDelete] 🔄 Reloading page to terminate all workers...');
-    setTimeout(() => {
-      window.location.reload();
-    }, 300); // Small delay to ensure deletion completes
-    
-  } catch (error) {
-    console.error('[ForceDelete] Error during force delete:', error);
-    // Still reload on error to ensure workers are terminated
-    setTimeout(() => {
-      window.location.reload();
-    }, 300);
-  } finally {
-    cancelForceDelete();
-  }
-};
-
-const closeUploadBlockedModal = () => {
-  showUploadBlockedModal.value = false;
-  uploadBlockedInfo.value = null;
-  // Clear warning state in composable
-  showUploadBlockedWarning.value = null;
-};
 
 const getMapLeftSideImage = (mapName: string | undefined): string | undefined => {
   if (!mapName) return undefined;
@@ -1627,6 +1298,9 @@ const scoreLeftRightMap = computed(() => {
   flex-direction: column;
   gap: var(--ds-space-md);
 }
+
+.demo-card-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--ds-border-default); z-index: 2; overflow: hidden; }
+.demo-card-progress-fill { height: 100%; min-width: 3px; background: var(--ds-success); transition: width .5s linear; }
 
 .demo-bar-card {
   width: 100%;
@@ -2492,252 +2166,6 @@ const scoreLeftRightMap = computed(() => {
   height: 16px;
 }
 
-/* === Storage Quota Dropdown Styles === */
-.quota-btn-container {
-  position: relative;
-}
-
-.quota-btn {
-  width: 38px;
-  height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--ds-radius-md);
-  color: var(--ds-text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.quota-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--ds-primary);
-  color: var(--ds-primary);
-  transform: translateY(-1px);
-}
-
-.quota-btn.active {
-  background: var(--ds-surface-active);
-  border-color: var(--ds-primary);
-  color: var(--ds-primary-text);
-  box-shadow: 0 2px 8px rgba(var(--ds-primary-rgb), 0.3);
-}
-
-.quota-btn img {
-  width: 20px;
-  height: 20px;
-  filter: brightness(0.8);
-}
-
-.quota-btn:hover img,
-.quota-btn.active img {
-  filter: brightness(1);
-}
-
-.quota-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 240px;
-  padding: var(--ds-space-md);
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--ds-radius-lg);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  animation: dropdownFadeIn 0.2s ease;
-}
-
-@keyframes dropdownFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.quota-dropdown-header {
-  margin-bottom: var(--ds-space-sm);
-}
-
-.quota-label {
-  font-size: var(--ds-text-sm);
-  font-weight: 600;
-  color: var(--ds-text-primary);
-}
-
-.quota-progress-container {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-sm);
-  margin-bottom: var(--ds-space-xs);
-}
-
-.quota-progress-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--ds-bg-tertiary);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.quota-progress-fill {
-  height: 100%;
-  background: var(--ds-primary);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.quota-percentage {
-  font-size: var(--ds-text-xs);
-  font-weight: 600;
-  color: var(--ds-text-primary);
-  min-width: 32px;
-  text-align: right;
-}
-
-/* Quota Tooltip */
-.quota-tooltip {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 240px;
-  background: rgba(20, 20, 30, 0.98);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-lg);
-  padding: 0;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-4px);
-  transition: all 0.2s ease;
-  pointer-events: none;
-  z-index: 1000;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(10px);
-}
-
-.quota-btn-container:hover .quota-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.quota-tooltip::after {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  right: 8px;
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 6px solid rgba(20, 20, 30, 0.98);
-}
-
-/* Tooltip Sections */
-.quota-tooltip-section {
-  padding: 12px;
-}
-
-.quota-tooltip-section:not(:last-child) {
-  border-bottom: 1px solid var(--ds-border-subtle);
-}
-
-.quota-tooltip-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 5px;
-  padding-bottom: 4px;
-}
-
-.quota-icon {
-  flex-shrink: 0;
-  color: var(--ds-text-primary);
-  opacity: 0.9;
-}
-
-.quota-tooltip-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ds-text-primary);
-}
-
-.quota-tooltip-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.quota-info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 11px;
-}
-
-.quota-label {
-  color: var(--ds-text-tertiary);
-  font-weight: 500;
-}
-
-.quota-value {
-  color: var(--ds-text-secondary);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.quota-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: var(--ds-surface-base);
-  border-radius: var(--ds-radius-full);
-  overflow: hidden;
-  border: 1px solid var(--ds-border-subtle);
-  margin-top: 4px;
-}
-
-.quota-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--ds-primary) 0%, var(--ds-secondary) 100%);
-  transition: width 0.3s ease, background 0.3s ease;
-  border-radius: var(--ds-radius-full);
-  box-shadow: 0 0 8px rgba(var(--ds-primary-rgb), 0.3);
-}
-
-.quota-progress-fill.storage-warning {
-  background: linear-gradient(90deg, #f59e0b 0%, #fb923c 100%);
-  box-shadow: 0 0 8px rgba(251, 146, 60, 0.4);
-}
-
-.quota-progress-fill.storage-critical {
-  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
-  animation: pulse-critical 2s ease-in-out infinite;
-}
-
-@keyframes pulse-critical {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-.quota-percentage {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ds-text-tertiary);
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  margin-top: 4px;
-}
 
 /* === Demo Grid Container === */
 .demo-grid-container {

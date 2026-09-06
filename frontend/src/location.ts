@@ -32,7 +32,7 @@ function normalizeSearch(s: string): string {
 /** 前端导航：仅改 URL，不刷新页面；Go 已注册对应路径。 */
 export function navigate(path: string, search = '') {
   const q = normalizeSearch(search);
-  const url = path + q;
+  const url = path + q + window.location.hash;
   if (window.location.pathname === path && window.location.search === q) return;
   history.pushState(null, '', url);
   pathRef.value = path;
@@ -42,7 +42,7 @@ export function navigate(path: string, search = '') {
 /** 仅替换当前历史记录（用于 replayer 切 round 等） */
 export function replaceLocation(path: string, search: string) {
   const q = normalizeSearch(search);
-  history.replaceState(null, '', path + q);
+  history.replaceState(null, '', path + q + window.location.hash);
   pathRef.value = path;
   searchRef.value = q;
   window.dispatchEvent(new CustomEvent('app:location-changed'));

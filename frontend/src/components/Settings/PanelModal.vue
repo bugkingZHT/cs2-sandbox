@@ -296,7 +296,7 @@
         <div v-if="activeTab === 'about'" class="tab-panel">
           <div class="about-content">
             <p class="about-featured">这是雪豹</p>
-            <p class="about-developed-by">Developed by Snowbo</p>
+            <p class="about-developed-by">cs2-sandbox</p>
             <div class="title-divider"></div>
             <div class="version-section">
               <div class="version-row">

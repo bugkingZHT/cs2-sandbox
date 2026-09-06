@@ -37,6 +37,7 @@ type DemoEngine struct {
 	eofReached        bool // Track if EOF has been reached
 	totalParsedFrames int  // Output frames (after frame ratio)
 	totalRawFrames    int  // Game frames advanced (raw, for progress reporting)
+	pendingFrame      *entity.Frame
 }
 
 func NewDemoEngine(config EngineConfig) *DemoEngine {
@@ -136,121 +137,86 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		return nil, fmt.Errorf("parser not initialized, call InitParser first")
 	}
 	if e.eofReached {
-		log.Println("[ParseNextRound] EOF already reached, no more rounds")
 		return nil, nil
 	}
-	if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
-		log.Printf("[ParseNextRound] Round limit (%d) reached, stopping parsing", e.roundLimit)
-		return nil, nil
+	var frames []entity.Frame
+	startRound, generation := 0, e.builder.roundGeneration
+	if e.pendingFrame != nil {
+		frames = append(frames, *e.pendingFrame)
+		startRound = e.pendingFrame.Round
+		e.pendingFrame = nil
 	}
-
-	// 1. Create all vars
-	startRound := e.builder.currentRound
-	var (
-		rawFrames    int
-		parsedFrames int
-		frames       []entity.Frame
-	)
-
-	log.Printf("[ParseNextRound] Starting to parse round %d...", startRound)
-
+	finish := func() *entity.ReplayRound {
+		if len(frames) == 0 {
+			return nil
+		}
+		e.totalParsedFrames += len(frames)
+		return &entity.ReplayRound{UUID: e.uuid, Round: startRound, Frames: frames}
+	}
 	for {
-		// 2.1 Break conditions: EOF, round change, or over roundLimit
-		if e.eofReached {
-			break
-		}
-		if e.builder.currentRound > startRound && len(frames) > 0 {
-			log.Printf("[ParseNextRound] Round boundary detected (moved from %d to %d), returning %d frames", startRound, e.builder.currentRound, len(frames))
-			break
-		}
-		if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
-			log.Printf("[ParseNextRound] Round limit (%d) exceeded, stopping parsing", e.roundLimit)
-			break
-		}
-
-		rawFrames++
-		e.totalRawFrames++
-		// Sync parsing progress to frontend using totalRawFrames (raw frame count)
-		if onStatus != nil && e.totalRawFrames%1000 == 0 {
-			onStatus(fmt.Sprintf("%d", e.totalRawFrames))
-		}
-		if parsedFrames > 0 && parsedFrames%1000 == 0 {
-			log.Printf("  Parsed %d total frames (round %d)\n", e.totalParsedFrames, startRound)
-			time.Sleep(time.Millisecond)
-		}
-
-		// 2.2 Always advance with ParseNextFrame so entity/sendtable state stays in sync
-		// (SkipFrame would skip packet entities and can cause "unable to find new class" panics)
 		more, err := e.parser.ParseNextFrame()
-		if err != nil {
-			if err == io.EOF {
-				e.eofReached = true
-				break
-			}
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
-		if !more {
+		if !more || err == io.EOF {
 			e.eofReached = true
-			break
+			return finish(), nil
 		}
-
-		// 2.3 Sampling: only build a frame every frameRatio raw frames
-		needSample := (rawFrames-1)%e.frameRatio == 0
-		if !needSample {
-			continue
+		e.totalRawFrames++
+		if onStatus != nil && e.totalRawFrames%1000 == 0 {
+			onStatus(fmt.Sprint(e.totalRawFrames))
 		}
-
-		// 2.4 Save condition: do not save during freeze (when not resolving), warmup, or round 0
 		gs := e.parser.GameState()
-		noSave := (e.builder.inFreezeTime && !e.builder.resolveFreezeTime) ||
-			gs.IsWarmupPeriod() ||
-			e.builder.currentRound == 0
-		if noSave {
+		// Always parse packets, but never emit pre-match, warmup or optional freeze frames.
+		if !gs.IsMatchStarted() || gs.IsWarmupPeriod() {
+			if !e.builder.hasRoundResult(startRound) {
+				frames = nil
+				startRound = 0
+				e.builder.prevFrame = nil
+			}
 			continue
 		}
-
-		e.builder.calculateRoundEqValue(gs)
-
-		// Build frame
-		if len(frames) > 0 {
-			e.builder.prevFrame = &frames[len(frames)-1]
+		if generation != e.builder.roundGeneration && startRound == e.builder.currentRound {
+			// A restart can produce another RoundStart for round 1; discard its provisional frames.
+			frames = nil
+			startRound = 0
+			e.builder.prevFrame = nil
 		}
-		frames = append(frames, e.builder.frameOne())
-		parsedFrames++
-		e.totalParsedFrames++
+		generation = e.builder.roundGeneration
+		if e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
+			e.eofReached = true
+			return finish(), nil
+		}
+		if e.builder.currentRound <= 0 || (e.builder.inFreezeTime && !e.resolveFreezeTime) {
+			continue
+		}
+		if (e.totalRawFrames-1)%e.frameRatio != 0 {
+			continue
+		}
+		e.builder.calculateRoundEqValue(gs)
+		if len(frames) > 0 && startRound == e.builder.currentRound {
+			e.builder.prevFrame = &frames[len(frames)-1]
+		} else {
+			e.builder.prevFrame = nil
+		}
+		frame := e.builder.frameOne()
+		if len(frames) > 0 && frame.Round != startRound {
+			// Retain the first sampled frame of the next round instead of appending it to the previous one.
+			e.pendingFrame = &frame
+			return finish(), nil
+		}
+		startRound = frame.Round
+		frames = append(frames, frame)
 	}
+}
 
-	// 3. 将本回合经济统计从 builder 追加到 roundResults（eventhandler 只做统计不 append）
-	if e.builder.lastRoundResult != nil && e.builder.lastRoundResult.Round == startRound {
-		// get eval from builder
-		costT, costCT, countT, countCT := e.builder.computeRoundCosts()
-		e.builder.lastRoundResult.CostT = costT
-		e.builder.lastRoundResult.CostCT = costCT
-		e.builder.lastRoundResult.CountT = countT
-		e.builder.lastRoundResult.CountCT = countCT
-
-		// append result to meta
-		e.builder.roundResults = append(e.builder.roundResults, *e.builder.lastRoundResult)
-		e.builder.lastRoundResult = nil
-		log.Printf("[ParseNextRound] Appended round %d result to meta (total %d)", startRound, len(e.builder.roundResults))
+func (b *replayBuilder) hasRoundResult(round int) bool {
+	for _, result := range b.roundResults {
+		if result.Round == round {
+			return true
+		}
 	}
-
-	// 4. Wrap up: persist, GC
-	log.Printf("[ParseNextRound] Completed round %d with %d frames (raw=%d, parsed=%d)", startRound, len(frames), rawFrames, parsedFrames)
-	runtime.GC()
-	log.Printf("[ParseNextRound] 🗑️ GC triggered after completing round %d", startRound)
-
-	if len(frames) == 0 && e.eofReached {
-		return nil, nil
-	}
-	if len(frames) == 0 && e.roundLimit > 0 && e.builder.currentRound > e.roundLimit {
-		return nil, nil
-	}
-	return &entity.ReplayRound{
-		UUID:   e.uuid,
-		Round:  startRound,
-		Frames: frames,
-	}, nil
+	return false
 }
 
 func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, error) {
@@ -351,6 +317,7 @@ func (e *DemoEngine) Close() error {
 type replayBuilder struct {
 	parser            demoinfocs.Parser
 	currentRound      int
+	roundGeneration   int
 	bombState         string
 	bombSite          string
 	activeProjectiles map[int]entity.ProjectileFrame
@@ -363,9 +330,8 @@ type replayBuilder struct {
 	freezeEndTick   int // Tick when freeze time ended
 	bombPlantedTick int // Tick when bomb was planted
 	roundEndTick    int // Tick when round ended
-	// Round results: eventhandler 只写入 lastRoundResult，由 ParseNextRound 末尾 append 到 roundResults
-	roundResults    []entity.RoundResultInfo // 最终写入 meta
-	lastRoundResult *entity.RoundResultInfo  // 本回合结束时的统计，供 ParseNextRound 追加
+	// RoundEnd snapshots results before the next RoundStart resets round state.
+	roundResults []entity.RoundResultInfo
 	// Player registry: track all players seen during match
 	playerRegistry map[int]entity.PlayerInfo // Player ID -> PlayerInfo
 	// Dropped equipment blacklist: entity IDs present at round frame 0 (old throwables from previous round)

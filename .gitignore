@@ -1,6 +1,8 @@
 # Binaries for programs and plugins
 web/static/*
 !web/static/.gitkeep
+web/localdist/*
+!web/localdist/.gitkeep
 node_modules/
 *.exe
 *.exe~
@@ -8,6 +10,8 @@ node_modules/
 *.so
 *.dylib
 bin/
+!release/
+!release/*.exe
 *.test
 *.out
 

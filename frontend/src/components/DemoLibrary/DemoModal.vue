@@ -23,11 +23,11 @@
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h3 class="demo-modal-title">Confirm Deletion</h3>
+      <h3 class="demo-modal-title">移除本地回放缓存</h3>
       <p class="demo-modal-message">
         Are you sure you want to delete <strong class="demo-modal-filename" :title="demoToDelete?.fileName || demoToDelete?.mapName">{{ demoToDelete?.fileName || demoToDelete?.mapName || 'this demo' }}</strong>?
       </p>
-      <p class="demo-modal-warning">This action cannot be undone</p>
+      <p class="demo-modal-warning">移除这条本地记录及解析缓存，不会删除原始 .dem 文件；之后可以重新解析。</p>
       <div class="demo-modal-actions">
         <button type="button" class="ds-btn ds-btn-secondary" @click="$emit('cancel-delete')">Cancel</button>
         <button type="button" class="ds-btn ds-btn-danger" @click="$emit('confirm-delete')">Delete</button>

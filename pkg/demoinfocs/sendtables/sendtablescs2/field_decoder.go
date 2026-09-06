@@ -79,6 +79,7 @@ var fieldTypeDecoders = map[string]fieldDecoder{
 	"char":            stringDecoder,
 	"CUtlString":      stringDecoder,
 	"CUtlSymbolLarge": stringDecoder,
+	"CGlobalSymbol":   stringDecoder,
 
 	// some dotabuff/manta stuff
 	"GameTime_t": noscaleDecoder,
@@ -99,6 +100,8 @@ var fieldTypeDecoders = map[string]fieldDecoder{
 	"CEntityHandle":        unsignedDecoder,
 	"CGameSceneNodeHandle": unsignedDecoder,
 	"CStrongHandle":        unsignedDecoder,
+
+	"CUtlBinaryBlock": binaryBlockDecoder,
 
 	/*
 		/// some commmon stufff
@@ -304,6 +307,11 @@ func booleanDecoder(r *reader) interface{} {
 
 func stringDecoder(r *reader) interface{} {
 	return r.readString()
+}
+
+func binaryBlockDecoder(r *reader) interface{} {
+	n := r.readVarUint32()
+	return r.readBytes(n)
 }
 
 func defaultDecoder(r *reader) interface{} {

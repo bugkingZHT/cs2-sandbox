@@ -1,18 +1,14 @@
 <template>
-  <!-- 未登录且在根路径：开屏认证页 -->
-  <AuthPage v-if="!currentUser && sidebarPath === '/'" />
-
-  <!-- 已登录或其他路径：主应用界面 -->
-  <div v-else class="app">
+  <div class="app">
     <!-- Collapsible Sidebar（replayer 纯净模式下隐藏） -->
     <aside v-show="currentPage !== 'player' || !replayerPureMode" class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- Sidebar Header -->
       <div class="sidebar-header">
         <div class="app-branding" v-show="!sidebarCollapsed">
-          <img src="/logo/logo.png" alt="Snowbo" class="app-logo" @error="onLogoError" />
+          <img src="/logo/logo.png" alt="cs2-sandbox" class="app-logo" @error="onLogoError" />
           <div class="app-title-group">
-            <h1 class="app-title">Snowbo | 雪豹</h1>
-            <p class="app-subtitle">CS2 Tac-Workshop</p>
+            <h1 class="app-title">cs2-sandbox</h1>
+            <p class="app-subtitle">CS2 Demo Sandbox</p>
           </div>
         </div>
         
@@ -57,42 +53,10 @@
       <!-- Spacer: 把下方 Beta / Console 顶到底部 -->
       <div class="sidebar-spacer" aria-hidden="true"></div>
 
-      <!-- Beta Button -->
-      <div v-if="DEBUG_CONFIG.enableBetaButton" class="sidebar-beta-section">
-        <button 
-          class="beta-btn"
-          @click="showBetaWarning"
-          :title="sidebarCollapsed ? '测试版' : ''"
-        >
-          <span class="beta-btn-text">BETA</span>
-          <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">测试版</span>
-          </span>
-        </button>
-      </div>
-
       <div class="sidebar-footer">
-
-
-        <button
-          class="console-toggle-btn"
-          :class="{ 'is-logged-in': currentUser }"
-          @click="showConsoleModal = true"
-        >
-          <!-- 未登录：齿轮/设置风格；已登录：用户头像 -->
-          <svg v-if="!currentUser" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-            <line x1="12" y1="2" x2="12" y2="12"></line>
-          </svg>
-          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">{{ currentUser ? truncatedUsername : '系统 / 登录' }}</span>
-            <span v-if="currentUser?.role === 'pro'" class="role-badge role-badge-pro">pro</span>
-            <span v-else-if="currentUser?.role === 'pro+'" class="role-badge role-badge-proplus">pro+</span>
-          </span>
+        <button class="console-toggle-btn" @click="quit">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg>
+          <span v-show="!sidebarCollapsed" class="nav-label">退出本地工具</span>
         </button>
       </div>
     </aside>
@@ -125,8 +89,7 @@
                 :loading="loading"
                 @select-demo="onSelectDemo"
                 @delete-demo="onDeleteDemo"
-                @upload-demo="onUploadDemo"
-                @share-demo="onShareDemo"
+                @open-local="showFilePicker = true"
               />
 
             </main>
@@ -140,9 +103,7 @@
           <header class="app-page-header" id="app-page-header"></header>
           <div class="app-main-with-sidebar">
             <main class="app-main">
-              <ReplayPlayer
-                @clip-publish-available="onClipPublishAvailable"
-              />
+              <ReplayPlayer />
             </main>
           </div>
         </div>
@@ -151,44 +112,8 @@
 
     </div>
 
-    <!-- Demo 相关弹窗：解析 / 分享（删除/上传阻止/强制删除在 DemoLibrary 内用 DemoModal） -->
-    <DemoModal
-      :parsing="parsing"
-      :parsing-progress="parsingProgress"
-      :parsing-status="parsingStatus"
-      :share-demo="shareModalDemo"
-      :share-permission="shareModalPermission"
-      @update-permission="onShareUpdatePermission"
-      @close-share="closeDemoShareModal"
-      @copied="() => showToast('已复制', 'info')"
-      @copy-failed="() => showToast('复制失败', 'error')"
-    />
-
-    <!-- Console Modal -->
-    <ConsoleModal 
-      :show-modal="showConsoleModal" 
-      :current-page="currentPage"
-      @close="showConsoleModal = false"
-      @open-frame-data-viewer="handleFrameDataViewer"
-      @open-storage-viewer="handleStorageViewer"
-    />
-
-    <!-- Beta Warning Modal -->
-    <div v-if="showBetaModal" class="beta-modal-overlay" @click="showBetaModal = false">
-      <div class="beta-modal" @click.stop>
-        <div class="modal-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
-        <h3 class="modal-title">测试版提醒</h3>
-        <p class="modal-message">不保证功能稳定，数据可能随时被清理</p>
-        <button class="ds-btn-primary" @click="showBetaModal = false">我知道了</button>
-      </div>
-    </div>
-
+    <LocalFilePicker v-if="showFilePicker" :start="parseDemo" @close="showFilePicker = false" @accepted="onLocalAccepted" />
+    <div v-if="closed" class="local-closed-overlay"><h2>本地服务已退出</h2><p>可以关闭此页面，下次使用请双击 EXE。</p></div>
     <!-- Toast notification (info/warning/error, styles in styles/toast.css) -->
     <Transition name="toast-top">
       <div v-if="toast" :class="['ds-toast-top', 'ds-toast-' + toastType]">
@@ -213,357 +138,157 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, defineAsyncComponent } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, provide } from "vue";
+import ReplayPlayer from "@/components/ReplayPlayer/ReplayPlayer.vue";
+import DemoLibrary from "@/components/DemoLibrary/DemoLibrary.vue";
+import LocalFilePicker from "@/local/LocalFilePicker.vue";
+import { localAPI } from "@/local/api";
+import { useReplayData } from "@/composables/useReplayData";
+import {
+  pathRef,
+  searchRef,
+  useLocation,
+  navigate,
+  getQuery,
+  setReplayerPlayingLocal,
+  getReplayerPlayingLocal,
+} from "@/location";
+import { useMobileDetection } from "@/composables/browserUtils";
 
-const ReplayPlayer = defineAsyncComponent(() => import('@/components/ReplayPlayer/ReplayPlayer.vue'));
-const DemoLibrary = defineAsyncComponent(() => import('@/components/DemoLibrary/DemoLibrary.vue'));
-const AuthPage = defineAsyncComponent(() => import('@/components/Auth/AuthPage.vue'));
-
-import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
-const ConsoleModal = defineAsyncComponent(() => import('@/components/Settings/PanelModal.vue'));
-import type { ReplayData } from '@/types/replay';
-import { useReplayData } from '@/composables/useReplayData';
-
-import { useAuth } from '@/composables/useAuth';
-import { resolveTeamDisplayName } from '@/composables/teamDisplay';
-import { DEBUG_CONFIG } from '@/config/debug';
-import { showReplayStorageDetails } from '@/composables/replayStorageViewer';
-import { pathRef, searchRef, useLocation, navigate, replaceLocation, getQuery, setReplayerPlayingLocal, getReplayerPlayingLocal } from '@/location';
-import { useMobileDetection } from '@/composables/browserUtils';
-
-const { 
-  parsing, 
-  parsingProgress,
-  parsingStatus,
-  replayList, 
+const {
+  replayList,
   loading,
   parseDemo,
-  loadReplayByLocal,
-  loadReplayByDemosCloud,
-  loadReplayListFromServer,
+  loadRoundData,
   deleteDemoByUuid,
   replay,
   currentRoundNumber,
   waitForInitialLoad,
-  replayRouteError,
+  error,
 } = useReplayData();
-
-const SIDEBAR_COLLAPSED_KEY = 'snowbo-sidebar-collapsed';
-
 useLocation();
-
-/** 侧边栏 active 用：去掉 base 后的 path，保证 /replayer、/demolib 等比较一致 */
-const sidebarPath = computed(() => {
-  const p = pathRef.value;
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  if (base && p.startsWith(base)) return p.slice(base.length) || '/';
-  return p;
-});
-
-const currentPage = computed<'library' | 'player'>(() => {
-  const p = sidebarPath.value;
-  if (p === '/replayer') return 'player';
-  return 'library'; // /demolib or /
-});
-
-const currentDemoId = ref<string | null>(null);
-const sidebarCollapsed = ref(false);
+const sidebarPath = pathRef;
+const currentPage = computed(() =>
+  pathRef.value === "/replayer" ? "player" : "library",
+);
+watch(
+  currentPage,
+  (page) => {
+    document.title = page === "player" ? "Demo 回放 - cs2-sandbox" : "cs2-sandbox";
+  },
+  { immediate: true },
+);
+const sidebarCollapsed = ref(
+  localStorage.getItem("cs2-sandbox-sidebar-collapsed") === "true",
+);
 const { isMobile } = useMobileDetection();
-const replayerPureMode = ref(false); // 播放器内「纯净模式」时隐藏侧边栏
-provide('replayerPureMode', replayerPureMode);
-const showConsoleModal = ref(false);
-const replayerRouteLoading = ref(false);
-provide('replayerRouteLoading', replayerRouteLoading);
-const showBetaModal = ref(false);
-
-// Toast variables
-const toast = ref(false);
-const toastMessage = ref('');
-const toastType = ref<'info' | 'warning' | 'error'>('info');
-let toastTimer: number | null = null;
-
-const hasSelectedDemo = computed(() => !!currentDemoId.value);
-
-const { currentUser, truncatedUsername, fetchAuthMe } = useAuth();
-
-
-
-
-
-const canPublishClip = ref(false);
-function onClipPublishAvailable(payload: { available: boolean }) {
-  canPublishClip.value = payload.available;
-}
-
-/** 侧边栏使用刷新跳转，保证完整加载目标页 */
-function navigateWithReload(path: string) {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  window.location.href = base + path;
-}
-
-function onNavigateToDemolib() {
-  navigateWithReload('/demolib');
-}
-
-function onNavigateToReplayer() {
-  const saved = getReplayerPlayingLocal();
-  if (saved?.uuid != null && saved?.round != null) {
-    const search = new URLSearchParams({
-      demo_uuid: saved.uuid,
-      round: String(saved.round),
-      tab: 'players',
-    }).toString();
-    navigateWithReload('/replayer?' + search);
-  } else {
-    navigateWithReload('/replayer');
-  }
-}
-
-function showToast(message: string, type: 'info' | 'warning' | 'error' = 'info') {
-  if (toastTimer) clearTimeout(toastTimer);
+const replayerPureMode = ref(false),
+  replayerRouteLoading = ref(false);
+provide("replayerPureMode", replayerPureMode);
+provide("replayerRouteLoading", replayerRouteLoading);
+const showFilePicker = ref(false),
+  closed = ref(false);
+const toast = ref(false),
+  toastMessage = ref(""),
+  toastType = ref("info");
+let toastTimer: ReturnType<typeof setTimeout>;
+function showToast(message: string, type = "info") {
   toastMessage.value = message;
   toastType.value = type;
   toast.value = true;
-  toastTimer = setTimeout(() => {
-    toast.value = false;
-    toastTimer = null;
-  }, 3000);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toast.value = false), 5000);
 }
-
 function onAppToast(e: Event) {
-  const detail = (e as CustomEvent<{ message?: string; type?: 'info' | 'warning' | 'error' }>).detail;
-  if (detail?.message) showToast(detail.message, detail.type ?? 'info');
+  const d = (e as CustomEvent).detail;
+  if (d?.message) showToast(d.message, d.type);
 }
-
-// 根据 URL demo_uuid/round/tab 加载 replayer 数据；统一先读缓存、再同步云上
-async function ensureReplayerRouteData() {
-  const path = pathRef.value || window.location.pathname;
-  const search = searchRef.value ?? window.location.search;
-  pathRef.value = path;
-  searchRef.value = search;
-
-  const query = getQuery(search);
-  const demoUuid = query.demo_uuid ?? null;
-  const roundNum = parseInt(query.round || '', 10) || 1;
-  const demoIdRaw = query.demo_id != null ? parseInt(String(query.demo_id), 10) : undefined;
-  const demoIdValid = demoIdRaw != null && !Number.isNaN(demoIdRaw) ? demoIdRaw : undefined;
-
-  if (path === '/replayer') {
-    replayerPureMode.value = (query.pure === '1' || query.pure === 'true');
-  } else {
-    replayerPureMode.value = false;
-  }
-
-  if (path !== '/replayer') {
-    replayerRouteLoading.value = false;
-    return;
-  }
-
-  // 无 demo_uuid：若当前有播放中的 demo 则规范化 URL 为 demo_uuid
-  if (!demoUuid) {
-    replayerRouteLoading.value = false;
-    if (currentDemoId.value) {
-      const q = getQuery();
-      const base = `demo_uuid=${encodeURIComponent(currentDemoId.value)}&round=${currentRoundNumber.value || 1}`;
-      const pure = (q.pure === '1' || q.pure === 'true') ? '&pure=1' : '';
-      const tab = (q.tab && ['players', 'rounds', 'settings', 'disable'].includes(q.tab)) ? `&tab=${q.tab}` : '&tab=players';
-      replaceLocation('/replayer', base + pure + tab);
-    }
-    return;
-  }
-
-  // 统一使用 demo_uuid 请求：by-uuid 鉴权并解析出 id 后加载
-  if (demoUuid) {
-    await waitForInitialLoad();
-    replayRouteError.value = null;
-    const byUuidRes = await fetch(`/api/demos/by-uuid?demo_uuid=${encodeURIComponent(demoUuid)}`, { credentials: 'include' });
-    if (byUuidRes.status === 403) {
-      replayerRouteLoading.value = false;
-      replayRouteError.value = 'forbidden';
-      return;
-    }
-    if (byUuidRes.status === 404 || !byUuidRes.ok) {
-      replayerRouteLoading.value = false;
-      replayRouteError.value = 'not_found';
-      return;
-    }
-    const byUuidJson = await byUuidRes.json().catch(() => ({}));
-    const byUuidData = (byUuidJson as { data?: { id?: number } })?.data;
-    const cloudDemoId = byUuidData?.id;
-    if (cloudDemoId == null) {
-      replayerRouteLoading.value = false;
-      replayRouteError.value = 'not_found';
-      return;
-    }
-    const needLoad =
-      !replay.value ||
-      currentRoundNumber.value !== roundNum;
-    if (!needLoad) {
-      replayerRouteLoading.value = false;
-      currentDemoId.value = replay.value?.uuid ?? null;
-      return;
-    }
-    replayerRouteLoading.value = true;
-    currentDemoId.value = null;
-    try {
-      await loadReplayByDemosCloud(cloudDemoId, roundNum);
-        currentDemoId.value = replay.value?.uuid ?? null;
-    } finally {
-      replayerRouteLoading.value = false;
-    }
-  }
-}
-
-onMounted(async () => {
-  window.addEventListener('app:toast', onAppToast);
-
-  const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-  if (stored !== null) {
-    sidebarCollapsed.value = stored === 'true';
-  } else if (isMobile.value) {
-    sidebarCollapsed.value = true; // 移动端无存储时默认折叠
-  }
-  // session 已在 main.ts 中 initAuth 提前校验，此处不再调用 fetchAuthMe 避免重复请求与闪烁
-  // 刷新进入 replayer 时立即根据 URL args 加载对局并定位回合
-  ensureReplayerRouteData();
-  // 等 IndexedDB 初始化完成后再 load data
-  await waitForInitialLoad();
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener('app:toast', onAppToast);
-});
-
-watch(
-  () => ({ path: pathRef.value, search: searchRef.value }),
-  () => ensureReplayerRouteData(),
-  { deep: true }
-);
-
-watch(
-  () =>
-    pathRef.value === '/replayer' && replay.value?.uuid && currentRoundNumber.value
-      ? { uuid: replay.value.uuid, round: currentRoundNumber.value }
-      : null,
-  (payload) => {
-    if (payload) setReplayerPlayingLocal(payload.uuid, payload.round);
-  },
-  { immediate: true }
-);
-
-watch(currentUser, (user) => {
-  if (user) {
-    loadReplayListFromServer();
-  }
-});
-
-watch(sidebarCollapsed, (val) => {
-  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(val));
-});
-
-const toggleSidebar = () => {
+function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
-};
-
-const DEFAULT_PAGE_TITLE = 'Snowbo | 雪豹';
-watch(currentPage, (newPage) => {
-  if (newPage !== 'player') {
-    replayerPureMode.value = false;
-  }
-  document.title = newPage === 'player' ? 'Demo 回放 - Snowbo' : DEFAULT_PAGE_TITLE;
-}, { immediate: true });
-
-
-
-const onLogoError = (event: Event) => {
-  const img = event.target as HTMLImageElement;
-  img.style.display = 'none';
-};
-
-/** Demolib 仅通过回合行播放按钮打开 replayer，不再通过卡片点击跳转 */
-const onSelectDemo = (_demoId: string) => {
-  /* no-op */
-};
-
-const onDeleteDemo = async (demoUuid: string) => {
+}
+watch(sidebarCollapsed, (v) =>
+  localStorage.setItem("cs2-sandbox-sidebar-collapsed", String(v)),
+);
+function onNavigateToDemolib() {
+  navigate("/demolib");
+}
+function onNavigateToReplayer() {
+  const saved = replay.value
+    ? { uuid: replay.value.uuid, round: currentRoundNumber.value }
+    : getReplayerPlayingLocal();
+  navigate(
+    "/replayer",
+    saved
+      ? new URLSearchParams({
+          demo_uuid: saved.uuid,
+          round: String(saved.round),
+          tab: "players",
+        }).toString()
+      : "",
+  );
+}
+const onSelectDemo = () => {};
+async function onDeleteDemo(uuid: string) {
   try {
-    await deleteDemoByUuid(demoUuid);
-    if (currentDemoId.value === demoUuid) currentDemoId.value = null;
-    showToast('删除成功', 'info');
+    await deleteDemoByUuid(uuid);
+    showToast("已移除本地记录及缓存，原始 Demo 未删除");
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '删除失败';
-    showToast(msg, 'error');
-  }
-};
-
-const onUploadDemo = async (file: File) => {
-  await parseDemo(file);
-  // No auto-navigation after upload, user must click card to view
-};
-
-type DemoWithCloud = ReplayData & { cloudDemoId?: number; cloudPermission?: number };
-const shareModalDemo = ref<DemoWithCloud | null>(null);
-const shareModalPermission = ref<0 | 1>(0);
-
-function closeDemoShareModal() {
-  shareModalDemo.value = null;
-}
-
-function onShareUpdatePermission(value: 0 | 1) {
-  shareModalPermission.value = value;
-  saveDemoSharePermission();
-}
-
-async function saveDemoSharePermission() {
-  const demo = shareModalDemo.value;
-  if (!demo || demo.cloudDemoId == null) return;
-  try {
-    const res = await fetch(`/api/demos/${demo.cloudDemoId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ permission: shareModalPermission.value }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && (json as { status?: string }).status === 'OK') {
-      showToast('可见范围已修改', 'info');
-      if (replayList.value) {
-        const item = replayList.value.find((d) => (d as DemoWithCloud).cloudDemoId === demo.cloudDemoId) as DemoWithCloud | undefined;
-        if (item) item.cloudPermission = shareModalPermission.value;
-      }
-    } else {
-      showToast((json as { error?: string }).error || '修改失败', 'error');
-    }
-  } catch {
-    showToast('修改失败', 'error');
+    showToast(String(e), "error");
   }
 }
-
-const onShareDemo = (demo: ReplayData) => {
-  const d = demo as DemoWithCloud;
-  if (d.cloudDemoId == null) {
-    showToast('请先上传到云端后再分享', 'warning');
+function onLocalAccepted() {
+  showFilePicker.value = false;
+  navigate("/demolib");
+}
+let routeRequest = 0;
+async function ensureRoute() {
+  const request = ++routeRequest;
+  if (currentPage.value !== "player") {
+    replayerRouteLoading.value = false;
+    replayerPureMode.value = false;
     return;
   }
-  shareModalDemo.value = d;
-  shareModalPermission.value = (d.cloudPermission === 1 ? 1 : 0) as 0 | 1;
-};
-
-// Console modal handlers
-const handleFrameDataViewer = () => {
-  showConsoleModal.value = false;
-  // Emit event to ReplayPlayer to trigger frame data viewer
-  window.dispatchEvent(new CustomEvent('debug:show-frame-data'));
-};
-
-const handleStorageViewer = async () => {
-  showConsoleModal.value = false;
-  await showReplayStorageDetails();
-};
-
-const showBetaWarning = () => {
-  showBetaModal.value = true;
-};
+  await waitForInitialLoad();
+  if (request !== routeRequest) return;
+  const q = getQuery();
+  if (!q.demo_uuid) return;
+  const n = Number(q.round) || 1;
+  if (replay.value?.uuid === q.demo_uuid && currentRoundNumber.value === n)
+    return;
+  replayerRouteLoading.value = true;
+  try {
+    await loadRoundData(q.demo_uuid, n);
+  } finally {
+    if (request === routeRequest) replayerRouteLoading.value = false;
+  }
+}
+watch([pathRef, searchRef], ensureRoute);
+watch([() => replay.value?.uuid, currentRoundNumber], ([uuid, n]) => {
+  if (uuid) setReplayerPlayingLocal(String(uuid), Number(n));
+});
+watch(error, (e) => {
+  if (e) showToast(e, "error");
+});
+onMounted(async () => {
+  window.addEventListener("app:toast", onAppToast);
+  await waitForInitialLoad();
+  await ensureRoute();
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("app:toast", onAppToast);
+  clearTimeout(toastTimer);
+});
+function onLogoError(e: Event) {
+  (e.target as HTMLImageElement).style.display = "none";
+}
+async function quit() {
+  try {
+    await localAPI("quit", {});
+    closed.value = true;
+  } catch (e) {
+    showToast(String(e), "error");
+  }
+}
 </script>
 
 <style scoped>
@@ -992,4 +717,9 @@ const showBetaWarning = () => {
   min-width: 0;
 }
 
+</style>
+
+
+<style>
+.local-closed-overlay{position:fixed;inset:0;z-index:4000;background:#17191c;color:white;display:flex;flex-direction:column;align-items:center;justify-content:center}
 </style>

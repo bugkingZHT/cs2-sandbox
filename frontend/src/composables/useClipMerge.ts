@@ -1,9 +1,7 @@
 import { ref, watch } from 'vue';
 import type { Ref } from 'vue';
 import type { Frame, ReplayData, ReplayRound, PlayerInfo, ClipRoundConfig, ProjectileState } from '@/types/replay';
-import { getReplayStorage } from './indexdb-storage';
-import { decodeReplayRound } from './proto-converters';
-import { adaptRound } from './replayDataAdapter';
+import { fetchLocalRound } from './useReplayData';
 
 /** 在按 timeMs 升序的帧数组中，找到 timeMs <= targetMs 的最后一帧的索引 */
 function frameIndexAtOrBefore(frames: Frame[], targetMs: number): number {
@@ -31,8 +29,10 @@ export function useClipMerge(
   const mergedServerPlayer = ref<PlayerInfo[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  let mergeRequest = 0;
 
   async function loadAndMerge() {
+    const request = ++mergeRequest;
     const uuid = replay.value?.uuid ?? null;
     const rounds = clipRounds.value;
     if (!uuid || !rounds.length) {
@@ -44,7 +44,6 @@ export function useClipMerge(
     loading.value = true;
     error.value = null;
     try {
-      const storage = await getReplayStorage();
       const engineVersion = replay.value?.engineVersion;
       const serverPlayer = replay.value?.serverPlayer ?? [];
 
@@ -57,17 +56,8 @@ export function useClipMerge(
       for (let roundIdx = 0; roundIdx < rounds.length; roundIdx++) {
         const cfg = rounds[roundIdx];
         const isBaseRound = roundIdx === 0;
-        const roundBytes = await storage.loadRound(uuid, cfg.round);
-        if (!roundBytes) {
-          error.value = `回合 ${cfg.round} 未找到，请先加载该回合`;
-          mergedFrames.value = [];
-          mergedServerPlayer.value = [];
-          return;
-        }
-        const round: ReplayRound = adaptRound(
-          await decodeReplayRound(roundBytes),
-          engineVersion
-        );
+        const round: ReplayRound = await fetchLocalRound(uuid, cfg.round);
+        if (request !== mergeRequest) return;
         const sorted = round.frames.sort((a, b) => a.timeMs - b.timeMs);
         const startMs = sorted.length > 0 ? sorted[0].timeMs : 0;
 
@@ -247,12 +237,13 @@ export function useClipMerge(
       }
       mergedServerPlayer.value = mergedPlayers;
     } catch (e) {
+      if (request !== mergeRequest) return;
       console.error('[useClipMerge]', e);
       error.value = e instanceof Error ? e.message : '合并回合失败';
       mergedFrames.value = [];
       mergedServerPlayer.value = [];
     } finally {
-      loading.value = false;
+      if (request === mergeRequest) loading.value = false;
     }
   }
 
@@ -262,6 +253,8 @@ export function useClipMerge(
       if (r?.uuid && rounds?.length) {
         loadAndMerge();
       } else {
+        ++mergeRequest;
+        loading.value = false;
         mergedFrames.value = [];
         mergedServerPlayer.value = [];
         error.value = null;
