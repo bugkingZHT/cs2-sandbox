@@ -79,6 +79,23 @@
     >
       点击分析投掷动作
     </div>
+    <div
+      v-if="areaSelectionIcon"
+      ref="areaLayer"
+      class="area-selection-layer"
+      tabindex="0"
+      aria-label="拖拽框选道具落点范围，Escape 取消"
+      @pointerdown="startArea"
+      @pointermove="moveArea"
+      @pointerup="finishArea"
+      @pointercancel="areaStart = null"
+      @keydown.esc.prevent="emit('cancel-area')"
+      @wheel.prevent.stop
+    >
+      <span class="area-instruction">拖拽框选落点范围 · Esc 取消</span>
+      <div v-if="areaStart && areaPointer" class="area-rectangle" :style="areaStyle"></div>
+      <img v-if="areaPointer" :src="areaSelectionIcon" class="area-cursor" :style="{ left: areaPointer.x + 14 + 'px', top: areaPointer.y + 14 + 'px' }" alt="" />
+    </div>
     <!-- Drawing Board -->
     <DrawingBoard
       :active="isDrawingMode || false"
@@ -90,51 +107,6 @@
     <div class="map-controls-panel">
     <!-- Zoom Controls (Bottom) -->
     <div class="map-zoom-controls">
-      <button
-        v-if="!pureMode"
-        class="zoom-btn brush-btn"
-        :class="{ 'active': isDrawingMode || false }"
-        @click="emit('toggle-drawing')"
-        title="屏幕编辑"
-      >
-        <img src="/icons/pencil.svg" width="18" height="18" alt="画笔" />
-      </button>
-      <div v-if="!pureMode && (tabRecorderPending || tabRecorderConverting)" class="tab-recorder-actions">
-        <button
-          v-if="tabRecorderConverting"
-          class="tab-recorder-btn download-btn converting"
-          disabled
-        >
-          <span class="converting-progress-fill" :style="{ width: `${tabRecorderConvertingProgress ?? 0}%` }"></span>
-          <span class="converting-text">正在生成录制文件</span>
-        </button>
-        <button
-          v-else-if="tabRecorderPending"
-          class="tab-recorder-btn download-btn"
-          @click="emit('tab-recorder-download')"
-        >
-          下载录制文件
-        </button>
-        <button
-          v-if="tabRecorderPending"
-          class="zoom-btn dismiss-btn"
-          @click="emit('tab-recorder-clear-pending')"
-          title="关闭"
-        >
-          ×
-        </button>
-      </div>
-      <div v-if="!pureMode && tabRecorderSupported" class="tab-record-wrapper">
-        <button
-          class="zoom-btn tab-record-btn"
-          :class="{ 'recording': tabRecorderRecording, 'converting': tabRecorderConverting }"
-          :disabled="tabRecorderConverting"
-          @click="tabRecorderRecording ? emit('tab-recorder-stop') : emit('tab-recorder-start')"
-          :title="tabRecorderConverting ? '转换 MP4 中...' : tabRecorderRecording ? '停止录制' : '页面录制'"
-        >
-          <span class="rec-dot"></span>
-        </button>
-      </div>
       <div class="zoom-pure-column">
 
         <div class="zoom-reset-group">
@@ -188,6 +160,7 @@ import {
   stopPlayerAnimation,
   resetPlayerRenderer,
 } from '../../composables/playersRender';
+import type { MapArea } from '@/composables/grenadeSearch';
 import DrawingBoard from './DrawingBoard.vue';
 
 const props = withDefaults(
@@ -204,11 +177,7 @@ const props = withDefaults(
     pureMode?: boolean;
     grenadeTrackingEnabled?: boolean;
     projectileAnalysisEnabled?: boolean;
-    tabRecorderSupported?: boolean;
-    tabRecorderRecording?: boolean;
-    tabRecorderConverting?: boolean;
-    tabRecorderConvertingProgress?: number;
-    tabRecorderPending?: { url: string; filename: string; blob: Blob } | null;
+    areaSelectionIcon?: string;
 
     /** 大卡上隐藏的玩家 ID，不在地图上绘制（设置-玩家取消勾选时等价于全部加入此处） */
     hiddenPlayerIds?: number[];
@@ -228,15 +197,47 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'save-current-round'): void;
   (e: 'close-drawing'): void;
-  (e: 'toggle-drawing'): void;
   (e: 'projectile-click', proj: ProjectileState): void;
   (e: 'toggle-pure-mode'): void;
   (e: 'toggle-grenade-tracking'): void;
-  (e: 'tab-recorder-start'): void;
-  (e: 'tab-recorder-stop'): void;
-  (e: 'tab-recorder-clear-pending'): void;
-  (e: 'tab-recorder-download'): void;
+  (e: 'select-area', area: MapArea): void;
+  (e: 'cancel-area'): void;
 }>();
+
+const areaLayer = ref<HTMLElement>();
+const areaStart = ref<{ x: number; y: number; mapX: number; mapY: number } | null>(null);
+const areaPointer = ref<{ x: number; y: number } | null>(null);
+const areaStyle = computed(() => {
+  const a = areaStart.value, b = areaPointer.value;
+  return a && b ? { left: Math.min(a.x, b.x) + 'px', top: Math.min(a.y, b.y) + 'px', width: Math.abs(a.x - b.x) + 'px', height: Math.abs(a.y - b.y) + 'px' } : {};
+});
+function areaPosition(event: PointerEvent) {
+  if (!app || !worldContainer || !mapSprite || !areaLayer.value) return null;
+  const rect = app.canvas.getBoundingClientRect();
+  const local = worldContainer.toLocal({
+    x: (event.clientX - rect.left) * app.screen.width / rect.width,
+    y: (event.clientY - rect.top) * app.screen.height / rect.height,
+  });
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top, mapX: local.x, mapY: local.y };
+}
+function startArea(event: PointerEvent) {
+  if (event.button !== 0) return;
+  areaLayer.value?.setPointerCapture(event.pointerId);
+  areaStart.value = areaPosition(event);
+  areaPointer.value = areaStart.value;
+}
+function moveArea(event: PointerEvent) { areaPointer.value = areaPosition(event); }
+function finishArea(event: PointerEvent) {
+  const a = areaStart.value, b = areaPosition(event);
+  areaStart.value = null;
+  if (!a || !b || Math.abs(a.x - b.x) < 5 || Math.abs(a.y - b.y) < 5) return;
+  emit('select-area', { minX: Math.min(a.mapX, b.mapX), maxX: Math.max(a.mapX, b.mapX), minY: Math.min(a.mapY, b.mapY), maxY: Math.max(a.mapY, b.mapY) });
+}
+watch(() => props.areaSelectionIcon, async icon => {
+  areaStart.value = null;
+  areaPointer.value = null;
+  if (icon) { await nextTick(); areaLayer.value?.focus(); }
+});
 
 // 根据传入的地图名称动态获取配置
 const currentMapName = computed(() => {
@@ -972,7 +973,8 @@ const getCanvasForDrawing = () => {
 
 // 暴露获取 Canvas 方法供截图使用
 defineExpose({
-  getCanvas: () => app?.canvas || null
+  getCanvas: () => app?.canvas || null,
+  worldToMap
 });
 
 watch(
@@ -1125,6 +1127,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.area-selection-layer { position: absolute; inset: 0; z-index: 400; cursor: crosshair; outline: none; touch-action: none; }
+.area-instruction { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 12px; border-radius: var(--ds-radius-sm); background: var(--ds-bg-secondary); color: var(--ds-text-secondary); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.area-rectangle { position: absolute; border: 1px solid var(--ds-primary); background: color-mix(in srgb, var(--ds-primary) 12%, transparent); pointer-events: none; }
+.area-cursor { position: absolute; width: 24px; height: 24px; padding: 3px; border-radius: 5px; background: var(--ds-bg-secondary); pointer-events: none; }
+
 .map-canvas-element {
   width: 100%;
   height: 100%;
@@ -1301,119 +1308,6 @@ onBeforeUnmount(() => {
   background: rgba(34, 197, 94, 0.5);
   border-color: rgba(34, 197, 94, 0.8);
   color: #22c55e;
-}
-
-.tab-record-btn {
-  min-width: 36px;
-}
-
-.tab-record-btn.recording {
-  background: rgba(239, 68, 68, 0.6);
-  border-color: rgba(239, 68, 68, 0.9);
-  color: #ef4444;
-}
-
-.tab-record-btn .rec-dot {
-  width: 10px;
-  height: 10px;
-  background: currentColor;
-  border-radius: 50%;
-}
-
-.tab-record-btn.recording .rec-dot {
-  animation: rec-blink 1s infinite;
-}
-
-.tab-record-btn.converting {
-  opacity: 0.9;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.tab-record-btn.converting .rec-dot {
-  background: transparent;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  animation: rec-spin 0.8s linear infinite;
-}
-
-.tab-record-wrapper {
-  position: relative;
-}
-
-@keyframes rec-spin {
-  to { transform: rotate(360deg); }
-}
-
-.tab-recorder-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  font-size: 12px;
-}
-
-.tab-recorder-btn {
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  border: none;
-  transition: all 0.2s ease;
-}
-
-.tab-recorder-btn.download-btn {
-  color: white;
-  background: rgba(34, 197, 94, 0.8);
-  text-decoration: none;
-}
-
-.tab-recorder-btn.download-btn:hover {
-  background: rgba(34, 197, 94, 1);
-}
-
-.tab-recorder-btn.download-btn.converting {
-  position: relative;
-  overflow: hidden;
-  background: rgba(60, 60, 60, 0.5);
-  color: rgba(255, 255, 255, 0.9);
-  cursor: not-allowed;
-}
-
-.tab-recorder-btn.download-btn.converting .converting-progress-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: rgba(100, 100, 100, 0.7);
-  transition: width 0.2s ease;
-}
-
-.tab-recorder-btn.download-btn.converting .converting-text {
-  position: relative;
-  z-index: 1;
-}
-
-.tab-recorder-btn.download-btn.converting:hover {
-  background: rgba(60, 60, 60, 0.5);
-}
-
-.tab-recorder-actions .dismiss-btn {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
-  background: transparent;
-  border: none;
-}
-
-@keyframes rec-blink {
-  50% { opacity: 0.5; }
 }
 
 .controls-divider {
@@ -1693,21 +1587,6 @@ onBeforeUnmount(() => {
     height: 20px;
   }
 
-  .tab-recorder-actions {
-    padding: 3px 6px;
-    font-size: 11px;
-  }
-
-  .tab-recorder-btn {
-    padding: 4px 8px;
-    font-size: 11px;
-  }
-
-  .tab-recorder-actions .dismiss-btn {
-    width: 20px;
-    height: 20px;
-    font-size: 14px;
-  }
 }
 
 </style>

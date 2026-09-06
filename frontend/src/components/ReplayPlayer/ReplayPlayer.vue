@@ -1,5 +1,62 @@
 <template>
   <div class="viewer-layout">
+    <Teleport v-if="teleportReady" to="#replay-sidebar-tools">
+      <section class="replay-tools" aria-label="工具区">
+        <h2 class="tools-heading">工具</h2>
+        <button class="sidebar-tool" :class="{ active: isDrawingMode }" :aria-pressed="isDrawingMode" :disabled="!replay || searchBusy" @click="onToggleDrawing">
+          <img src="/icons/pencil.svg" alt="" /><span>画笔</span>
+        </button>
+        <button class="sidebar-tool" :class="{ recording: tabRecorder.isRecording.value }" :disabled="!tabRecorder.isSupported || tabRecorder.isConverting.value" @click="tabRecorder.isRecording.value ? tabRecorder.stopRecording() : tabRecorder.startRecording()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="12" cy="12" r="3"/></svg>
+          <span>{{ tabRecorder.isRecording.value ? '停止录屏' : '录屏' }}</span>
+          <span v-if="tabRecorder.isRecording.value" class="recording-dot"></span>
+        </button>
+        <div v-if="tabRecorder.pendingDownload.value" class="recording-download">
+          <button @click="tabRecorder.downloadRecording">下载录屏</button>
+          <button aria-label="收起录屏下载" @click="tabRecorder.clearPendingDownload">×</button>
+        </div>
+        <p v-if="tabRecorder.lastError.value" class="tool-message error" role="alert">{{ tabRecorder.lastError.value }}</p>
+        <button class="sidebar-tool" :class="{ active: isClipMode }" :aria-pressed="isClipMode" :disabled="!replay?.totalRounds || searchBusy || replayerRouteLoading" :title="isClipMode ? '切换为单回合播放' : '选择多个回合，在同一时间线并行播放'" @click="toggleClipMode">
+          <img src="/icons/slip.svg" alt="" /><span>多选回合</span>
+        </button>
+        <button class="sidebar-tool" :class="{ active: searchMenuOpen }" :aria-expanded="searchMenuOpen" :title="searchTooltip" :disabled="!replay" @click="toggleSearchMenu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6M10 7v6m-3-3h6"/></svg><span>反查道具</span>
+        </button>
+        <div v-if="searchMenuOpen" class="grenade-search-options">
+          <div class="grenade-types" role="group" aria-label="选择反查道具类型">
+            <button v-for="type in GRENADE_TYPES" :key="type.id" :aria-label="'反查' + type.label" :title="`反查${type.label}：选择后在地图上拖拽矩形，框选落点范围。`" :aria-pressed="searchType === type.id" :disabled="searchBusy" @click="armGrenadeSearch(type.id)">
+              <img :src="type.icon" alt="" /><span>{{ type.label }}</span>
+            </button>
+          </div>
+          <span class="search-status" role="status">{{ searchTooltip }}</span>
+        </div>
+      </section>
+    </Teleport>
+    <Teleport v-if="teleportReady" to="#replay-sidebar-rounds">
+      <ReplayRoundList
+        :total-rounds="replay?.totalRounds || 0"
+        :round-results="replay?.roundResults"
+        :current-round="currentRound"
+        :clip-mode="isClipMode"
+        :selected-rounds="[...new Set(clipRounds.map(c => c.round))]"
+        :available-rounds="searchMatches?.map(c => c.round)"
+        :restricted="!!replayerNoteId"
+        :loading="loading || replayerRouteLoading || searchBusy"
+        :merging="clipMergeLoading"
+        :merge-error="clipMergeError"
+        @select="isClipMode ? toggleClipRound($event) : loadRoundData($event)"
+        @clear="clipRounds = []"
+      />
+    </Teleport>
+    <Teleport v-if="teleportReady" to="#replay-settings-content">
+      <fieldset class="map-settings">
+        <legend>地图显示</legend>
+        <label><span>玩家</span><input type="checkbox" v-model="showMapPlayers" /></label>
+        <label><span>投掷物</span><input type="checkbox" v-model="showMapProjectiles" /></label>
+        <label><span>掉落道具</span><input type="checkbox" v-model="showMapDropped" /></label>
+        <label><span>C4</span><input type="checkbox" v-model="showMapBomb" /></label>
+      </fieldset>
+    </Teleport>
     <div class="viewer-main">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
@@ -17,7 +74,7 @@
           <div class="cover-spinner-container">
             <div class="cover-spinner"></div>
           </div>
-          <p class="cover-status">正在加载回放…</p>
+          <p class="cover-status">{{ clipMergeLoading ? '正在合并回合…' : '正在加载回放…' }}</p>
         </div>
         <!-- 2. 云端下载回合 -->
         <div v-else-if="coverType === 'cloud_download'" class="empty-state-content empty-state-cloud-download">
@@ -58,14 +115,18 @@
           <div class="empty-icon empty-icon-no-selection" aria-hidden="true">
             <img src="/icons/wait.svg" alt="" class="empty-icon-img" />
           </div>
-          <h3>暂无回放数据</h3>
-          <p>请从 Demo 库选择文件</p>
+          <h3>{{ searchMatches !== null ? '未选择匹配回合' : '暂无回放数据' }}</h3>
+          <p>{{ searchMatches !== null ? '从侧栏选择回合，查看匹配的投掷' : '请从 Demo 库选择文件' }}</p>
         </div>
       </div>
 
       <!-- 地图画布 -->
       <div v-else class="map-canvas-wrapper">
-        <MapCanvas 
+        <MapCanvas
+          ref="mapCanvas"
+          :area-selection-icon="GRENADE_TYPES.find(t => t.id === searchType)?.icon"
+          @select-area="searchGrenades"
+          @cancel-area="searchType = null"
           :frames="effectiveFrames" 
           :bounds="bounds"
           :current-frame-index="effectiveFrameIndex"
@@ -77,20 +138,10 @@
           :is-drawing-mode="isDrawingMode"
           :pure-mode="pureMode"
           @close-drawing="isDrawingMode = false"
-          @toggle-drawing="onToggleDrawing"
           :grenade-tracking-enabled="isGrenadeTrackingEnabled"
           @toggle-grenade-tracking="toggleGrenadeTracking"
           @projectile-click="handleProjectileClick"
           @toggle-pure-mode="togglePureMode"
-          :tab-recorder-supported="tabRecorder.isSupported"
-          :tab-recorder-recording="tabRecorder.isRecording.value"
-          :tab-recorder-converting="tabRecorder.isConverting.value"
-          :tab-recorder-converting-progress="tabRecorder.convertingProgress.value"
-          :tab-recorder-pending="tabRecorder.pendingDownload.value"
-          @tab-recorder-start="tabRecorder.startRecording"
-          @tab-recorder-stop="tabRecorder.stopRecording"
-          @tab-recorder-clear-pending="tabRecorder.clearPendingDownload"
-          @tab-recorder-download="tabRecorder.downloadRecording"
           :replayer-source="replayerSource"
           :replayer-note-id="replayerNoteId"
           :hidden-player-ids="hiddenPlayerIdsArray"
@@ -115,7 +166,7 @@
         />
 
         <!-- 击杀回传 (Kill Feed) -->
-        <div v-show="leftPanelTab === 'players'" class="kill-feed-container">
+        <div v-show="!pureMode && !searchType" class="kill-feed-container">
           <TransitionGroup name="list">
             <div v-for="k in currentRoundKills" :key="k.victimId" class="kill-feed-item">
               <div class="kill-card">
@@ -129,48 +180,9 @@
           </TransitionGroup>
         </div>
 
-        <!-- Left Panel: Tab (玩家/回合) + Player Cards or Round Selector + 剪辑/发布 -->
-        <div v-if="coverType === 'none'" class="players-panel top-left">
-          <div class="left-panel-header">
-            <div class="left-panel-tabs">
-              <button
-                type="button"
-                class="left-panel-tab"
-                :class="{ active: leftPanelTab === 'players' }"
-                @click="toggleLeftPanelTab('players')"
-              >
-                <span>玩家</span>
-                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-              <button
-                type="button"
-                class="left-panel-tab"
-                :class="{ active: leftPanelTab === 'rounds' }"
-                @click="toggleLeftPanelTab('rounds')"
-              >
-                <span>回合</span>
-                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-              <button
-                type="button"
-                class="left-panel-tab"
-                :class="{ active: leftPanelTab === 'settings' }"
-                @click="toggleLeftPanelTab('settings')"
-              >
-                <span>设置</span>
-                <svg class="tab-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <!-- 无 tab 选中时占位，保持面板高度 -->
-          <div v-show="leftPanelTab === null" class="left-panel-content left-panel-content-empty" aria-hidden="true"></div>
-          <div v-show="leftPanelTab === 'players'" class="left-panel-content left-panel-players">
+        <!-- 玩家卡常驻；回合与设置由侧栏承载 -->
+        <div v-if="coverType === 'none' && !pureMode && !searchType" class="players-panel top-left">
+          <div class="left-panel-content left-panel-players">
             <div class="left-panel-players-inner">
           <!-- First Half (1-12): T on top, Second Half (13+): CT on top. left-team-score-eye 控制上侧 -->
           <div class="upper-team-cards-slot" ref="upperTeamCardsRef">
@@ -535,112 +547,6 @@
           </div>
           </div>
           </div>
-          <!-- Round selector (vertical, same position as player cards) - local only -->
-          <div v-show="leftPanelTab === 'rounds'" class="left-panel-content left-panel-rounds">
-            <div v-if="isClipMode" class="clip-mode-hint">已选 {{ clipRounds.length }} 个回合</div>
-            <div class="left-panel-rounds-inner">
-            <div class="round-selector-vertical">
-              <template v-for="r in (replay?.totalRounds || 0)" :key="r">
-                <button
-                  type="button"
-                  class="round-selector-row-btn"
-                  :class="{
-                    active: !isClipMode ? currentRound === r : clipRounds.some(c => c.round === r),
-                    'clip-selected': isClipMode && clipRounds.some(c => c.round === r)
-                  }"
-                  :disabled="!!(replayerNoteId && r !== currentRound)"
-                  @click="isClipMode ? toggleClipRound(r) : loadRoundData(r)"
-                >
-                  <span
-                    class="round-economy-tag left"
-                    :class="getRoundEconomyTypes(r, replay?.roundResults).left"
-                  >{{ getRoundEconomyTypes(r, replay?.roundResults).left }}</span>
-                  <div class="round-selector-center">
-                    <img
-                      v-if="getRoundResultIcon(r, replay?.roundResults) && shouldIconBeFirst(r, replay?.roundResults)"
-                      :src="getRoundResultIcon(r, replay?.roundResults)!"
-                      class="round-selector-icon"
-                      :alt="getRoundResult(r, replay?.roundResults) || ''"
-                    />
-                    <span class="round-selector-num">{{ r }}</span>
-                    <img
-                      v-if="getRoundResultIcon(r, replay?.roundResults) && !shouldIconBeFirst(r, replay?.roundResults)"
-                      :src="getRoundResultIcon(r, replay?.roundResults)!"
-                      class="round-selector-icon"
-                      :alt="getRoundResult(r, replay?.roundResults) || ''"
-                    />
-                  </div>
-                  <span
-                    class="round-economy-tag right"
-                    :class="getRoundEconomyTypes(r, replay?.roundResults).right"
-                  >{{ getRoundEconomyTypes(r, replay?.roundResults).right }}</span>
-                </button>
-                <div v-if="r === 12" class="round-selector-h-divider"></div>
-              </template>
-            </div>
-            </div>
-          </div>
-          <!-- 设置 tab：地图上展示哪些元素，卡片布局与回合 tab 同宽 -->
-          <div v-show="leftPanelTab === 'settings'" class="left-panel-content left-panel-settings">
-            <div class="left-panel-settings-inner">
-              <div class="settings-card">
-                <div class="settings-card-title">地图显示</div>
-                <label class="settings-option">
-                  <input type="checkbox" v-model="showMapPlayers" />
-                  <span>玩家</span>
-                </label>
-                <label class="settings-option">
-                  <input type="checkbox" v-model="showMapProjectiles" />
-                  <span>投掷物</span>
-                </label>
-                <label class="settings-option">
-                  <input type="checkbox" v-model="showMapDropped" />
-                  <span>掉落道具</span>
-                </label>
-                <label class="settings-option">
-                  <input type="checkbox" v-model="showMapBomb" />
-                  <span>C4</span>
-                </label>
-              </div>
-            </div>
-          </div>
-          <div class="left-panel-footer">
-            <div class="embed-link-wrap">
-              <button
-                v-if="!pureMode"
-                type="button"
-                class="left-panel-footer-btn embed-link-btn"
-                title="复制内嵌分享链接"
-                @click="copyEmbedLink"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-              </button>
-            </div>
-            <button
-              v-if="!pureMode"
-              type="button"
-              class="left-panel-footer-btn clip-mode-btn"
-              :class="{ active: isClipMode }"
-              title="导演剪辑：多选回合在一条时间线并行播放"
-              @click="toggleClipMode"
-            >
-              <img src="/icons/slip.svg" class="left-panel-footer-btn-icon" alt="" />
-            </button>
-            <button
-              v-if="!pureMode && isClipMode && effectiveReplay && effectiveFrames.length > 0"
-              type="button"
-              class="left-panel-footer-btn export-demo-btn"
-              :class="{ 'converting': isExporting, 'export-success': exportSuccess }"
-              :disabled="isExporting"
-              @click="exportAsNewDemo"
-            >
-              <span v-if="isExporting" class="converting-progress-fill" :style="{ width: `${exportProgress}%` }"></span>
-              <span class="converting-text">{{ exportButtonText }}</span>
-            </button>
-          </div>
         </div>
       </div>
     </section>
@@ -650,6 +556,7 @@
       <div v-if="isGrenadeAnalyzeMode" class="timeline-block-mask" aria-hidden="true"></div>
       <div class="timeline-panel-inner">
       <TimelineControl
+        :alignment-time-ms="clipAnchorTimeMs"
         :current-frame-index="effectiveFrameIndex"
         :total-frames="totalFrames"
         :is-playing="isPlaying"
@@ -670,10 +577,6 @@
         :cloud-replay="!!replayerNoteId || replayerDemoId != null"
         :can-play="effectiveFrames.length > 0"
         :hide-round-selector="true"
-        :clip-mode="isClipMode"
-        :clip-range-start="clipRangeStartIndex"
-        :clip-range-end="clipRangeEndIndex"
-        @update-clip-range="onClipRangeUpdate"
         @seek-seconds="onSeekSeconds"
         @toggle-play="togglePlay"
         @update-speed="onUpdateSpeed"
@@ -693,47 +596,29 @@ import MapCanvas from './MapCanvas.vue';
 import TimelineControl from './TimelineControl.vue';
 import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
 import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaRecorder';
+import { GRENADE_TYPES, findGrenadeLandings, type GrenadeMatch, type MapArea } from '@/composables/grenadeSearch';
+import { fetchLocalRound } from '@/composables/useReplayData';
 import { useReplayData } from '@/composables/useReplayData';
-import { localAPI } from '@/local/api';
 import { useClipMerge } from '@/composables/useClipMerge';
 import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
-import type { Frame, PlayerState, ReplayData, ReplayMeta, ProjectileState, ClipRoundConfig } from '@/types/replay';
+import type { Frame, PlayerState, ReplayData, ProjectileState, ClipRoundConfig } from '@/types/replay';
 import { EQUIPMENT_ID_MAP, isUtilityItem } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
-import { getRoundResult, getRoundResultIcon, getRoundEconomyTypes, shouldIconBeFirst } from '@/config/eco';
+import ReplayRoundList from './ReplayRoundList.vue';
 import { replaceLocation, pathRef, searchRef, getQuery } from '@/location';
-
-const emit = defineEmits<{
-  (e: 'clip-publish-available', payload: { available: boolean }): void;
-}>();
-
 
 // 纯净模式：隐藏左侧玩家卡、右侧击杀、timeline 回合选择器、侧边导航（由 App 通过 provide 控制）
 const pureMode = ref(false);
-// 左侧面板 Tab：玩家大卡 | 回合选择器（local）| 设置
-const leftPanelTab = ref<'players' | 'rounds' | 'settings' | null>(null);
+const teleportReady = ref(false);
+onMounted(() => { teleportReady.value = true; });
 
-//切换左侧面板标签页（玩家/回合/设置）
-function toggleLeftPanelTab(tab: 'players' | 'rounds' | 'settings') {
-  leftPanelTab.value = leftPanelTab.value === tab ? null : tab;
-}
-
-//切换纯净模式（隐藏左侧面板）
 function togglePureMode() {
   pureMode.value = !pureMode.value;
-  // 在进入纯净模式时，关闭任何已打开的标签页
-  if (pureMode.value) {
-    leftPanelTab.value = null;
-  }
 }
 
-//切换剪辑模式
 function toggleClipMode() {
+  if (searchMatches.value !== null) { resetGrenadeSearch(); return; }
   isClipMode.value = !isClipMode.value;
-  // 当启用剪辑模式时，自动切换到回合标签页
-  if (isClipMode.value) {
-    leftPanelTab.value = 'rounds';
-  }
 }
 // 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
 const showMapProjectiles = ref(true);
@@ -742,31 +627,8 @@ const showMapBomb = ref(true);
 // 导演剪辑模式：多选回合在一条时间线播放（仅 local）
 const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
-/** 剪辑 fork 为 round_0 进行中，发布按钮短暂禁用 */
-const clipForking = ref(false);
 /** 剪辑模式下点击垃圾桶移除的玩家 ID，从 frames 与 meta 中直接剔除 */
 const clipDeletedPlayerIds = ref<Set<number>>(new Set());
-/** 剪辑模式下时间范围选中：左/右拖柄对应的帧索引（闭区间 [start, end]） */
-const clipRangeStartIndex = ref(0);
-const clipRangeEndIndex = ref(0);
-
-// 导出新 Demo 的状态变量
-const isExporting = ref(false);
-const exportProgress = ref(0);
-const exportSuccess = ref(false);
-
-// 导出按钮文本
-const exportButtonText = computed(() => {
-  if (exportSuccess.value) return '导出成功!';
-  if (isExporting.value) return '正在导出...';
-  return '导出为新 Demo';
-});
-
-//更新剪辑时间范围选中
-function onClipRangeUpdate(payload: { start: number; end: number }) {
-  clipRangeStartIndex.value = payload.start;
-  clipRangeEndIndex.value = payload.end;
-}
 // 大卡上点击小眼睛隐藏的玩家 ID：不在地图绘制，大卡持续深色蒙层
 const hiddenPlayerIds = ref<Set<number>>(new Set());
 /** 进入道具解析前保存的隐藏状态，退出时恢复 */
@@ -812,69 +674,41 @@ async function copyPlayerPosition(p: PlayerState) {
 
 const hiddenPlayerIdsArray = computed(() => Array.from(hiddenPlayerIds.value));
 
-//复制内嵌分享链接
-async function copyEmbedLink() {
-  let url = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
-  const params = new URLSearchParams();
-  // 追加参数
-  if (replay.value?.uuid) {
-    params.set('demo_uuid', replay.value.uuid);
-  }
-  if (currentRound.value !== undefined) {
-    params.set('round', currentRound.value.toString());
-  }
-  params.set('pure', '1');
-  // 返回完整 URL
-  url = `${url}?${params.toString()}${window.location.hash}`;
-  try {
-    await navigator.clipboard.writeText(url);
-    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '已复制内嵌分享链接', type: 'info' } }));
-  } catch {
-    window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '复制失败', type: 'error' } }));
-  }
-}
-
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
 if (replayerPureMode) {
   watch(pureMode, (v) => { replayerPureMode.value = v; }, { immediate: true });
 }
 
-// 纯净模式 + 左侧 Tab 与 URL 同步：pure=1 / tab=players|rounds|settings
+// 保留纯净模式深链接，旧 tab 参数不再控制玩家卡。
 function syncReplayerUrl() {
   const q = getQuery();
-  if (pureMode.value) {
-    q.pure = '1';
-  } else {
-    delete q.pure;
-    if (leftPanelTab.value != null) q.tab = leftPanelTab.value;
-    else delete q.tab;
-  }
-  const search = new URLSearchParams(q).toString();
-  replaceLocation(pathRef.value, search);
+  if (pureMode.value) q.pure = '1';
+  else delete q.pure;
+  delete q.tab;
+  replaceLocation(pathRef.value, new URLSearchParams(q).toString());
 }
 watch(pureMode, syncReplayerUrl);
-watch(leftPanelTab, syncReplayerUrl);
-
-// 打开链接时根据 URL 恢复 pure 与 tab
 onMounted(() => {
   const q = getQuery();
-  if (q.pure === '1' || q.pure === 'true') pureMode.value = true;
-  if (q.tab === 'players' || q.tab === 'rounds' || q.tab === 'settings') {
-    leftPanelTab.value = q.tab;
-  } else {
-    leftPanelTab.value = null;
-  }
+  pureMode.value = q.pure === '1' || q.pure === 'true';
 });
 
 const { loading, error, replay, frames, bounds, loadRoundData: loadRoundDataFromDB, replayRouteError, cloudDownloadProgress, replayerSource, replayerNoteId, replayerDemoId } = useReplayData();
 
-const { mergedFrames, mergedServerPlayer, loading: clipMergeLoading, error: clipMergeError } = useClipMerge(replay, clipRounds);
+const { mergedFrames, mergedServerPlayer, anchorTimeMs: clipAnchorTimeMs, loading: clipMergeLoading, error: clipMergeError } = useClipMerge(replay, clipRounds);
+
+watch(() => replay.value?.uuid, () => {
+  resetGrenadeSearch();
+  isClipMode.value = false;
+  clipRounds.value = [];
+});
 
 const effectiveFrames = computed<Frame[]>(() => {
-  if (!isClipMode.value || clipRounds.value.length === 0 || mergedFrames.value.length === 0) {
+  if (!isClipMode.value) {
     return frames.value ?? [];
   }
+  if (!clipRounds.value.length) return searchMatches.value !== null ? [] : frames.value ?? [];
   const del = clipDeletedPlayerIds.value;
   if (del.size === 0) return mergedFrames.value;
   return mergedFrames.value.map((frame) => {
@@ -927,24 +761,10 @@ const effectiveReplay = computed<ReplayData | null>(() => {
   return r;
 });
 
-watch(
-  [isClipMode, () => mergedFrames.value.length],
-  () => {
-    emit('clip-publish-available', { available: isClipMode.value && mergedFrames.value.length > 0 });
-  },
-  { immediate: true }
-);
-
 watch([isClipMode, clipRounds], () => {
   clipDeletedPlayerIds.value = new Set();
+  if (isGrenadeAnalyzeMode.value) exitGrenadeAnalyze();
 }, { deep: true });
-
-watch([isClipMode, () => effectiveFrames.value.length], () => {
-  if (!isClipMode.value || effectiveFrames.value.length === 0) return;
-  const maxIdx = effectiveFrames.value.length - 1;
-  clipRangeStartIndex.value = 0;
-  clipRangeEndIndex.value = maxIdx;
-}, { immediate: true });
 
 // 播放笔记时应用 meta 中保存的 replaySettings（玩家可见性、地图投掷物/掉落/C4）
 watch(
@@ -990,6 +810,7 @@ const showMapPlayers = computed({
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
 type CoverType = 'route_loading' | 'cloud_download' | 'not_found' | 'forbidden' | 'no_data' | 'none';
 const coverType = computed<CoverType>(() => {
+  if (clipMergeLoading.value) return 'route_loading';
   if (cloudDownloadProgress.value?.active) return 'cloud_download';
   if (replayerRouteLoading?.value) return 'route_loading';
   if (replayRouteError.value === 'not_found') return 'not_found';
@@ -1006,7 +827,7 @@ const downloadBarStyle = computed(() => {
 });
 
 // 投掷物分析功能
-const grenadeAnalyzer = useGrenadeAnalyzer(frames, replay);
+const grenadeAnalyzer = useGrenadeAnalyzer(effectiveFrames, effectiveReplay);
 const {
   isTrackingEnabled: isGrenadeTrackingEnabled,
   isAnalyzeMode: isGrenadeAnalyzeMode,
@@ -1027,8 +848,8 @@ const {
 
 // 计算投掷帧的时间
 const throwFrameTimeMs = computed(() => {
-  if (throwFrameIndex.value === -1 || !frames.value) return 0;
-  return frames.value[throwFrameIndex.value]?.timeMs || 0;
+  if (throwFrameIndex.value === -1) return 0;
+  return effectiveFrames.value[throwFrameIndex.value]?.timeMs || 0;
 });
 
 // 有效的帧索引：分析模式下使用分析帧，否则使用普通帧
@@ -1055,9 +876,100 @@ interface KillEventWithFrame {
 }
 const roundKillList = ref<KillEventWithFrame[]>([]);
 const isDrawingMode = ref(false);
-const mapCanvasRef = ref<any>(null);
 
 const tabRecorder = useGetDisplayMediaRecorder();
+const mapCanvas = ref<InstanceType<typeof MapCanvas>>();
+const searchMenuOpen = ref(false);
+const searchType = ref<string | null>(null);
+const searchBusy = ref(false);
+const searchProgress = ref(0);
+const searchSummary = ref('');
+const searchWarning = ref('');
+const searchTooltip = computed(() => [
+  '选择道具类型，在地图上拖拽矩形框选落点。匹配投掷将按爆炸前一帧对齐，仅显示投掷者。',
+  searchBusy.value ? `正在检索回合 ${searchProgress.value} / ${replay.value?.totalRounds}…` : searchSummary.value,
+  searchWarning.value,
+].filter(Boolean).join('\n'));
+const searchMatches = ref<GrenadeMatch[] | null>(null);
+let searchRequest = 0;
+let hiddenBeforeSearch: Set<number> | null = null;
+function resetGrenadeSearch() {
+  searchRequest++;
+  searchType.value = null;
+  searchBusy.value = false;
+  if (searchMatches.value !== null) {
+    isClipMode.value = false;
+    clipRounds.value = [];
+  }
+  searchMatches.value = null;
+  searchSummary.value = '';
+  searchWarning.value = '';
+  if (hiddenBeforeSearch) hiddenPlayerIds.value = hiddenBeforeSearch;
+  hiddenBeforeSearch = null;
+}
+function toggleSearchMenu() {
+  searchMenuOpen.value = !searchMenuOpen.value;
+  if (!searchMenuOpen.value) resetGrenadeSearch();
+}
+function armGrenadeSearch(type: string) {
+  const wasArmed = searchType.value === type;
+  resetGrenadeSearch();
+  searchType.value = wasArmed ? null : type;
+  isDrawingMode.value = false;
+  isPlaying.value = false;
+  cancelAnimation();
+  if (isGrenadeAnalyzeMode.value) exitGrenadeAnalyze();
+}
+async function searchGrenades(area: MapArea) {
+  const uuid = replay.value?.uuid;
+  const type = searchType.value;
+  const project = mapCanvas.value?.worldToMap;
+  if (!uuid || !type || !project) return;
+  const request = ++searchRequest;
+  const total = replay.value?.totalRounds ?? 0;
+  searchType.value = null;
+  searchBusy.value = true;
+  searchProgress.value = 0;
+  const matches: GrenadeMatch[] = [];
+  const failed: number[] = [];
+  let missing = 0;
+  for (let round = 1; round <= total; round++) {
+    try {
+      const data = await fetchLocalRound(uuid, round);
+      if (request !== searchRequest) return;
+      const result = findGrenadeLandings(data.frames, round, type, p => {
+        const point = project(p.x, p.y, p.z);
+        return point.x >= area.minX && point.x <= area.maxX && point.y >= area.minY && point.y <= area.maxY;
+      });
+      matches.push(...result.matches);
+      missing += result.missing;
+    } catch {
+      failed.push(round);
+    }
+    if (request !== searchRequest) return;
+    searchProgress.value = round;
+  }
+  searchBusy.value = false;
+  const estimated = matches.filter(m => m.estimated).length;
+  const linkedFire = matches.filter(m => m.effectEntityId != null).length;
+  searchWarning.value = [
+    estimated ? `${estimated} 次采用最后可见位置与时刻估计。` : '',
+    linkedFire ? `${linkedFire} 次火按投掷者、时间及邻近位置关联燃烧事件。` : '',
+    missing ? `${missing} 次缺少生效事件、完整轨迹或投掷者，未纳入。` : '',
+    failed.length ? `回合 ${failed.join('、')} 读取失败，结果不完整。` : '',
+  ].filter(Boolean).join(' ');
+  searchSummary.value = matches.length
+    ? `${GRENADE_TYPES.find(t => t.id === type)?.label} · ${matches.length} 次投掷 · ${new Set(matches.map(m => m.round)).size} 回合，已对齐爆炸前一帧${estimated ? '（含估计）' : ''}。`
+    : '所选范围没有可用的匹配投掷';
+  if (!matches.length) return;
+  searchMatches.value = matches;
+  hiddenBeforeSearch = new Set(hiddenPlayerIds.value);
+  hiddenPlayerIds.value = new Set();
+  isClipMode.value = true;
+  clipRounds.value = matches;
+}
+onBeforeUnmount(() => { searchRequest++; });
+
 
 let lastTimestamp = 0;
 let rafId: number | null = null;
@@ -1103,9 +1015,9 @@ const handleGrenadeAnalyzeClose = () => {
   exitGrenadeAnalyze();
   
   // 跳转到投掷帧
-  if (targetFrame !== -1 && frames.value) {
+  if (targetFrame !== -1 && effectiveFrames.value.length) {
     currentFrameIndex.value = targetFrame;
-    currentPlaybackTimeMs.value = frames.value[targetFrame]?.timeMs || 0;
+    currentPlaybackTimeMs.value = effectiveFrames.value[targetFrame]?.timeMs || 0;
   }
 };
 
@@ -1185,13 +1097,14 @@ watch(
       currentFrameIndex.value = 0;
       currentPlaybackTimeMs.value = data.frames[0]?.timeMs ?? 0;
       buildKillList(data.frames);
-      checkUrlFrameId();
+      if (clipAnchorTimeMs.value == null) checkUrlFrameId();
 
       // 数据加载完成后自动开始播放
       nextTick(() => {
         isPlaying.value = false;
         cancelAnimation();
-        togglePlay();
+        if (clipAnchorTimeMs.value != null) currentPlaybackTimeMs.value = clipAnchorTimeMs.value;
+        else if (!searchBusy.value && !searchType.value) togglePlay();
       });
       lastTimestamp = 0;
     }
@@ -1555,6 +1468,7 @@ const togglePlay = () => {
 };
 
 const onToggleDrawing = () => {
+  searchType.value = null;
   isDrawingMode.value = !isDrawingMode.value;
   if (isDrawingMode.value && isPlaying.value) {
     // Pause when entering drawing mode
@@ -1768,47 +1682,24 @@ const isRifleWeapon = (weaponId: string | null): boolean => {
 };
 
 // 导演剪辑：按选中顺序维护列表，最先选中的回合作为 baseRound
-async function toggleClipRound(roundNumber: number) {
-  const idx = clipRounds.value.findIndex((c) => c.round === roundNumber);
-  if (idx >= 0) {
-    // Removing a round from clip selection
-    clipRounds.value = clipRounds.value.filter((_, i) => i !== idx);
-  } else {
-    // Adding a round to clip selection - first load the round data
-    if (replay.value?.uuid) {
-      console.log(`[ToggleClipRound] Loading round ${roundNumber} data for clip mode`);
-      await loadRoundDataFromDB(replay.value.uuid, roundNumber);
-    }
-    clipRounds.value = [...clipRounds.value, { round: roundNumber }];
-  }
-}
-
-// Same export workflow, saving a replay in the local library instead of the cloud.
-async function exportAsNewDemo() {
-  if (!effectiveReplay.value || !effectiveFrames.value.length) return;
-  isExporting.value = true;
-  try {
-    const selected = effectiveFrames.value.slice(clipRangeStartIndex.value, clipRangeEndIndex.value + 1);
-    const start = selected[0]?.timeMs || 0;
-    const {frames: _unused, ...meta} = effectiveReplay.value;
-    await localAPI('clips', {meta: {...meta,fileName:(meta.fileName || 'replay')+'_exported'}, frames:selected.map(f=>({...f,round:1,timeMs:f.timeMs-start}))});
-    await useReplayData().refreshLibrary();
-    window.dispatchEvent(new CustomEvent('app:toast',{detail:{message:'已导出到本地 Demo 库',type:'info'}}));
-    exportSuccess.value=true;
-    setTimeout(()=>exportSuccess.value=false,2000);
-  } catch(e) {
-    window.dispatchEvent(new CustomEvent('app:toast',{detail:{message:String(e),type:'error'}}));
-  } finally {isExporting.value=false;}
+function toggleClipRound(roundNumber: number) {
+  const selected = clipRounds.value.some(c => c.round === roundNumber);
+  clipRounds.value = selected
+    ? clipRounds.value.filter(c => c.round !== roundNumber)
+    : [...clipRounds.value, ...(searchMatches.value?.filter(c => c.round === roundNumber) ?? [{ round: roundNumber }])];
 }
 
 // Load a specific round from the native local backend.
 const loadRoundData = async (roundNumber: number) => {
+  if (searchBusy.value) resetGrenadeSearch();
   if (!replay.value?.uuid) {
     console.warn('[LoadRoundData] No replay UUID available');
     return;
   }
   
   console.log(`[LoadRoundData] Loading round ${roundNumber} data`);
+
+  if (isGrenadeAnalyzeMode.value) exitGrenadeAnalyze();
   
   // Pause playback during round switch
   const wasPlaying = isPlaying.value;
@@ -1827,7 +1718,7 @@ const loadRoundData = async (roundNumber: number) => {
     
     console.log(`[LoadRoundData] Loaded round ${roundNumber} with ${frames.value?.length || 0} frames`);
     
-    // 同步 URL：笔记模式保留 note_id/demo_id/round，否则 demo_uuid + round；并带上 tab 与 pure
+    // 同步回合与纯净模式 URL
     const q = getQuery();
     if (q.note_id) {
       q.round = String(roundNumber);
@@ -1838,7 +1729,10 @@ const loadRoundData = async (roundNumber: number) => {
       q.demo_uuid = replay.value.uuid;
       q.round = String(roundNumber);
     }
-    if (pureMode.value) { q.pure = '1'; } else { delete q.pure; if (leftPanelTab.value != null) q.tab = leftPanelTab.value; else delete q.tab; }
+    if (pureMode.value) q.pure = '1'; else delete q.pure;
+    delete q.tab;
+    delete q.frameId;
+    delete q.grenadeId;
     replaceLocation('/replayer', new URLSearchParams(q).toString());
     
     // Resume playback if it was playing before
@@ -1904,7 +1798,7 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   if (e.code !== 'Space' && e.key !== ' ') return;
   const target = e.target as HTMLElement;
-  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+  if (target.closest('button, input, textarea, select, a, dialog, [role="menu"]') || target.isContentEditable) return;
   e.preventDefault();
   togglePlay();
 }
@@ -1920,6 +1814,27 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.replay-tools { padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+.tools-heading { display: flex; align-items: center; height: 20px; margin: 0; padding: 0 10px; color: var(--ds-text-muted); font-size: 12px; font-weight: 500; }
+.sidebar-tool { display: flex; align-items: center; gap: 10px; width: 100%; height: var(--sidebar-row-height); padding: 0 10px; background: transparent; border: 0; border-radius: var(--ds-radius-sm); font-size: 13px; color: var(--ds-text-secondary); text-align: left; cursor: pointer; }
+.sidebar-tool:hover:not(:disabled), .sidebar-tool.active { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
+.sidebar-tool:disabled { opacity: .4; cursor: not-allowed; }
+.sidebar-tool > img, .sidebar-tool > svg { width: 18px; height: 18px; flex-shrink: 0; }
+.sidebar-tool.recording { color: var(--ds-danger); }
+.recording-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ds-danger); margin-left: auto; }
+.recording-download { display: flex; align-items: center; justify-content: space-between; padding-left: 32px; }
+.recording-download button { height: var(--sidebar-row-height); color: var(--ds-text-secondary); background: transparent; border: 0; padding: 0 5px; font-size: 12px; cursor: pointer; border-radius: 5px; }
+.recording-download button:hover { background: var(--ds-surface-hover); }
+.grenade-search-options { padding: 0; }
+.search-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.grenade-types { display: flex; gap: 4px; }
+.grenade-types button { display: flex; align-items: center; justify-content: center; gap: 3px; flex: 1; height: var(--sidebar-row-height); padding: 0 3px; border: 0; border-radius: 5px; background: transparent; color: var(--ds-text-tertiary); font-size: 12px; cursor: pointer; }
+.grenade-types button:hover, .grenade-types button[aria-pressed="true"] { color: var(--ds-text-primary); background: var(--ds-surface-active); }
+.grenade-types img { width: 16px; height: 16px; object-fit: contain; }
+.tool-message { font-size: 11px; line-height: 1.6; color: var(--ds-text-tertiary); margin: 6px 0 0; overflow-wrap: anywhere; }
+.tool-message.error { color: var(--ds-danger); }
+.replay-tools button:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: -2px; }
+
 /* === Layout === */
 .viewer-layout {
   position: relative;
@@ -1970,74 +1885,6 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.left-panel-header {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  flex-shrink: 0;
-}
-
-.left-panel-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: var(--ds-radius-sm);
-  flex-shrink: 0;
-}
-
-.left-panel-tab {
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.left-panel-tab:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.left-panel-tab.active {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.left-panel-tab .tab-arrow {
-  transition: transform 0.15s ease;
-}
-
-.left-panel-tab.active .tab-arrow {
-  transform: rotate(180deg);
-}
-
-.left-panel-footer {
-  pointer-events: auto;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 6px;
-}
-
-.left-panel-collapsed {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .left-panel-content {
   display: flex;
   flex-direction: column;
@@ -2083,212 +1930,11 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.7);
 }
 
-.left-panel-rounds {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-top: 10px;
-  direction: rtl; /* 滚动条在左侧 */
-}
-
-.left-panel-rounds-inner {
-  direction: ltr;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* 回合列表滚动条：白色高亮 */
-.left-panel-rounds::-webkit-scrollbar {
-  width: 8px;
-}
-
-.left-panel-rounds::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-}
-
-.left-panel-rounds::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 4px;
-}
-
-.left-panel-rounds::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-
-
-/* 设置 tab：与回合 tab 同宽、同滚动，内容用卡片展示 */
-.left-panel-settings {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-top: 10px;
-  direction: rtl;
-}
-
-.left-panel-settings-inner {
-  direction: ltr;
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  gap: 0;
-}
-
-.settings-card {
-  background: var(--ds-bg-tertiary, #21262d);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--ds-radius-sm);
-  padding: 12px 14px;
-}
-
-.settings-card-title {
-  padding: 0 0 var(--ds-space-sm) 0;
-  font-size: 13px;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--gh-text);
-}
-
-.settings-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  font-size: 13px;
-  color: #f5f5f0;
-  cursor: pointer;
-}
-
-.settings-option input[type="checkbox"] {
-  margin: 0;
-  flex-shrink: 0;
-}
-
-.round-selector-vertical {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  padding: 8px;
-}
-
-/* 单回合固定高度，不限制一页数量，超出滚动 */
-.round-selector-row-btn {
-  flex-shrink: 0;
-  height: 36px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  padding: 0 12px;
-  background: var(--ds-bg-tertiary, #21262d);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--ds-radius-sm);
-  color: #f5f5f0;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  pointer-events: auto;
-}
-
-.round-selector-row-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
-}
-
-.round-selector-row-btn.active {
-  background: rgba(var(--ds-primary-rgb, 88 166 255), 0.4);
-  border-color: var(--ds-primary);
-}
-
-.round-selector-row-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.round-selector-row-btn.clip-selected {
-  border-color: rgba(255, 200, 100, 0.6);
-  background: rgba(255, 180, 80, 0.2);
-}
-/* 剪辑模式下选中态优先于 hover 展示 */
-.round-selector-row-btn.clip-selected:hover:not(:disabled) {
-  border-color: rgba(255, 200, 100, 0.6);
-  background: rgba(255, 180, 80, 0.2);
-}
-
-.clip-mode-hint {
-  padding: 6px 8px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.round-selector-center {
-  flex: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.round-selector-icon {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.round-selector-num {
-  flex-shrink: 0;
-  min-width: 1.5em;
-}
-
-/* 经济类型 tag：绿 eco、黄 half、红 full */
-.round-economy-tag {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: capitalize;
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-.round-economy-tag.right {
-  margin-left: auto;
-}
-.round-economy-tag.eco {
-  background: rgba(63, 185, 80, 0.35);
-  color: #3fb950;
-}
-.round-economy-tag.half {
-  background: rgba(210, 153, 34, 0.35);
-  color: #d29922;
-}
-.round-economy-tag.full {
-  background: rgba(248, 81, 73, 0.35);
-  color: #f85149;
-}
-.round-economy-tag.pistol {
-  background: rgba(255, 255, 255, 0.25);
-  color: #fff;
-}
-
-.round-selector-h-divider {
-  height: 1px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.3);
-  margin: 4px 0;
-}
+.map-settings { border: 0; padding: 0; margin: 0; min-width: 0; }
+.map-settings legend { padding: 0 0 var(--ds-space-sm); font-size: 12px; color: var(--ds-text-tertiary); }
+.map-settings label { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-lg); padding: var(--ds-space-md) 0; font-size: 13px; color: var(--ds-text-secondary); cursor: pointer; }
+.map-settings input { width: 16px; height: 16px; margin: 0; accent-color: var(--ds-primary); }
+.map-settings input:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 3px; }
 
 .team-cards-container {
   display: flex;
@@ -2693,65 +2339,6 @@ onBeforeUnmount(() => {
   opacity: 0.8;
   filter: brightness(1.1);
   transition: all var(--ds-transition-base);
-}
-
-/* === 左侧 footer：内嵌链接、剪辑、发布 === */
-.left-panel-footer .embed-link-wrap {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.left-panel-footer-btn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.left-panel-footer-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: white;
-}
-.left-panel-footer-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.left-panel-footer-btn-icon {
-  width: 18px;
-  height: 18px;
-  display: block;
-}
-.left-panel-footer-btn-text {
-  line-height: 1;
-}
-.clip-mode-btn.active {
-  border-color: rgba(255, 200, 100, 0.6);
-  background: rgba(255, 180, 80, 0.25);
-  color: #ffc870;
-}
-.publish-note-btn.is-published {
-  border-color: rgba(100, 200, 120, 0.5);
-  background: rgba(80, 180, 100, 0.2);
-  color: #7dd87d;
-}
-.publish-note-btn.is-published:hover:not(:disabled) {
-  border-color: rgba(100, 200, 120, 0.6);
-  background: rgba(80, 180, 100, 0.3);
-  color: #9ee89e;
 }
 
 /* === Kill Feed === */
@@ -3198,48 +2785,4 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Export demo button with progress indicator (similar to tab recorder) */
-.export-demo-btn {
-  position: relative;
-  overflow: hidden;
-  min-width: 120px;
-  justify-content: center;
-  color: white;
-  background: rgba(34, 197, 94, 0.8);
-  text-decoration: none;
-}
-
-.export-demo-btn:hover:not(:disabled) {
-  background: rgba(34, 197, 94, 1);
-}
-
-.export-demo-btn.converting {
-  position: relative;
-}
-
-.converting-progress-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, rgba(100, 200, 120, 0.3), rgba(80, 180, 100, 0.5));
-  transition: width 0.2s ease;
-  z-index: 1;
-}
-
-.converting-text {
-  position: relative;
-  z-index: 2;
-  font-size: 12px;
-  font-weight: 500;
-  text-align: center;
-  min-width: 100px;
-}
-
-.export-demo-btn.export-success {
-  border-color: rgba(100, 200, 120, 0.5);
-  background: rgba(80, 180, 100, 0.2);
-  color: #7dd87d;
-}
 </style>

@@ -52,7 +52,7 @@
             >
               <circle cx="12" cy="12" r="10"/><path d="M12 6V12L16 14"/>
             </svg>
-            <span class="time-font" :style="{ color: roundTimeColor }">{{ formatRoundTime }}</span>
+            <span class="time-font" :style="{ color: roundTimeColor }">{{ alignmentTimeMs != null ? ((currentTimeMs - alignmentTimeMs) / 1000).toFixed(1) + 's' : formatRoundTime }}</span>
           </div>
         </div>
       </div>
@@ -65,6 +65,15 @@
       >
         <!-- 进度填充（平面化） -->
         <div class="flat-progress-fill" :style="{ width: `${(roundRelativeTimeMs / roundDurationMs) * 100}%` }"></div>
+        <button
+          v-if="alignmentTimeMs != null && roundDurationMs > 0"
+          class="alignment-marker"
+          :style="{ left: ((alignmentTimeMs - roundStartTimeMs) / roundDurationMs) * 100 + '%' }"
+          title="回到爆炸前一帧（对齐点）"
+          aria-label="回到爆炸前一帧"
+          @mousedown.stop
+          @click.stop="emit('seek-seconds', alignmentTimeMs / 1000)"
+        ><span>0</span></button>
 
         <!-- 动态视觉标记 -->
         <div class="decorative-markers">
@@ -131,31 +140,6 @@
           </template>
         </div>
 
-        <!-- 剪辑模式：时间范围选中（左/右拖柄） -->
-        <div
-          v-if="clipMode && totalFrames > 0"
-          class="clip-range-overlay"
-          @mousedown.stop
-        >
-          <div
-            class="clip-range-highlight"
-            :style="clipRangeHighlightStyle"
-          ></div>
-          <div
-            class="clip-range-handle clip-range-handle-left"
-            :style="{ left: clipRangeLeftPercent + '%' }"
-            title="拖拽调整范围起点"
-            @mousedown.stop="onClipHandleMouseDown('left', $event)"
-            @touchstart.stop="onClipHandleTouchStart('left', $event)"
-          ></div>
-          <div
-            class="clip-range-handle clip-range-handle-right"
-            :style="{ left: clipRangeRightPercent + '%' }"
-            title="拖拽调整范围终点"
-            @mousedown.stop="onClipHandleMouseDown('right', $event)"
-            @touchstart.stop="onClipHandleTouchStart('right', $event)"
-          ></div>
-        </div>
       </div>
     </div>
   </div>
@@ -172,6 +156,7 @@ import { getRoundResult, getRoundResultIcon, getRoundEndIcon, getRoundEndClass, 
 
 const props = defineProps<{
   currentFrameIndex: number;
+  alignmentTimeMs?: number | null;
   totalFrames: number;
   isPlaying: boolean;
   currentTimeMs: number;
@@ -194,10 +179,6 @@ const props = defineProps<{
   canPlay?: boolean;
   /** 隐藏回合选择器（已移至左侧面板展示） */
   hideRoundSelector?: boolean;
-  /** 剪辑模式：显示左右拖柄用于选中时间范围 */
-  clipMode?: boolean;
-  clipRangeStart?: number;
-  clipRangeEnd?: number;
 }>();
 
 const canPlay = computed(() => props.canPlay ?? true);
@@ -208,7 +189,6 @@ const emit = defineEmits<{
   (e: 'update-speed', value: number): void;
   (e: 'dragging-change', value: boolean): void;
   (e: 'load-round', roundNumber: number): void;
-  (e: 'update-clip-range', payload: { start: number; end: number }): void;
 }>();
 
 // Log roundResults when they change
@@ -503,107 +483,13 @@ const formatMs = (ms: number) => {
   return `${m}:${s}`;
 };
 
-// 剪辑模式：时间范围拖柄
-const clipRangeLeftPercent = computed(() => {
-  if (!props.clipMode || props.totalFrames <= 1) return 0;
-  const start = Math.max(0, Math.min(props.clipRangeStart ?? 0, props.totalFrames - 1));
-  return (start / (props.totalFrames - 1)) * 100;
-});
-const clipRangeRightPercent = computed(() => {
-  if (!props.clipMode || props.totalFrames <= 1) return 100;
-  const end = Math.max(0, Math.min(props.clipRangeEnd ?? props.totalFrames - 1, props.totalFrames - 1));
-  return (end / (props.totalFrames - 1)) * 100;
-});
-const clipRangeHighlightStyle = computed(() => ({
-  left: clipRangeLeftPercent.value + '%',
-  width: (clipRangeRightPercent.value - clipRangeLeftPercent.value) + '%',
-}));
-
-function clientXToFrameIndex(clientX: number, el: HTMLElement): number {
-  const rect = el.getBoundingClientRect();
-  const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  return Math.round(pos * (props.totalFrames - 1));
-}
-
-function onClipHandleMouseDown(which: 'left' | 'right', e: MouseEvent) {
-  const el = (e.target as HTMLElement).closest('.timeline-track-main') as HTMLElement;
-  if (!el || props.totalFrames <= 0) return;
-
-  isDragging.value = true;
-  emit('dragging-change', true);
-  handleInteraction(e.clientX, el);
-
-  const onMove = (me: MouseEvent) => {
-    const idx = clientXToFrameIndex(me.clientX, el);
-    const start = props.clipRangeStart ?? 0;
-    const end = props.clipRangeEnd ?? props.totalFrames - 1;
-    if (which === 'left') {
-      const newStart = Math.max(0, Math.min(idx, end));
-      emit('update-clip-range', { start: newStart, end });
-    } else {
-      const newEnd = Math.max(start, Math.min(idx, props.totalFrames - 1));
-      emit('update-clip-range', { start, end: newEnd });
-    }
-    handleInteraction(me.clientX, el);
-  };
-  const onUp = () => {
-    isDragging.value = false;
-    emit('dragging-change', false);
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-  };
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-}
-
-/** 移动端剪辑拖柄触摸事件处理 */
-function onClipHandleTouchStart(which: 'left' | 'right', e: TouchEvent) {
-  // 阻止默认行为
-  e.preventDefault();
-  e.stopPropagation();
-  
-  const el = (e.target as HTMLElement).closest('.timeline-track-main') as HTMLElement;
-  if (!el || props.totalFrames <= 0) return;
-
-  const touch = e.touches[0];
-  isDragging.value = true;
-  emit('dragging-change', true);
-  handleInteraction(touch.clientX, el);
-
-  const onMove = (te: TouchEvent) => {
-    te.preventDefault();
-    const touchMove = te.touches[0];
-    const idx = clientXToFrameIndex(touchMove.clientX, el);
-    const start = props.clipRangeStart ?? 0;
-    const end = props.clipRangeEnd ?? props.totalFrames - 1;
-    
-    if (which === 'left') {
-      const newStart = Math.max(0, Math.min(idx, end));
-      emit('update-clip-range', { start: newStart, end });
-    } else {
-      const newEnd = Math.max(start, Math.min(idx, props.totalFrames - 1));
-      emit('update-clip-range', { start, end: newEnd });
-    }
-    handleInteraction(touchMove.clientX, el);
-  };
-  
-  const onEnd = () => {
-    isDragging.value = false;
-    emit('dragging-change', false);
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('touchend', onEnd);
-    document.removeEventListener('touchcancel', onEnd);
-  };
-  
-  document.addEventListener('touchmove', onMove, { passive: false });
-  document.addEventListener('touchend', onEnd);
-  document.addEventListener('touchcancel', onEnd);
-}
-
 const speedOptions = [0.5, 1, 2] as const;
 </script>
 
 <style scoped>
+.alignment-marker { position: absolute; top: 0; bottom: 0; z-index: 12; width: 10px; transform: translateX(-50%); padding: 0; border: 0; background: transparent; cursor: pointer; }
+.alignment-marker::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: var(--ds-primary); }
+.alignment-marker span { position: absolute; top: 0; left: 0; width: 10px; font-size: 9px; color: var(--ds-primary-text); background: var(--ds-primary); }
 /* === Container === */
 .timeline-widget-container {
   display: flex;
@@ -1132,45 +1018,6 @@ const speedOptions = [0.5, 1, 2] as const;
 
 .throw-marker.t {
   border-bottom-color: var(--ds-team-t);
-}
-
-/* === 剪辑模式：时间范围选中 === */
-.clip-range-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 10;
-}
-
-.clip-range-overlay > * {
-  pointer-events: auto;
-}
-
-.clip-range-highlight {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  background: rgba(255, 200, 100, 0.25);
-  pointer-events: none;
-}
-
-.clip-range-handle {
-  position: absolute;
-  top: 0;
-  width: 8px;
-  height: 100%;
-  transform: translateX(-50%);
-  background: rgba(255, 200, 100, 0.9);
-  cursor: ew-resize;
-  border-radius: 2px;
-  z-index: 11;
-}
-
-.clip-range-handle:hover {
-  background: rgba(255, 220, 120, 1);
 }
 
 .mark-line {

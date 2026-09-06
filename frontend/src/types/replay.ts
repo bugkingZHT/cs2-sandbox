@@ -194,6 +194,11 @@ export interface ReplayRound {
 export interface ClipRoundConfig {
   round: number;
   playerIds?: number[];
+  /** 道具反查：此原始时间在合并后对齐；未指定时按回合起点对齐。 */
+  anchorTimeMs?: number;
+  projectileId?: number;
+  /** 火的燃烧区域可能使用不同的实体 ID。 */
+  effectEntityId?: number;
 }
 
 // WASM 返回的完整数据结构
