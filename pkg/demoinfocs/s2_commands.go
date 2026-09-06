@@ -298,7 +298,7 @@ func (m *pendingMessage) priority() int {
 	return 0
 }
 
-func (p *parser) handleDemoPacket(pack *msg.CDemoPacket) {
+func (p *parser) handleDemoPacket(pack *msg.CDemoPacket, isFullPacket bool) {
 	b := pack.GetData()
 
 	if len(b) == 0 {
@@ -357,14 +357,18 @@ func (p *parser) handleDemoPacket(pack *msg.CDemoPacket) {
 			continue
 		}
 
-		msg := msgCreator()
+		message := msgCreator()
 
-		err := proto.Unmarshal(m.buf, msg)
+		err := proto.Unmarshal(m.buf, message)
 		if err != nil {
 			panic(err) // FIXME: avoid panic
 		}
 
-		p.msgQueue <- msg
+		if commands, ok := message.(*msg.CSVCMsg_UserCommands); isFullPacket && ok {
+			p.msgQueue <- userCmdButtonCheckpoint{commands: commands}
+			continue
+		}
+		p.msgQueue <- message
 	}
 }
 
@@ -372,7 +376,7 @@ func (p *parser) handleFullPacket(msg *msg.CDemoFullPacket) {
 	p.handleStringTables(msg.StringTable)
 
 	if msg.Packet.GetData() != nil {
-		p.handleDemoPacket(msg.Packet)
+		p.handleDemoPacket(msg.Packet, true)
 	}
 }
 

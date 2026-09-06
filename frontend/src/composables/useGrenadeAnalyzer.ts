@@ -1,4 +1,4 @@
-import { ref, computed, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, watch, type Ref, type ComputedRef } from 'vue';
 import type { Frame, ProjectileState, PlayerState } from '@/types/replay';
 import { isButtonPressed, BUTTON_MASKS } from '@/config/buttons';
 
@@ -9,9 +9,6 @@ import { isButtonPressed, BUTTON_MASKS } from '@/config/buttons';
 const PRE_THROW_MS = 1000;
 const POST_THROW_MS = 1000;
 
-/** 投掷帧搜索缓存 */
-const throwFrameCache = new Map<number, number>();
-
 /** 投掷方式分类 */
 export type ThrowType = '跳投' | '蹲投' | '跳蹲投' | '走投' | '站投';
 
@@ -19,6 +16,8 @@ export function useGrenadeAnalyzer(
   frames: Ref<Frame[] | undefined>,
   replayMeta: Ref<any>
 ) {
+  const throwFrameCache = new Map<number, number>();
+  watch(frames, () => { clearCache(); exitAnalyze(); });
   // === 状态 ===
   const isTrackingEnabled = ref(false);
   const isAnalyzeMode = ref(false);

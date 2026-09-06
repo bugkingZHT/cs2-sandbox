@@ -25,6 +25,7 @@
         <button 
           type="button"
           class="nav-btn" 
+          aria-label="Demo 库"
           :class="{ active: sidebarPath === '/demolib' || sidebarPath === '/' }"
           @click="onNavigateToDemolib"
         >
@@ -35,79 +36,39 @@
             <span class="nav-text">Demo 库</span>
           </span>
         </button>
-        <button
-          type="button"
-          class="nav-btn"
-          :class="{ active: sidebarPath === '/replayer' }"
-          @click="onNavigateToReplayer"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          <span v-show="!sidebarCollapsed" class="nav-label">
-            <span class="nav-text">2D 播放器</span>
-          </span>
-        </button>
       </nav>
 
-      <!-- Spacer: 把下方 Beta / Console 顶到底部 -->
-      <div class="sidebar-spacer" aria-hidden="true"></div>
+      <div id="replay-sidebar-tools" v-show="hasActiveReplay && !sidebarCollapsed"></div>
+      <div class="sidebar-spacer">
+        <div id="replay-sidebar-rounds" v-show="hasActiveReplay && !sidebarCollapsed"></div>
+        <button v-if="hasActiveReplay && sidebarCollapsed" class="rounds-expand-btn" type="button" title="展开工具与回合" aria-label="展开工具与回合" @click="toggleSidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+        </button>
+      </div>
 
       <div class="sidebar-footer">
-        <button class="console-toggle-btn" @click="quit">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg>
-          <span v-show="!sidebarCollapsed" class="nav-label">退出本地工具</span>
-        </button>
+        <AppPowerMenu :collapsed="sidebarCollapsed" :player-page="hasActiveReplay" @quit="quit" />
       </div>
     </aside>
 
-    <!-- 移动端侧栏折叠时：左侧居中浮动按钮，点击展开侧栏 -->
-    <button
-      v-show="isMobile && sidebarCollapsed && (currentPage !== 'player' || !replayerPureMode)"
-      type="button"
-      class="sidebar-expand-fab"
-      title="展开导航"
-      aria-label="展开导航"
-      @click="toggleSidebar"
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </button>
-
     <!-- 主内容区 -->
     <div class="app-main-and-note-row">
-      <!-- Library -->
-      <template v-if="currentPage === 'library'">
-        <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-          <header class="app-page-header" id="app-page-header"></header>
-          <div class="app-main-with-sidebar">
-            <main class="app-main">
-              <DemoLibrary
-                v-if="currentPage === 'library'"
-                :demo-list="replayList || []"
-                :loading="loading"
-                @select-demo="onSelectDemo"
-                @delete-demo="onDeleteDemo"
-                @open-local="showFilePicker = true"
-              />
-
-            </main>
-          </div>
+      <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+        <header class="app-page-header" id="app-page-header"></header>
+        <div class="app-main-with-sidebar">
+          <main class="app-main">
+            <DemoLibrary
+              v-if="currentPage === 'library'"
+              :demo-list="replayList || []"
+              :loading="loading"
+              @select-demo="onSelectDemo"
+              @delete-demo="onDeleteDemo"
+              @open-local="showFilePicker = true"
+            />
+            <ReplayPlayer v-if="currentPage === 'player' || hasActiveReplay" v-show="currentPage === 'player'" />
+          </main>
         </div>
-      </template>
-
-      <!-- Player Page -->
-      <template v-else-if="currentPage === 'player'">
-        <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-          <header class="app-page-header" id="app-page-header"></header>
-          <div class="app-main-with-sidebar">
-            <main class="app-main">
-              <ReplayPlayer />
-            </main>
-          </div>
-        </div>
-      </template>
+      </div>
 
 
     </div>
@@ -139,6 +100,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, provide } from "vue";
+import AppPowerMenu from "@/components/AppPowerMenu.vue";
 import ReplayPlayer from "@/components/ReplayPlayer/ReplayPlayer.vue";
 import DemoLibrary from "@/components/DemoLibrary/DemoLibrary.vue";
 import LocalFilePicker from "@/local/LocalFilePicker.vue";
@@ -151,9 +113,7 @@ import {
   navigate,
   getQuery,
   setReplayerPlayingLocal,
-  getReplayerPlayingLocal,
 } from "@/location";
-import { useMobileDetection } from "@/composables/browserUtils";
 
 const {
   replayList,
@@ -171,6 +131,7 @@ const sidebarPath = pathRef;
 const currentPage = computed(() =>
   pathRef.value === "/replayer" ? "player" : "library",
 );
+const hasActiveReplay = computed(() => Boolean(replay.value?.uuid));
 watch(
   currentPage,
   (page) => {
@@ -181,7 +142,6 @@ watch(
 const sidebarCollapsed = ref(
   localStorage.getItem("cs2-sandbox-sidebar-collapsed") === "true",
 );
-const { isMobile } = useMobileDetection();
 const replayerPureMode = ref(false),
   replayerRouteLoading = ref(false);
 provide("replayerPureMode", replayerPureMode);
@@ -212,21 +172,6 @@ watch(sidebarCollapsed, (v) =>
 function onNavigateToDemolib() {
   navigate("/demolib");
 }
-function onNavigateToReplayer() {
-  const saved = replay.value
-    ? { uuid: replay.value.uuid, round: currentRoundNumber.value }
-    : getReplayerPlayingLocal();
-  navigate(
-    "/replayer",
-    saved
-      ? new URLSearchParams({
-          demo_uuid: saved.uuid,
-          round: String(saved.round),
-          tab: "players",
-        }).toString()
-      : "",
-  );
-}
 const onSelectDemo = () => {};
 async function onDeleteDemo(uuid: string) {
   try {
@@ -245,7 +190,6 @@ async function ensureRoute() {
   const request = ++routeRequest;
   if (currentPage.value !== "player") {
     replayerRouteLoading.value = false;
-    replayerPureMode.value = false;
     return;
   }
   await waitForInitialLoad();
@@ -304,9 +248,13 @@ async function quit() {
 
 /* === Sidebar === */
 .app-sidebar {
-  width: 250px;
+  --sidebar-row-height: 28px;
+  width: 224px;
+  --ds-bg-secondary: #1b1d20;
+  --ds-surface-hover: rgba(255, 255, 255, .065);
+  --ds-surface-active: rgba(255, 255, 255, .10);
   background: var(--ds-bg-secondary);
-  border-right: 2px solid var(--ds-border-accent);
+  border-right: 1px solid var(--ds-border-subtle);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -314,81 +262,37 @@ async function quit() {
 }
 
 .app-sidebar.collapsed {
-  width: 72px;
-}
-
-/* 移动端：折叠时侧栏完全收起（不占位），并显示左侧浮动展开按钮 */
-@media (max-width: 768px) {
-  .app-sidebar.collapsed {
-    width: 0;
-    min-width: 0;
-    overflow: hidden;
-    border-right-width: 0;
-    padding: 0;
-  }
-}
-
-.sidebar-expand-fab {
-  display: none;
-  position: fixed;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1000;
-  width: 40px;
-  height: 48px;
-  padding: 0;
-  background: rgba(var(--ds-primary-rgb), 0.15);
-  border: none;
-  border-radius: 0 var(--ds-radius-md) var(--ds-radius-md) 0;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
-  color: var(--ds-text-secondary);
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--ds-transition-base), color var(--ds-transition-base);
-  backdrop-filter: blur(10px);
-}
-
-.sidebar-expand-fab:hover {
-  background: rgba(255, 255, 255, 0.25);
-  color: var(--ds-text-primary);
-}
-
-@media (max-width: 768px) {
-  .sidebar-expand-fab {
-    display: flex;
-  }
+  width: 60px;
 }
 
 /* === Sidebar Header === */
 .sidebar-header {
-  height: 72px;
-  padding: var(--ds-space-lg) var(--ds-space-lg);
+  height: 60px;
+  padding: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
   gap: var(--ds-space-md);
-  border-bottom: 1px solid var(--ds-border-subtle);
+
 }
 
 .collapsed .sidebar-header {
   justify-content: center;
-  padding: var(--ds-space-lg) var(--ds-space-md);
+  padding: 12px;
 }
 
 .app-branding {
   display: flex;
   align-items: center;
-  gap: var(--ds-space-md);
+  gap: var(--ds-space-sm);
   min-width: 0;
   flex: 1;
 }
 
 .app-logo {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   flex-shrink: 0;
@@ -402,7 +306,7 @@ async function quit() {
 }
 
 .app-title {
-  font-size: var(--ds-text-lg);
+  font-size: 15px;
   font-weight: 700;
   color: var(--ds-text-primary);
   margin: 0;
@@ -427,8 +331,8 @@ async function quit() {
 }
 
 .collapse-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   background: var(--ds-surface-base);
   border: none;
@@ -453,26 +357,25 @@ async function quit() {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--ds-space-lg) var(--ds-space-md) var(--ds-space-lg) var(--ds-space-md);
-  gap: var(--ds-space-md);
+  padding: 10px 12px 0;
+  gap: 4px;
 }
 
-/* Demo 本地库 / 云存档：仅 .active 时有可见 border，避免残留描边与 focus 干扰 */
 .nav-btn {
   width: 100%;
-  min-height: 48px;
-  padding: var(--ds-space-md) var(--ds-space-lg);
+  height: var(--sidebar-row-height);
+  padding: 0 10px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--ds-radius-md);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: var(--ds-text-base);
-  font-weight: 600;
+  border: 0;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
   cursor: pointer;
   transition: all var(--ds-transition-base);
   display: flex;
   align-items: center;
-  gap: var(--ds-space-md);
+  gap: 10px;
   text-align: left;
   outline: none;
   box-shadow: none;
@@ -489,11 +392,13 @@ async function quit() {
 
 .collapsed .nav-btn {
   justify-content: center;
-  padding: var(--ds-space-md);
+  padding: 0;
 }
 
 .nav-btn svg,
 .nav-btn .nav-btn-icon {
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 }
 
@@ -537,8 +442,8 @@ async function quit() {
 .nav-btn.active {
   background: rgba(var(--ds-primary-rgb), 0.12);
   color: var(--ds-primary);
-  border-color: var(--ds-border-strong);
-  box-shadow: 0 0 0 1px var(--ds-border-default);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .nav-btn:not(.active) {
@@ -548,8 +453,8 @@ async function quit() {
 
 .nav-btn.active:hover:not(:disabled) {
   background: rgba(var(--ds-primary-rgb), 0.18);
-  border-color: var(--ds-border-strong);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border-color: transparent;
+  box-shadow: none;
   color: var(--ds-primary);
 }
 
@@ -582,8 +487,15 @@ async function quit() {
   color: #eab308;
 }
 
-/* 占满中间空间，使 Beta / Console 固定在底部 */
+/* 回合列表独立滚动，系统选项固定在底部。 */
+#replay-sidebar-tools { flex-shrink: 0; margin-top: 14px; }
+#replay-sidebar-rounds { height: 100%; min-height: 0; }
+.rounds-expand-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: var(--sidebar-row-height); margin: 0 auto; padding: 0; background: transparent; border: 0; border-radius: var(--ds-radius-sm); color: var(--ds-text-tertiary); cursor: pointer; }
+.rounds-expand-btn:hover { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
+.rounds-expand-btn:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: -2px; }
 .sidebar-spacer {
+  overflow: hidden;
+  margin-top: 14px;
   flex: 1;
   min-height: 0;
 }
@@ -633,45 +545,9 @@ async function quit() {
 
 /* === Sidebar Footer (Debug Section) === */
 .sidebar-footer {
-  padding: var(--ds-space-lg) var(--ds-space-md);
-  border-top: 1px solid var(--ds-border-subtle);
+  padding: 12px;
+
   flex-shrink: 0;
-}
-
-/* Console / 设置按钮：白色调 */
-/* Console / 设置按钮：蓝色调 */
-.console-toggle-btn {
-  width: 100%;
-  min-height: 48px;
-  padding: var(--ds-space-md) var(--ds-space-lg);
-  background: rgba(74, 171, 247, 0.1);
-  border: 1px solid rgba(74, 171, 247, 0.3);
-  border-radius: var(--ds-radius-md);
-  color: #4dabf7;
-  font-size: var(--ds-text-base);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--ds-transition-base);
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-md);
-  text-align: left;
-}
-
-.collapsed .console-toggle-btn {
-  justify-content: center;
-  padding: var(--ds-space-md);
-}
-
-.console-toggle-btn:hover {
-  background: rgba(74, 171, 247, 0.2);
-  border-color: rgba(74, 171, 247, 0.5);
-  box-shadow: 0 2px 8px rgba(74, 171, 247, 0.2);
-  color: #4dabf7;
-}
-
-.console-toggle-btn svg {
-  stroke: currentColor;
 }
 
 /* === Main Content：与 note-form-sidebar-slot 并列 === */

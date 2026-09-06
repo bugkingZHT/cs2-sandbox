@@ -1,7 +1,6 @@
 package localapp
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,21 +20,26 @@ func TestPersistentLibrary(t *testing.T) {
 		other.Close()
 		t.Fatal("second writer acquired store")
 	}
-	body := `{"meta":{"mapName":"de_ancient","fileName":"saved-clip"},"frames":[{"round":1,"timeMs":0}]}`
-	w := call(s, "POST", "/api/clips", body)
-	if w.Code != 200 {
-		t.Fatal(w.Body.String())
+	entry := State{
+		ID: "saved-replay", Name: "saved-replay", Status: "ready", Rounds: []int{1},
+		Meta: &entity.ReplayMeta{UUID: "saved-replay", MapName: "de_ancient", FileName: "saved-replay"},
 	}
-	var clip State
-	if err := json.Unmarshal(w.Body.Bytes(), &clip); err != nil {
+	dir := filepath.Join(root, entry.ID)
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "1.json"), []byte(`{"uuid":"saved-replay","round":1,"frames":[{"round":1,"timeMs":0}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.persist(entry); err != nil {
 		t.Fatal(err)
 	}
 	source := filepath.Join(t.TempDir(), "original.dem")
 	if err := os.WriteFile(source, []byte("source untouched"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	clip.SourcePath = source
-	if err := s.persist(clip); err != nil {
+	entry.SourcePath = source
+	if err := s.persist(entry); err != nil {
 		t.Fatal("atomic overwrite", err)
 	}
 	s.Close()
@@ -47,14 +51,14 @@ func TestPersistentLibrary(t *testing.T) {
 	if second.Token() == s.Token() {
 		t.Fatal("session token persisted")
 	}
-	got := second.library[clip.ID]
-	if got.Status != "ready" || got.Meta.FileName != "saved-clip" || got.SourcePath != source {
+	got := second.library[entry.ID]
+	if got.Status != "ready" || got.Meta.FileName != "saved-replay" || got.SourcePath != source {
 		t.Fatalf("lost metadata: %+v", got)
 	}
-	if w := call(second, "GET", fmtRoundURL(clip.ID, 1), ""); w.Code != 200 {
+	if w := call(second, "GET", fmtRoundURL(entry.ID, 1), ""); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	if w := call(second, "POST", "/api/remove", `{"id":"`+clip.ID+`"}`); w.Code != 200 {
+	if w := call(second, "POST", "/api/remove", `{"id":"`+entry.ID+`"}`); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	second.Close()

@@ -104,7 +104,6 @@ func (s *Server) Handler(assets fs.FS) http.Handler {
 	mux.HandleFunc("/api/round", s.round)
 	mux.HandleFunc("/api/library", s.list)
 	mux.HandleFunc("/api/remove", s.remove)
-	mux.HandleFunc("/api/clips", s.saveClip)
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(405)

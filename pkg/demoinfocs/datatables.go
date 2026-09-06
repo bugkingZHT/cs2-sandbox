@@ -431,6 +431,7 @@ func (p *parser) bindNewPlayerController(controllerEntity st.Entity) {
 
 	controllerEntity.OnDestroy(func() {
 		pl.IsConnected = false
+		delete(p.userCmdButtonStates, int32(controllerEntity.ID()-1))
 		delete(p.gameState.playersByEntityID, controllerEntity.ID())
 		delete(p.gameState.playerControllerEntities, controllerEntity.ID())
 		delete(p.gameState.playersByUserID, pl.UserID)
@@ -524,6 +525,10 @@ func (p *parser) bindNewPlayerPawn(pawnEntity st.Entity) {
 		buttonDownMaskProp.OnUpdate(func(val st.PropertyValue) {
 			pl := getPlayerFromPawnEntity(pawnEntity)
 			if pl == nil {
+				return
+			}
+			// A decoded user command is more precise than the legacy pawn property.
+			if _, ok := p.userCmdButtonStates[int32(pl.EntityID-1)]; ok {
 				return
 			}
 
