@@ -417,6 +417,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		}
 
 		playerFrame := entity.PlayerFrame{
+			Team: int(pl.Team),
 			X:             x,
 			Y:             y,
 			Z:             pos.Z,

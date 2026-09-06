@@ -1087,7 +1087,7 @@ const handleProjectileClick = (proj: ProjectileState) => {
   }
   
   // 激活分析模式
-  activateGrenadeAnalyze(proj);
+  activateGrenadeAnalyze(proj, currentFrameIndex.value);
 };
 
 // 处理分析模式的seek事件
@@ -1110,11 +1110,13 @@ const handleGrenadeAnalyzeClose = () => {
 };
 
 // 道具解析模式：进入时仅显示当前投掷人（其余用小眼睛逻辑 hide），退出时恢复先前隐藏状态
-watch(isGrenadeAnalyzeMode, (isAnalyze) => {
+watch([isGrenadeAnalyzeMode, () => selectedProjectile.value?.throwerID], ([isAnalyze, throwerId], [wasAnalyze]) => {
   if (isAnalyze) {
-    hiddenPlayerIdsBeforeAnalyze.value = new Set(hiddenPlayerIds.value);
-    const throwerId = selectedProjectile.value?.throwerID;
-    const allIds = effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? [];
+    if (!wasAnalyze) hiddenPlayerIdsBeforeAnalyze.value = new Set(hiddenPlayerIds.value);
+    const allIds = [...new Set([
+      ...(effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? []),
+      ...Object.keys(frames.value?.[throwFrameIndex.value]?.players ?? {}).map(Number),
+    ])];
     const toHide = throwerId != null ? allIds.filter((id) => id !== throwerId) : allIds;
     hiddenPlayerIds.value = new Set(toHide);
   } else {
@@ -1123,11 +1125,13 @@ watch(isGrenadeAnalyzeMode, (isAnalyze) => {
       hiddenPlayerIdsBeforeAnalyze.value = null;
     }
   }
-});
+}, { flush: 'sync' });
 
 // Check URL for frameId parameter and seek to it
+let appliedGrenadeLink = '';
 const checkUrlFrameId = () => {
   const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('demo_uuid') !== replay.value?.uuid || Number(urlParams.get('round')) !== frames.value?.[0]?.round) return;
   const frameId = urlParams.get('frameId');
   
   if (frameId) {
@@ -1137,10 +1141,33 @@ const checkUrlFrameId = () => {
       currentFrameIndex.value = targetFrame;
       if (frames.value && frames.value[targetFrame]) {
         currentPlaybackTimeMs.value = frames.value[targetFrame].timeMs;
+        const grenadeId = urlParams.get('grenadeId');
+        const hidePlayers = urlParams.get('hidePlayers');
+        const linkKey = `${replay.value?.uuid}:${urlParams.get('round')}:${frameId}:${grenadeId}:${hidePlayers}`;
+        if ((grenadeId !== null || hidePlayers !== null) && linkKey !== appliedGrenadeLink) {
+          appliedGrenadeLink = linkKey;
+          // Restore the previous analysis state before applying this link's visibility.
+          exitGrenadeAnalyze();
+          if (hidePlayers !== null) {
+            hiddenPlayerIds.value = new Set(hidePlayers.split(',').filter(id => /^\d+$/.test(id)).map(Number).filter(Number.isSafeInteger));
+            hiddenPlayerIdsBeforeSettingsHideAll.value = null;
+          }
+          const proj = grenadeId !== null ? frames.value[targetFrame].projectiles?.[Number(grenadeId)] : undefined;
+          if (proj) {
+            isPlaying.value = false;
+            cancelAnimation();
+            isGrenadeTrackingEnabled.value = true;
+            activateGrenadeAnalyze(proj, targetFrame);
+            setGrenadeLocalPlaybackTime(frames.value[targetFrame].timeMs - analyzeTimeRange.value.startMs);
+          } else if (grenadeId !== null) {
+            window.dispatchEvent(new CustomEvent('app:toast', { detail: { message: '链接中的道具不存在，已定位到指定帧。', type: 'warning' } }));
+          }
+        }
       }
     }
   };
 };
+watch(searchRef, checkUrlFrameId, { flush: 'post' });
 
 // Build kill list from frames (called when round data is loaded)
 const buildKillList = (framesArray: Frame[]) => {
@@ -1182,6 +1209,8 @@ watch(
     });
 
     if (data.replay && data.frames && data.frames.length > 0) {
+      appliedGrenadeLink = '';
+      exitGrenadeAnalyze();
       currentFrameIndex.value = 0;
       currentPlaybackTimeMs.value = data.frames[0]?.timeMs ?? 0;
       buildKillList(data.frames);
@@ -1191,7 +1220,7 @@ watch(
       nextTick(() => {
         isPlaying.value = false;
         cancelAnimation();
-        togglePlay();
+        if (!new URLSearchParams(window.location.search).has('frameId')) togglePlay();
       });
       lastTimestamp = 0;
     }

@@ -132,6 +132,42 @@ func TestRealDemo(t *testing.T) {
 		total += len(round.Frames)
 	}
 	t.Logf("map=%s rounds=%d frames=%d largest round=%.2f MB elapsed=%s", st.Meta.MapName, len(st.Rounds), total, float64(maxBytes)/1048576, time.Since(start))
+	// Exercise the public skill endpoint on the real parser output, including side switches.
+	body, _ = json.Marshal(grenadeRequest{DemoIDs: []string{st.ID}, Side: "both", Radius: 120, HeightTolerance: 80})
+	summary := call(s, "POST", "/api/skills/grenades", string(body))
+	if summary.Code != 200 {
+		t.Fatal(summary.Body.String())
+	}
+	var report grenadeReport
+	if err := json.Unmarshal(summary.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Groups) == 0 {
+		t.Fatal("real demo produced no grenade groups")
+	}
+	for _, g := range report.Groups {
+		t.Logf("grenades map=%s side=%s kind=%s total=%d top1=%d clusters=%d", g.Map, g.Side, g.Kind, g.TotalThrows, g.Top10[0].Count, len(g.Top10))
+		for _, c := range g.Top10 {
+			for _, o := range c.Occurrences {
+				var rr entity.ReplayRound
+				json.Unmarshal(call(s, "GET", fmtRoundURL(st.ID, o.Round), "").Body.Bytes(), &rr)
+				if o.FrameID < 0 || o.FrameID >= len(rr.Frames) {
+					t.Fatal("invalid learning frame")
+				}
+				p, ok := rr.Frames[o.FrameID].Projectiles[o.EntityID]
+				if !ok || p.IsExploded || rr.Frames[o.FrameID].TimeMs != o.TimeMs {
+					t.Fatal("learning link does not locate throw")
+				}
+				want := 2
+				if g.Side == "CT" {
+					want = 3
+				}
+				if rr.Frames[o.FrameID].Players[p.ThrowerID].Team != want {
+					t.Fatal("wrong throwing side")
+				}
+			}
+		}
+	}
 	root := s.root
 	s.Close()
 	restarted, err := newAt(root)

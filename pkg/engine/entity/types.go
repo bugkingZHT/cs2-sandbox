@@ -17,6 +17,8 @@ var ButtonWatching = []common.ButtonBitMask{
 }
 
 type PlayerFrame struct {
+	// Actual side at this frame; unlike metadata this remains correct after side switches.
+	Team int `json:"team"`
 	// 玩家在地图上的 X 坐标
 	X float64 `json:"x"`
 	// 玩家在地图上的 Y 坐标

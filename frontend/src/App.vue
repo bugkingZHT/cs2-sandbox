@@ -48,6 +48,10 @@
             <span class="nav-text">2D 播放器</span>
           </span>
         </button>
+        <button type="button" class="nav-btn" :class="{ active: sidebarPath === '/skills' }" @click="navigate('/skills')" title="AI 技能">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg>
+          <span v-show="!sidebarCollapsed" class="nav-label"><span class="nav-text">AI 技能</span></span>
+        </button>
       </nav>
 
       <!-- Spacer: 把下方 Beta / Console 顶到底部 -->
@@ -97,6 +101,10 @@
         </div>
       </template>
 
+      <div v-else-if="currentPage === 'skills'" class="app-main-area skills-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+        <main class="app-main"><AISkills :demos="replayList || []" /></main>
+      </div>
+
       <!-- Player Page -->
       <template v-else-if="currentPage === 'player'">
         <div class="app-main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
@@ -141,6 +149,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, provide } from "vue";
 import ReplayPlayer from "@/components/ReplayPlayer/ReplayPlayer.vue";
 import DemoLibrary from "@/components/DemoLibrary/DemoLibrary.vue";
+import AISkills from "@/local/AISkills.vue";
 import LocalFilePicker from "@/local/LocalFilePicker.vue";
 import { localAPI } from "@/local/api";
 import { useReplayData } from "@/composables/useReplayData";
@@ -169,7 +178,7 @@ const {
 useLocation();
 const sidebarPath = pathRef;
 const currentPage = computed(() =>
-  pathRef.value === "/replayer" ? "player" : "library",
+  pathRef.value === "/replayer" ? "player" : pathRef.value === "/skills" ? "skills" : "library",
 );
 watch(
   currentPage,
@@ -716,6 +725,18 @@ async function quit() {
   overflow: hidden;
   min-width: 0;
 }
+
+/* 技能页是长表单，单独在主区域滚动，避免被应用壳的固定高度裁切。 */
+.skills-main-area .app-main {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-border-default) var(--ds-bg-primary);
+}
+
+.skills-main-area .app-main::-webkit-scrollbar { width: 10px; }
+.skills-main-area .app-main::-webkit-scrollbar-track { background: var(--ds-bg-primary); }
+.skills-main-area .app-main::-webkit-scrollbar-thumb { background: var(--ds-border-default); border: 3px solid var(--ds-bg-primary); border-radius: 8px; }
 
 </style>
 

@@ -9,9 +9,6 @@ import { isButtonPressed, BUTTON_MASKS } from '@/config/buttons';
 const PRE_THROW_MS = 1000;
 const POST_THROW_MS = 1000;
 
-/** 投掷帧搜索缓存 */
-const throwFrameCache = new Map<number, number>();
-
 /** 投掷方式分类 */
 export type ThrowType = '跳投' | '蹲投' | '跳蹲投' | '走投' | '站投';
 
@@ -72,7 +69,7 @@ export function useGrenadeAnalyzer(
       ...framePlayer,
       id: playerInfo.id,
       name: playerInfo.name,
-      team: playerInfo.team,
+      team: framePlayer.team ?? playerInfo.team,
       steamID: playerInfo.steamID,
       isBot: playerInfo.isBot,
     };
@@ -163,15 +160,16 @@ export function useGrenadeAnalyzer(
 
   // === 工具方法 ===
 
-  function findThrowFrame(entityId: number): number {
-    if (throwFrameCache.has(entityId)) {
-      return throwFrameCache.get(entityId)!;
-    }
+  function findThrowFrame(entityId: number, selectedFrame?: number): number {
     const framesArr = frames.value;
     if (!framesArr) return -1;
+    if (selectedFrame !== undefined && framesArr[selectedFrame]?.projectiles?.[entityId]) {
+      let i = selectedFrame;
+      while (i > 0 && framesArr[i - 1].projectiles?.[entityId] && !framesArr[i - 1].projectiles[entityId].isExploded) i--;
+      return i;
+    }
     for (let i = 0; i < framesArr.length; i++) {
       if (framesArr[i].projectiles?.[entityId]) {
-        throwFrameCache.set(entityId, i);
         return i;
       }
     }
@@ -205,10 +203,10 @@ export function useGrenadeAnalyzer(
     }
   }
 
-  function activateAnalyze(proj: ProjectileState) {
+  function activateAnalyze(proj: ProjectileState, selectedFrame?: number) {
     selectedProjectile.value = proj;
 
-    const frameIdx = findThrowFrame(proj.entityID);
+    const frameIdx = findThrowFrame(proj.entityID, selectedFrame);
     if (frameIdx === -1) {
       console.warn('[GrenadeAnalyzer] 未找到投掷物出手帧:', proj.entityID);
       return;
@@ -252,7 +250,7 @@ export function useGrenadeAnalyzer(
   }
 
   function clearCache() {
-    throwFrameCache.clear();
+    exitAnalyze();
   }
 
   return {

@@ -4,6 +4,10 @@ const token = /^[a-f0-9]{64}$/.test(fragment)
   : sessionStorage.getItem("local-token") || "";
 sessionStorage.setItem("local-token", token);
 
+export function localConnectionURL(): string {
+  return `${location.origin}/#${token}`;
+}
+
 export async function localAPI<T = any>(
   url: string,
   body?: unknown,

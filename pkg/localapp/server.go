@@ -103,6 +103,7 @@ func (s *Server) Handler(assets fs.FS) http.Handler {
 	mux.HandleFunc("/api/open", s.open)
 	mux.HandleFunc("/api/round", s.round)
 	mux.HandleFunc("/api/library", s.list)
+	mux.HandleFunc("/api/skills/grenades", s.grenadeSummary)
 	mux.HandleFunc("/api/remove", s.remove)
 	mux.HandleFunc("/api/clips", s.saveClip)
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +118,7 @@ func (s *Server) Handler(assets fs.FS) http.Handler {
 	})
 	files := http.FileServer(http.FS(assets))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/replayer" || r.URL.Path == "/demolib" {
+		if r.URL.Path == "/replayer" || r.URL.Path == "/demolib" || r.URL.Path == "/skills" {
 			r.URL.Path = "/"
 		}
 		files.ServeHTTP(w, r)
