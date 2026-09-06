@@ -37,8 +37,8 @@ globalThis.fetch = async (url, init) => {
           timeMs: 10,
           tick: 1,
           round: Number(q.get("n")),
-          players: { 1: { x: 1, y: 2, activeWeapon: 7, inventory: [7, 44] } },
-          projectiles: { 2: { type: 44 } },
+          players: { 1: { x: 1, y: 2, activeWeapon: 7, inventory: [7, 44], buttons: [1, 2, 8, 65536] } },
+          projectiles: { 2: { type: 44, entityID: 2, throwerID: 1 } },
           killEvents: { 3: { weaponId: 7 } },
           droppedEquipment: [{ type: 7 }],
         },
@@ -65,6 +65,23 @@ try {
   assert.equal(data.frames.value[0].projectiles[2].type, "44");
   assert.equal(data.frames.value[0].killEvents[3].weaponId, "7");
   assert.equal(data.bounds.value.minX, 1);
+  {
+  // Parsed button masks survive round loading and drive the grenade keyboard.
+  const { useGrenadeAnalyzer } = await server.ssrLoadModule(
+    "/src/composables/useGrenadeAnalyzer.ts",
+  );
+  const analyzer = useGrenadeAnalyzer(data.frames, data.replay);
+  analyzer.activateAnalyze(data.frames.value[0].projectiles[2]);
+  assert.deepEqual(analyzer.currentButtons.value, [1, 2, 8, 65536]);
+  assert.deepEqual(analyzer.buttonStates.value, {
+    forward: true, back: false, left: false, right: false,
+    attack: true, attack2: false, jump: true, duck: false, speed: true,
+  });
+  assert.equal(analyzer.throwType.value, "跳投");
+  data.frames.value[0].players[1].buttons = [];
+  assert.ok(Object.values(analyzer.buttonStates.value).every((pressed) => !pressed));
+  analyzer.exitAnalyze();
+  }
   // Navigating while a slow response is in flight must not restore the old match.
   delayFirst = true;
   const first = data.loadRoundData("one", 2);

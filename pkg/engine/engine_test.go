@@ -34,6 +34,9 @@ func TestParseDemoFile(t *testing.T) {
 		t.Fatal("missing replay metadata")
 	}
 	rounds, frames := 0, 0
+	buttonFrames := 0
+	buttonPlayers := make(map[int]bool)
+	buttonMasks := make(map[uint64]bool)
 	for {
 		round, err := e.ParseNextRound(nil)
 		if err != nil {
@@ -45,6 +48,17 @@ func TestParseDemoFile(t *testing.T) {
 		if round.Round > 0 && len(round.Frames) > 0 {
 			rounds++
 			frames += len(round.Frames)
+			for _, frame := range round.Frames {
+				for id, player := range frame.Players {
+					if len(player.Buttons) > 0 {
+						buttonFrames++
+						buttonPlayers[id] = true
+					}
+					for _, mask := range player.Buttons {
+						buttonMasks[mask] = true
+					}
+				}
+			}
 		}
 	}
 	meta, err = e.BackfillMeta(meta)
@@ -54,5 +68,8 @@ func TestParseDemoFile(t *testing.T) {
 	if rounds == 0 || frames == 0 || len(meta.ServerPlayer) == 0 {
 		t.Fatal("no playable rounds or players")
 	}
-	t.Logf("map=%s rounds=%d frames=%d", meta.MapName, rounds, frames)
+	if buttonFrames == 0 {
+		t.Fatal("no player button states exported for grenade analysis")
+	}
+	t.Logf("map=%s rounds=%d frames=%d buttonFrames=%d buttonPlayers=%d masks=%v", meta.MapName, rounds, frames, buttonFrames, len(buttonPlayers), buttonMasks)
 }

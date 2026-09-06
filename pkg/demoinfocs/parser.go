@@ -134,6 +134,7 @@ type parser struct {
 	stringTables          []*msg.CSVCMsg_CreateStringTable                         // Contains all created sendtables, needed when updating them
 	delayedEventHandlers  []func()                                                 // Contains event handlers that need to be executed at the end of a tick (e.g. flash events because FlashDuration isn't updated before that)
 	pendingMessagesCache  []pendingMessage                                         // Cache for pending messages that need to be dispatched after the current tick
+	userCmdButtonStates   map[int32]userCmdButtons
 }
 
 // NetMessageCreator creates additional net-messages to be dispatched to net-message handlers.
@@ -539,6 +540,7 @@ func NewParserWithConfig(demostream io.Reader, config ParserConfig) Parser {
 	}
 	p.equipmentMapping = make(map[st.ServerClass]common.EquipmentType)
 	p.rawPlayers = make(map[int]*common.PlayerInfo)
+	p.userCmdButtonStates = make(map[int32]userCmdButtons)
 	p.triggers = make(map[int]*boundingBoxInformation)
 	p.demoInfoProvider = demoInfoProvider{parser: &p}
 	p.gameState = newGameState(p.demoInfoProvider)
@@ -574,6 +576,8 @@ func NewParserWithConfig(demostream io.Reader, config ParserConfig) Parser {
 	p.msgDispatcher.RegisterHandler(p.handleDemoFileHeader)
 	p.msgDispatcher.RegisterHandler(p.handleClassInfo)
 	p.msgDispatcher.RegisterHandler(p.handleStringTables)
+	p.msgDispatcher.RegisterHandler(p.handleUserCommandButtons)
+	p.msgDispatcher.RegisterHandler(p.handleUserCommandButtonCheckpoint)
 	p.msgDispatcher.RegisterHandler(p.handleFrameParsed)
 	p.msgDispatcher.RegisterHandler(p.gameState.handleIngameTickNumber)
 

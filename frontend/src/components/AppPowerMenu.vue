@@ -2,7 +2,6 @@
   <button ref="trigger" class="power-trigger" type="button" popovertarget="app-power-menu" aria-label="系统选项" aria-haspopup="menu" :aria-expanded="menuOpen" @keydown.up.prevent="openMenu">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg>
     <span v-if="!collapsed">系统选项</span>
-    <svg v-if="!collapsed" class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m7 14 5-5 5 5"/></svg>
   </button>
   <div id="app-power-menu" ref="menu" popover="auto" class="power-menu" role="menu" aria-label="系统选项" @toggle="onToggle" @keydown="onMenuKeydown">
     <button role="menuitem" @click="openSettings">
@@ -70,7 +69,6 @@ function onMenuKeydown(event: KeyboardEvent) {
 .power-trigger { display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; background: transparent; border: 0; border-radius: var(--ds-radius-sm); color: var(--ds-text-tertiary); font-size: 13px; cursor: pointer; }
 .power-trigger:hover, .power-trigger[aria-expanded="true"] { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
 svg { width: 18px; height: 18px; flex-shrink: 0; }
-.chevron { margin-left: auto; width: 14px; height: 14px; }
 .power-menu { position: fixed; inset: auto auto 64px 12px; margin: 0; width: 200px; padding: 5px; background: var(--ds-bg-secondary); border: 1px solid var(--ds-border-default); border-radius: var(--ds-radius-md); color: var(--ds-text-primary); box-shadow: var(--ds-shadow-lg); }
 .power-menu button { display: flex; align-items: center; gap: 10px; width: 100%; height: var(--sidebar-row-height); padding: 0 10px; background: transparent; border: 0; border-radius: var(--ds-radius-sm); color: var(--ds-text-secondary); font-size: 13px; cursor: pointer; text-align: left; }
 .power-menu button:hover, .power-menu button:focus-visible { background: var(--ds-surface-hover); }

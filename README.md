@@ -10,7 +10,7 @@
 
 ## 开始使用
 
-1. 下载并双击 [cs2-sandbox-v0.0.1.exe](release/cs2-sandbox-v0.0.1.exe)。
+1. 下载并双击 [cs2-sandbox-v0.0.2.exe](release/cs2-sandbox-v0.0.2.exe)。
 2. 在“Demo 库”点击“解析 DEMO”，粘贴本机 `.dem` 的完整路径。
 3. 解析完成后选择回合，进入 2D 播放器复盘。
 
@@ -44,4 +44,6 @@
 
 ## 版本
 
-当前版本：`v0.0.1` · Windows x64
+当前版本：`v0.0.2` · Windows x64
+
+修复道具解析模式下新版 Demo 的玩家按键状态缺失问题。已解析的旧缓存需要重新解析源 `.dem` 文件才能补齐按键数据。
