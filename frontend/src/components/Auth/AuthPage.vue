@@ -21,7 +21,7 @@
       <div class="auth-card">
         <!-- 品牌标题区 -->
         <div class="auth-card-brand-header">
-          <img src="/logo/logo.png" class="auth-card-brand-logo" alt="cs2-sandbox" @error="onLogoError" />
+          <img src="/logo/sandbox-icon.png" class="auth-card-brand-logo" alt="cs2-sandbox" @error="onLogoError" />
           <div class="auth-card-brand-text">
             <h1 class="auth-card-brand-title">cs2-sandbox</h1>
             <p class="auth-card-brand-sub">打职业呢？这样研究 Demo</p>
@@ -46,7 +46,7 @@
 
         <!-- 移动端 Logo（左侧隐藏时展示） -->
         <div class="auth-card-logo">
-          <img src="/logo/logo.png" class="auth-card-logo-img" alt="cs2-sandbox" @error="onLogoError" />
+          <img src="/logo/sandbox-icon.png" class="auth-card-logo-img" alt="cs2-sandbox" @error="onLogoError" />
           <span class="auth-card-logo-text">cs2-sandbox</span>
         </div>
 

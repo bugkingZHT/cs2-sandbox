@@ -5,7 +5,7 @@
       <!-- Sidebar Header -->
       <div class="sidebar-header">
         <div class="app-branding" v-show="!sidebarCollapsed">
-          <img src="/logo/logo.png" alt="cs2-sandbox" class="app-logo" @error="onLogoError" />
+          <img src="/logo/sandbox-icon.png" alt="cs2-sandbox" class="app-logo" @error="onLogoError" />
           <div class="app-title-group">
             <h1 class="app-title">cs2-sandbox</h1>
             <p class="app-subtitle">CS2 Demo Sandbox</p>
