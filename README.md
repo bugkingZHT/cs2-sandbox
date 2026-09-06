@@ -4,7 +4,7 @@
   <img src="frontend/public/logo/sandbox-icon.png" width="152" alt="cs2-sandbox 雪豹图标" />
 </p>
 
-<p align="center">从落点反查道具，从动作复刻投掷</p>
+<p align="center">CS2 Demo 复盘与分析沙盒</p>
 
 `cs2-sandbox` 是一个免安装的 Windows 小工具。双击 EXE，在浏览器中打开本地回放工作台，选择 `.dem` 文件即可开始复盘。Demo 不会上传，所有解析、播放和缓存都在你的电脑上完成。
 
