@@ -10,7 +10,7 @@
 
 ## 开始使用
 
-1. 下载并双击 [cs2-sandbox-v0.0.2.exe](release/cs2-sandbox-v0.0.2.exe)。
+1. 下载 [cs2-sandbox-v0.0.2.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/download/v0.0.2/cs2-sandbox-v0.0.2.exe)。
 2. 在“Demo 库”点击“解析 DEMO”，粘贴本机 `.dem` 的完整路径。
 3. 解析完成后选择回合，进入 2D 播放器复盘。
 
