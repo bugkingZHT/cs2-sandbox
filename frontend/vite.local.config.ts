@@ -2,8 +2,12 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { resolve } from "node:path";
 import { cpSync, renameSync, writeFileSync } from "node:fs";
+import { readAppVersion } from "./git-version";
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(readAppVersion(resolve(__dirname, ".."))),
+  },
   plugins: [
     vue({ template: { transformAssetUrls: false } }),
     {

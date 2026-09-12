@@ -6,7 +6,7 @@
     "dev": "vite --config vite.local.config.ts",
     "build": "vite build --config vite.local.config.ts",
     "preview": "vite preview --config vite.local.config.ts",
-    "test:local": "node test-local-data.mjs"
+    "test:local": "node test-local-data.mjs && node test-batch-import.mjs"
   },
   "dependencies": {
     "pixi.js": "^8.1.0",

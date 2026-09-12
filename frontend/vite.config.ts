@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import { FRONTEND_VERSION } from './src/config/version';
+import { readAppVersion } from './git-version';
 
 export default defineConfig({
   plugins: [vue()],
   define: {
+    __APP_VERSION__: JSON.stringify(readAppVersion(resolve(__dirname, '..'))),
     __FRONTEND_VERSION__: JSON.stringify(FRONTEND_VERSION),
   },
   resolve: {

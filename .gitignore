@@ -20,6 +20,7 @@ go.work
 
 # Build artifacts
 /bin/
+/release/
 
 # Test binary, built with `go test -c`
 *.test

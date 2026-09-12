@@ -78,7 +78,10 @@ try {
     attack: true, attack2: false, jump: true, duck: false, speed: true,
   });
   assert.equal(analyzer.throwType.value, "跳投");
-  data.frames.value[0].players[1].buttons = [];
+  // Frame data uses shallowRef: publish a new array, as real round loading does.
+  data.frames.value = data.frames.value.map(frame => ({ ...frame, players: {
+    ...frame.players, 1: { ...frame.players[1], buttons: [] },
+  } }));
   assert.ok(Object.values(analyzer.buttonStates.value).every((pressed) => !pressed));
   analyzer.exitAnalyze();
   }

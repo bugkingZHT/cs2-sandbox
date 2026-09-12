@@ -9,6 +9,8 @@ try {
  if (!$SkipInstall) { pnpm install --frozen-lockfile; if ($LASTEXITCODE) { throw 'Dependency installation failed.' } }
  node test-local-data.mjs
  if ($LASTEXITCODE) { throw 'Local frontend adapter tests failed.' }
+ node test-batch-import.mjs
+ if ($LASTEXITCODE) { throw 'Batch import frontend tests failed.' }
  node node_modules/vite/bin/vite.js build --config vite.local.config.ts
  if ($LASTEXITCODE) { throw 'Frontend build failed.' }
 } finally { Pop-Location }
