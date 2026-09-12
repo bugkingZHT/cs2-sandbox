@@ -2,12 +2,20 @@
   <Teleport to="body">
     <div class="demo-import-overlay" @keydown="onKeydown" @dragover.prevent @drop.prevent>
       <section ref="dialog" class="demo-import-dialog" role="dialog" aria-modal="true" aria-labelledby="demo-import-title">
-        <h2 id="demo-import-title">解析 DEMO</h2>
+        <div class="demo-import-heading">
+          <h2 id="demo-import-title">解析 DEMO</h2>
+          <span class="demo-import-map-info">
+            <button type="button" class="demo-import-info-button" aria-label="查看支持的地图" aria-describedby="demo-import-supported-maps">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".8" fill="currentColor" stroke="none"/></svg>
+            </button>
+            <span id="demo-import-supported-maps" class="demo-import-map-tooltip" role="tooltip"><strong>支持的地图</strong><span>{{ supportedMapsText }}</span></span>
+          </span>
+        </div>
         <p class="demo-import-subtitle">文件仅在本机处理，不会上传到云端。</p>
         <input ref="fileInput" class="demo-import-input" type="file" accept=".dem,.zip" multiple tabindex="-1" aria-label="选择 Demo 或 ZIP 文件" :disabled="submitting" @change="onFileChange" />
         <button
           ref="pickerButton" type="button" class="demo-import-dropzone" :class="{ 'is-dragover': dragDepth > 0 }"
-          :disabled="submitting" aria-describedby="demo-import-supported-maps"
+          :disabled="submitting"
           @click="fileInput?.click()" @dragenter.prevent="dragDepth++" @dragleave.prevent="dragDepth = Math.max(0, dragDepth - 1)"
           @dragover.prevent @drop.prevent.stop="onDrop"
         >
@@ -26,7 +34,6 @@
             </li>
           </ul>
         </div>
-        <p id="demo-import-supported-maps" class="demo-import-supported-maps">支持的地图：{{ supportedMapsText }}。</p>
         <div v-if="parsed.length || duplicates.length" class="demo-import-notice" role="status">
           <p v-if="parsed.length">以下文件曾经解析过或已在解析队列中，将忽略对这些文件的解析：</p>
           <ul v-if="parsed.length"><li v-for="name in parsed" :key="name">{{ name }}</li></ul>
@@ -121,7 +128,15 @@ onBeforeUnmount(() => previousFocus?.focus());
 <style scoped>
 .demo-import-overlay { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 20px; background: var(--ds-bg-overlay); }
 .demo-import-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; background: var(--ds-bg-secondary); border: 1px solid var(--ds-border-default); border-radius: 12px; padding: 24px; color: var(--ds-text-primary); box-shadow: 0 24px 80px #0008; }
-.demo-import-dialog h2 { margin: 0 0 6px; font-size: 20px; }
+.demo-import-heading { position: relative; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.demo-import-dialog h2 { margin: 0; font-size: 20px; }
+.demo-import-map-info { display: inline-flex; }
+.demo-import-info-button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--ds-text-tertiary); cursor: help; }
+.demo-import-info-button:hover, .demo-import-info-button:focus-visible { color: var(--ds-text-primary); background: var(--ds-bg-tertiary); }
+.demo-import-info-button:focus-visible { outline: 1px solid var(--ds-border-default); outline-offset: 2px; }
+.demo-import-map-tooltip { position: absolute; top: 100%; left: 0; z-index: 1; box-sizing: border-box; width: min(320px, 100%); padding: 10px 12px; border: 1px solid var(--ds-border-default); border-radius: 7px; background: var(--ds-bg-tertiary); box-shadow: 0 6px 20px #0004; color: var(--ds-text-secondary); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; visibility: hidden; opacity: 0; }
+.demo-import-map-tooltip strong { display: block; margin-bottom: 4px; color: var(--ds-text-primary); font-weight: 600; }
+.demo-import-map-info:hover .demo-import-map-tooltip, .demo-import-map-info:focus-within .demo-import-map-tooltip { visibility: visible; opacity: 1; }
 .demo-import-subtitle { margin: 0 0 22px; color: var(--ds-text-tertiary); font-size: 13px; }
 .demo-import-input { display: none; }
 .demo-import-dropzone { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 14px; border: 1px dashed var(--ds-border-default); border-radius: 8px; background: var(--ds-bg-primary); color: var(--ds-text-secondary); font: inherit; cursor: pointer; }
@@ -129,7 +144,7 @@ onBeforeUnmount(() => previousFocus?.focus());
 .demo-import-dropzone span { font-size: 12px; }
 .demo-import-dropzone:hover, .demo-import-dropzone.is-dragover, .demo-import-dropzone:focus-visible { border-color: var(--ds-text-secondary); background: var(--ds-bg-tertiary); outline: none; }
 .demo-import-dropzone:disabled { cursor: wait; opacity: .6; }
-.demo-import-hint, .demo-import-supported-maps { margin: 12px 0 0; color: var(--ds-text-tertiary); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.demo-import-hint { margin: 12px 0 0; color: var(--ds-text-tertiary); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
 .demo-import-selection { margin-top: 16px; font-size: 12px; }
 .demo-import-selection-header { display: flex; align-items: center; justify-content: space-between; color: var(--ds-text-secondary); }
 .demo-import-selection button { background: none; border: none; padding: 4px 8px; color: var(--ds-text-secondary); cursor: pointer; }
