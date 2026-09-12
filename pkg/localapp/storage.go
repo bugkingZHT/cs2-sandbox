@@ -95,6 +95,15 @@ func (s *Server) loadLibrary() error {
 		if strings.TrimSpace(st.Name) == "" {
 			st.Name = id
 		}
+		if st.AliasName == "" {
+			st.AliasName = defaultAlias(st.Name)
+		}
+		if st.UploadName == "" {
+			origin := strings.SplitN(st.SourcePath, " / ", 2)[0]
+			if strings.EqualFold(filepath.Ext(origin), ".zip") {
+				st.UploadName = importName(origin)
+			}
+		}
 		s.library[id] = st
 	}
 	return nil

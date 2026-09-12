@@ -46,7 +46,7 @@ func (s *Server) prepareJob(source, name, origin string, size int64, owned bool)
 		return importJob{}, err
 	}
 	job := importJob{path: source, owned: owned, state: State{
-		ID: id, Name: name, SourcePath: origin, TotalBytes: size,
+		ID: id, Name: name, AliasName: defaultAlias(name), SourcePath: origin, TotalBytes: size,
 		Status: "queued", Message: "等待解析", Rounds: []int{},
 	}}
 	if strings.EqualFold(filepath.Ext(name), ".zip") {
@@ -66,16 +66,39 @@ func (s *Server) prepareJob(source, name, origin string, size int64, owned bool)
 	return job, nil
 }
 
-func (s *Server) enqueue(jobs []importJob) error {
+type importResult struct {
+	Items      []State  `json:"items"`
+	Skipped    []string `json:"skipped"`
+	Duplicates []string `json:"duplicates"`
+}
+
+func (s *Server) enqueueUnique(jobs []importJob) (importResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	result := importResult{Items: []State{}, Skipped: []string{}, Duplicates: []string{}}
 	if s.closed {
-		return fmt.Errorf("本地服务正在退出")
+		return result, fmt.Errorf("本地服务正在退出")
 	}
+	known := s.knownNames()
+	// Snapshot archive names before this batch, so siblings in one ZIP are accepted.
+	previous := s.knownNames()
 	for _, job := range jobs {
+		if known[job.state.Name] || (job.state.UploadName != "" && previous[job.state.UploadName]) {
+			if previous[job.state.Name] || previous[job.state.UploadName] {
+				result.Skipped = append(result.Skipped, job.state.Name)
+			} else {
+				result.Duplicates = append(result.Duplicates, job.state.Name)
+			}
+			os.RemoveAll(filepath.Join(s.root, job.state.ID))
+			continue
+		}
+		known[job.state.Name] = true
 		s.library[job.state.ID] = job.state
+		result.Items = append(result.Items, job.state)
+		if isPending(job.state.Status) {
+			s.queue = append(s.queue, job)
+		}
 	}
-	s.queue = append(s.queue, jobs...)
 	if !s.working && len(s.queue) > 0 {
 		s.working = true
 		s.state = s.queue[0].state
@@ -84,7 +107,7 @@ func (s *Server) enqueue(jobs []importJob) error {
 		s.wg.Add(1)
 		go s.runQueue(ctx)
 	}
-	return nil
+	return result, nil
 }
 
 func (s *Server) runQueue(ctx context.Context) {
@@ -93,7 +116,7 @@ func (s *Server) runQueue(ctx context.Context) {
 		s.mu.Lock()
 		if ctx.Err() != nil || len(s.queue) == 0 {
 			for _, job := range s.queue {
-				st := job.state
+				st := s.library[job.state.ID]
 				st.Status, st.Message = "error", "导入已中断，请重新选择文件解析"
 				s.persist(st)
 				s.library[st.ID] = st
@@ -115,17 +138,12 @@ func (s *Server) runQueue(ctx context.Context) {
 		}
 		job := s.queue[0]
 		s.queue = s.queue[1:]
-		s.state = job.state
+		s.state = s.library[job.state.ID]
 		s.state.Status, s.state.Message = "parsing", "正在读取比赛…"
-		if strings.EqualFold(filepath.Ext(job.state.Name), ".zip") {
-			s.state.Status, s.state.Message = "extracting", "正在解压并查找 Demo…"
-		}
 		s.library[job.state.ID] = s.state
 		s.mu.Unlock()
 
-		if strings.EqualFold(filepath.Ext(job.state.Name), ".zip") {
-			s.expandArchive(ctx, job)
-		} else if f, err := os.Open(job.path); err != nil {
+		if f, err := os.Open(job.path); err != nil {
 			s.importError(job.state.ID, err)
 		} else {
 			// Exactly one engine runs at a time, including after a parser panic.
@@ -235,18 +253,69 @@ func (s *Server) importFiles(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("请至少选择一个 .dem 或 .zip 文件"), 400)
 		return
 	}
-	if err := s.enqueue(jobs); err != nil {
+	// Inspect archives before replying so the modal can report duplicates found
+	// inside ZIPs too. Actual Demo parsing still runs in the background queue.
+	s.mu.Lock()
+	known := s.knownNames()
+	s.mu.Unlock()
+	skipped := []string{}
+	duplicates := []string{}
+	seenUploads := map[string]bool{}
+	expanded := []importJob{}
+	for _, job := range append([]importJob(nil), jobs...) {
+		if known[job.state.Name] {
+			skipped = append(skipped, job.state.Name)
+			os.RemoveAll(filepath.Join(s.root, job.state.ID))
+			continue
+		}
+		if seenUploads[job.state.Name] {
+			duplicates = append(duplicates, job.state.Name)
+			os.RemoveAll(filepath.Join(s.root, job.state.ID))
+			continue
+		}
+		seenUploads[job.state.Name] = true
+		if !strings.EqualFold(filepath.Ext(job.state.Name), ".zip") {
+			expanded = append(expanded, job)
+			continue
+		}
+		children := []importJob{}
+		err := s.collectArchive(r.Context(), job.path, job.state.Name, staging, 0, &archiveBudget{}, &children)
+		jobs = append(jobs, children...)
+		if err == nil && len(children) == 0 {
+			err = fmt.Errorf("ZIP 中没有找到 .dem 文件")
+		}
+		if err != nil {
+			for _, child := range children {
+				os.RemoveAll(filepath.Join(s.root, child.state.ID))
+			}
+			job.state.Status, job.state.Message = "error", err.Error()
+			os.Remove(job.path)
+			if saveErr := s.persist(job.state); saveErr != nil {
+				fail(w, saveErr, 500)
+				return
+			}
+			expanded = append(expanded, job)
+			continue
+		}
+		for _, child := range children {
+			child.state.UploadName = job.state.Name
+			if err := s.persist(child.state); err != nil {
+				fail(w, err, 500)
+				return
+			}
+			expanded = append(expanded, child)
+		}
+		os.RemoveAll(filepath.Join(s.root, job.state.ID))
+	}
+	result, err := s.enqueueUnique(expanded)
+	if err != nil {
 		fail(w, err, 503)
 		return
 	}
 	accepted = true
-	items := make([]State, len(jobs))
-	for i, job := range jobs {
-		items[i] = job.state
-	}
-	send(w, struct {
-		Items []State `json:"items"`
-	}{items})
+	result.Skipped = append(skipped, result.Skipped...)
+	result.Duplicates = append(duplicates, result.Duplicates...)
+	send(w, result)
 }
 
 type archiveBudget struct {
@@ -332,36 +401,4 @@ func (s *Server) collectArchive(ctx context.Context, archivePath, origin, stagin
 		}
 	}
 	return nil
-}
-
-func (s *Server) expandArchive(ctx context.Context, archive importJob) {
-	staging, err := os.MkdirTemp(s.root, ".extract-")
-	if err != nil {
-		s.importError(archive.state.ID, err)
-		return
-	}
-	defer os.RemoveAll(staging)
-	jobs := []importJob{}
-	err = s.collectArchive(ctx, archive.path, archive.state.Name, staging, 0, &archiveBudget{}, &jobs)
-	if err == nil && len(jobs) == 0 {
-		err = fmt.Errorf("ZIP 中没有找到 .dem 文件")
-	}
-	if err != nil {
-		for _, job := range jobs {
-			os.RemoveAll(filepath.Join(s.root, job.state.ID))
-		}
-		s.importError(archive.state.ID, err)
-		return
-	}
-	s.mu.Lock()
-	for _, job := range jobs {
-		s.library[job.state.ID] = job.state
-	}
-	// Parse this archive's demos before advancing to the next uploaded file.
-	s.queue = append(jobs, s.queue...)
-	delete(s.library, archive.state.ID)
-	s.state = jobs[0].state
-	s.mu.Unlock()
-	// The expanded demos now own their individual inputs and library records.
-	os.RemoveAll(filepath.Join(s.root, archive.state.ID))
 }

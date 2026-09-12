@@ -10,6 +10,8 @@ import { localAPI } from "@/local/api";
 interface LocalState {
   id: string;
   name: string;
+  alias_name?: string;
+  uploadName?: string;
   status: string;
   message: string;
   progress: number;
@@ -31,6 +33,7 @@ const replayRouteError = ref<"not_found" | null>(null);
 let submitting = false;
 let polling: Promise<void> | undefined;
 let activeRequest = 0;
+let libraryRevision = 0;
 const cache = new Map<string, ReplayRound>();
 
 export function normalizeLocalRound(round: ReplayRound): ReplayRound {
@@ -49,7 +52,10 @@ export function normalizeLocalRound(round: ReplayRound): ReplayRound {
   return round;
 }
 async function refreshLibrary() {
-  states.value = await localAPI<LocalState[]>("library");
+  const revision = libraryRevision;
+  const library = await localAPI<LocalState[]>("library");
+  if (revision !== libraryRevision) return;
+  states.value = library;
   rebuildLibrary();
   const active = states.value.find(s => s.status === "parsing" || s.status === "extracting")
     || states.value.find(s => s.status === "queued");
@@ -67,6 +73,7 @@ function rebuildLibrary() {
       id: s.id,
       timestamp: s.meta?.uploadTime || 0,
       fileName: s.name.replace(/\.dem$/i, ""),
+      alias_name: s.alias_name || s.name.replace(/\.(dem|zip)$/i, ""),
       frames: [],
       status: s.status === "ready" ? 1 : s.status === "error" ? -1 : 0,
       parsingProgress: s.progress || 0,
@@ -145,6 +152,8 @@ async function loadRoundData(uuid: string, n: number) {
 async function parseDemo(source: string | File[]) {
   if (submitting || (typeof source === "string" && parsing.value)) throw new Error("请等待当前文件导入完成");
   submitting = true;
+  let skipped: string[] = [];
+  let duplicates: string[] = [];
   try {
     if (typeof source === "string") {
       const st = await localAPI<LocalState>("open", { path: source });
@@ -153,12 +162,24 @@ async function parseDemo(source: string | File[]) {
       if (!source.length) throw new Error("请至少选择一个 .dem 或 .zip 文件");
       const form = new FormData();
       for (const file of source) form.append("files", file, file.name);
-      const batch = await localAPI<{ items: LocalState[] }>("import", form);
+      const batch = await localAPI<{ items: LocalState[]; skipped?: string[]; duplicates?: string[] }>("import", form);
+      skipped = batch.skipped || [];
+      duplicates = batch.duplicates || [];
+      ++libraryRevision;
       for (const st of batch.items) applyState(st);
     }
     error.value = null;
     void watchParsing();
+    return { skipped, duplicates };
   } finally { submitting = false; }
+}
+
+async function renameDemo(id: string, alias_name: string) {
+  const st = await localAPI<LocalState>("rename", { id, alias_name });
+  ++libraryRevision;
+  states.value = states.value.map(s => s.id === st.id ? st : s);
+  rebuildLibrary();
+  if (replay.value?.id === st.id) replay.value = { ...replay.value, alias_name: st.alias_name };
 }
 function watchParsing(): Promise<void> {
   return (polling ||= pollParsing().finally(() => {
@@ -226,6 +247,10 @@ const data = {
   currentRoundNumber,
   replayRouteError,
   parseDemo,
+  renameDemo,
+  knownImportNames: computed(() => [...new Set(states.value
+    .filter(s => ["ready", "queued", "extracting", "parsing"].includes(s.status))
+    .flatMap(s => s.uploadName ? [s.name, s.uploadName] : [s.name]))]),
   loadRoundData,
   loadReplayByLocal: loadRoundData,
   deleteDemoByUuid,

@@ -159,6 +159,7 @@ export interface ReplayMeta {
   
   // 文件信息字段（必须在 backfill 时保持不变）
   fileName?: string; // 原始上传文件名（不带.dem后缀）
+  alias_name?: string; // 用户可编辑的显示名称
   originPath?: string; // 原始上传文件路径（完整路径）
   
   // 解析状态统一字段

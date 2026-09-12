@@ -23,6 +23,8 @@ import (
 type State struct {
 	ID         string             `json:"id"`
 	Name       string             `json:"name"`
+	AliasName  string             `json:"alias_name"`
+	UploadName string             `json:"uploadName,omitempty"`
 	Status     string             `json:"status"`
 	Message    string             `json:"message"`
 	Progress   int                `json:"progress"`
@@ -109,6 +111,7 @@ func (s *Server) Handler(assets fs.FS) http.Handler {
 	mux.HandleFunc("/api/round", s.round)
 	mux.HandleFunc("/api/library", s.list)
 	mux.HandleFunc("/api/remove", s.remove)
+	mux.HandleFunc("/api/rename", s.rename)
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(405)
@@ -228,9 +231,14 @@ func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 		fail(w, err, 500)
 		return
 	}
-	if err := s.enqueue([]importJob{job}); err != nil {
+	result, err := s.enqueueUnique([]importJob{job})
+	if err != nil {
 		os.RemoveAll(filepath.Join(s.root, job.state.ID))
 		fail(w, err, 503)
+		return
+	}
+	if len(result.Skipped) > 0 {
+		fail(w, fmt.Errorf("曾经解析过或已在队列中，将忽略解析：%s", job.state.Name), 409)
 		return
 	}
 	send(w, job.state)

@@ -255,19 +255,8 @@
                 {{ String(scoreLeftRightMap[demo.id ?? ''].leftScore).padStart(2, '0') }} : {{ String(scoreLeftRightMap[demo.id ?? ''].rightScore).padStart(2, '0') }}
               </template>
             </span>
-            <span class="demo-bar-teams-col">
-              <template v-if="demo.status === 1 && scoreLeftRightMap[demo.id ?? '']">
-                <img
-                  v-if="scoreLeftRightMap[demo.id ?? ''].isWinner"
-                  src="/icons/winner.svg"
-                  alt=""
-                  class="demo-bar-winner-icon"
-                />
-                <span class="demo-bar-teams-text">{{ scoreLeftRightMap[demo.id ?? ''].leftTeam }} / {{ scoreLeftRightMap[demo.id ?? ''].rightTeam }}</span>
-              </template>
-            </span>
-            <div class="demo-bar-spacer" aria-hidden="true"></div>
-            <span class="demo-bar-file">{{ demo.fileName || '-' }}</span>
+            <DemoAliasName :id="demo.id ?? ''" :name="demo.alias_name || demo.fileName || '-'" />
+            <span class="demo-bar-file" :title="demo.fileName || '-'">{{ demo.fileName || '-' }}</span>
             <span class="demo-bar-time">{{ demo.uploadTime ? formatAbsoluteTime(demo.uploadTime) : '-' }}</span>
           </div>
           <!-- Parsing progress on bar -->
@@ -377,6 +366,7 @@ import { getRoundResult, getRoundResultIcon, shouldIconBeFirst, roundMatchesEcon
 import { navigate, getQuery, replaceLocation, pathRef, searchRef, getReplayerPlayingLocal } from '@/location';
 import { isMobileBrowser } from '@/composables/browserUtils';
 import DemoModal from '@/components/DemoLibrary/DemoModal.vue';
+import DemoAliasName from '@/components/DemoLibrary/DemoAliasName.vue';
 
 const props = defineProps<{
   demoList: ReplayData[];
@@ -1398,10 +1388,10 @@ const scoreLeftRightMap = computed(() => {
   overflow: hidden;
 }
 
-/* 主信息区：地图 | 比分(左绿右红渐变) | icon+teamA/teamB(亮白底) | 空站位 | 文件名 | 时间 */
+/* 主信息区：地图 | 比分 | 可编辑名称 | 原始文件名 | 时间 */
 .demo-bar-meta {
   display: grid;
-  grid-template-columns: 120px auto auto minmax(0, 1fr) minmax(0, 2fr) 135px;
+  grid-template-columns: 120px auto minmax(0, 1.6fr) minmax(0, 1fr) 135px;
   align-items: center;
   column-gap: 22px;
   row-gap: var(--ds-space-md);
@@ -1409,10 +1399,6 @@ const scoreLeftRightMap = computed(() => {
   min-width: 0;
   line-height: 1.4;
   overflow: hidden;
-}
-
-.demo-bar-spacer {
-  min-width: 0;
 }
 
 .demo-bar-map {
@@ -1442,47 +1428,15 @@ const scoreLeftRightMap = computed(() => {
   white-space: nowrap;
 }
 
-/* 队伍列：icon + teamA / teamB，Montserrat */
-.demo-bar-teams-col {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: var(--gh-text);
-  border-radius: 6px;
-  padding: 4px 10px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  min-width: 0;
-}
-
-.demo-bar-winner-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  object-fit: contain;
-  filter: brightness(0) saturate(100%) invert(77%) sepia(52%) saturate(500%) hue-rotate(5deg);
-}
-
-.demo-bar-teams-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
 .demo-bar-file {
   color: var(--gh-text-muted);
   font-size: 12px;
   font-weight: 500;
   min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.01em;
   justify-self: end;
   text-align: right;
 }

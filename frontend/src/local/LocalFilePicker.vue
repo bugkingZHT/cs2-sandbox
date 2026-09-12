@@ -27,11 +27,19 @@
           </ul>
         </div>
         <p id="demo-import-supported-maps" class="demo-import-supported-maps">支持的地图：{{ supportedMapsText }}。</p>
+        <div v-if="parsed.length || duplicates.length" class="demo-import-notice" role="status">
+          <p v-if="parsed.length">以下文件曾经解析过或已在解析队列中，将忽略对这些文件的解析：</p>
+          <ul v-if="parsed.length"><li v-for="name in parsed" :key="name">{{ name }}</li></ul>
+          <p v-if="duplicates.length">以下文件名重复，将忽略重复项，仅解析一次：</p>
+          <ul v-if="duplicates.length"><li v-for="name in duplicates" :key="name">{{ name }}</li></ul>
+        </div>
+        <p v-if="completed" class="demo-import-hint">本批导入已处理，重复文件已忽略。</p>
         <p v-if="error" class="demo-import-error" role="alert">{{ error }}</p>
-        <p v-if="submitting" class="demo-import-hint" role="status">正在将 {{ files.length }} 个文件加入本机解析队列…</p>
+        <p v-if="submitting" class="demo-import-hint" role="status">正在接收文件、检查 ZIP 内容并去重，请稍候…</p>
         <div class="demo-import-footer">
-          <button type="button" class="ds-btn" :disabled="submitting" @click="close">取消</button>
-          <button type="button" class="ds-btn ds-btn-primary" :disabled="submitting || !files.length" @click="submit">{{ submitting ? '正在导入…' : '开始解析' }}</button>
+          <button type="button" class="ds-btn" :disabled="submitting" @click="close">关闭</button>
+          <button v-if="completed" type="button" class="ds-btn ds-btn-primary" @click="emit('accepted')">完成</button>
+          <button v-else type="button" class="ds-btn ds-btn-primary" :disabled="submitting || !files.length" @click="submit">{{ submitting ? '正在导入…' : '开始解析' }}</button>
         </div>
       </section>
     </div>
@@ -42,13 +50,17 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { SUPPORTED_PARSING_MAP_NAMES } from "@/config/map";
 import { mergeImportFiles, fileKey, formatSize } from "@/local/importFiles";
+import { useReplayData } from "@/composables/useReplayData";
 
 const supportedMapsText = SUPPORTED_PARSING_MAP_NAMES.map(name => name.replace(/^de_/, "")).join("、");
-const props = defineProps<{ start: (files: File[]) => Promise<void> }>();
+const props = defineProps<{ start: (files: File[]) => Promise<{ skipped: string[]; duplicates: string[] }> }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "accepted"): void }>();
 const files = ref<File[]>([]);
 const error = ref("");
 const submitting = ref(false);
+const completed = ref(false);
+const parsed = ref<string[]>([]), duplicates = ref<string[]>([]);
+const { knownImportNames, refreshLibrary } = useReplayData();
 const dragDepth = ref(0);
 const dialog = ref<HTMLElement>();
 const fileInput = ref<HTMLInputElement>();
@@ -58,8 +70,11 @@ const previousFocus = document.activeElement as HTMLElement | null;
 
 function addFiles(incoming: File[]) {
   if (submitting.value) return;
-  const result = mergeImportFiles(files.value, incoming);
+  completed.value = false;
+  const result = mergeImportFiles(files.value, incoming, knownImportNames.value);
   files.value = result.files;
+  parsed.value = [...new Set([...parsed.value, ...result.parsed])];
+  duplicates.value = [...new Set([...duplicates.value, ...result.duplicates])];
   error.value = result.rejected.length ? `已忽略不支持的文件：${result.rejected.join("、")}。请选择 .dem 或 .zip。` : "";
 }
 function onFileChange(event: Event) {
@@ -77,8 +92,13 @@ async function submit() {
   submitting.value = true;
   error.value = "";
   try {
-    await props.start([...files.value]);
-    emit("accepted");
+    const result = await props.start([...files.value]);
+    files.value = [];
+    if (result.skipped.length || result.duplicates.length) {
+      parsed.value = [...new Set([...parsed.value, ...result.skipped])];
+      duplicates.value = [...new Set([...duplicates.value, ...result.duplicates])];
+      completed.value = true;
+    } else emit("accepted");
   } catch (e) { error.value = e instanceof Error ? e.message : String(e); }
   finally { submitting.value = false; }
 }
@@ -91,7 +111,10 @@ function onKeydown(event: KeyboardEvent) {
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
-onMounted(() => pickerButton.value?.focus());
+onMounted(() => {
+  pickerButton.value?.focus();
+  void refreshLibrary().catch(e => { error.value = String(e); });
+});
 onBeforeUnmount(() => previousFocus?.focus());
 </script>
 
@@ -117,5 +140,8 @@ onBeforeUnmount(() => previousFocus?.focus());
 .demo-import-filename { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .demo-import-size { color: var(--ds-text-tertiary); white-space: nowrap; }
 .demo-import-error { margin: 14px 0 0; color: var(--ds-danger); font-size: 13px; overflow-wrap: anywhere; }
+.demo-import-notice { margin-top: 14px; padding: 10px 14px; border: 1px solid var(--ds-border-default); border-radius: 6px; color: var(--ds-text-secondary); background: var(--ds-bg-tertiary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.demo-import-notice p { margin: 0; }
+.demo-import-notice ul { margin: 6px 0; padding-left: 18px; max-height: 140px; overflow-y: auto; }
 .demo-import-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
 </style>
