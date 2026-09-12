@@ -48,15 +48,6 @@
         @clear="clipRounds = []"
       />
     </Teleport>
-    <Teleport v-if="teleportReady" to="#replay-settings-content">
-      <fieldset class="map-settings">
-        <legend>地图显示</legend>
-        <label><span>玩家</span><input type="checkbox" v-model="showMapPlayers" /></label>
-        <label><span>投掷物</span><input type="checkbox" v-model="showMapProjectiles" /></label>
-        <label><span>掉落道具</span><input type="checkbox" v-model="showMapDropped" /></label>
-        <label><span>C4</span><input type="checkbox" v-model="showMapBomb" /></label>
-      </fieldset>
-    </Teleport>
     <div class="viewer-main">
     <!-- Main Content: Map and Timeline -->
     <section class="map-panel">
@@ -599,6 +590,7 @@ import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaReco
 import { GRENADE_TYPES, findGrenadeLandings, type GrenadeMatch, type MapArea } from '@/composables/grenadeSearch';
 import { fetchLocalRound } from '@/composables/useReplayData';
 import { useReplayData } from '@/composables/useReplayData';
+import { useMapDisplaySettings } from '@/composables/useMapDisplaySettings';
 import { useClipMerge } from '@/composables/useClipMerge';
 import { useGrenadeAnalyzer } from '@/composables/useGrenadeAnalyzer';
 import type { Frame, PlayerState, ReplayData, ProjectileState, ClipRoundConfig } from '@/types/replay';
@@ -620,10 +612,7 @@ function toggleClipMode() {
   if (searchMatches.value !== null) { resetGrenadeSearch(); return; }
   isClipMode.value = !isClipMode.value;
 }
-// 设置：地图上展示哪些元素（勾选=展示）。投掷/掉落/C4 为独立开关；玩家与卡片小眼睛共用 hiddenPlayerIds
-const showMapProjectiles = ref(true);
-const showMapDropped = ref(true);
-const showMapBomb = ref(true);
+const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb } = useMapDisplaySettings();
 // 导演剪辑模式：多选回合在一条时间线播放（仅 local）
 const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
@@ -633,11 +622,17 @@ const clipDeletedPlayerIds = ref<Set<number>>(new Set());
 const hiddenPlayerIds = ref<Set<number>>(new Set());
 /** 进入道具解析前保存的隐藏状态，退出时恢复 */
 const hiddenPlayerIdsBeforeAnalyze = ref<Set<number> | null>(null);
-/** 设置里「玩家」取消勾选时保存的隐藏状态，勾选时恢复 */
-const hiddenPlayerIdsBeforeSettingsHideAll = ref<number[] | null>(null);
+
+// Revealing a player/team while all players are disabled keeps the others hidden.
+function enablePlayerVisibility() {
+  if (showMapPlayers.value) return;
+  hiddenPlayerIds.value = new Set(allPlayerIds.value);
+  showMapPlayers.value = true;
+}
 
 //切换玩家可见性（隐藏/显示）
 function togglePlayerVisibility(playerId: number) {
+  enablePlayerVisibility();
   const next = new Set(hiddenPlayerIds.value);
   if (next.has(playerId)) next.delete(playerId);
   else next.add(playerId);
@@ -646,7 +641,7 @@ function togglePlayerVisibility(playerId: number) {
 
 //检查玩家是否被隐藏
 function isPlayerHidden(playerId: number) {
-  return hiddenPlayerIds.value.has(playerId);
+  return !showMapPlayers.value || hiddenPlayerIds.value.has(playerId);
 }
 
 //从剪辑中移除玩家
@@ -672,7 +667,9 @@ async function copyPlayerPosition(p: PlayerState) {
   }
 }
 
-const hiddenPlayerIdsArray = computed(() => Array.from(hiddenPlayerIds.value));
+const hiddenPlayerIdsArray = computed(() => showMapPlayers.value
+  ? Array.from(hiddenPlayerIds.value)
+  : allPlayerIds.value);
 
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
@@ -774,7 +771,6 @@ watch(
     const s = replay.value?.replaySettings;
     if (!s) return;
     hiddenPlayerIds.value = new Set(s.hiddenPlayerIds ?? []);
-    hiddenPlayerIdsBeforeSettingsHideAll.value = null;
     showMapProjectiles.value = s.showMapProjectiles ?? true;
     showMapDropped.value = s.showMapDropped ?? true;
     showMapBomb.value = s.showMapBomb ?? true;
@@ -783,29 +779,6 @@ watch(
 );
 
 const allPlayerIds = computed(() => effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? []);
-/** 设置-玩家：与卡片小眼睛共用逻辑。取消勾选=全部隐藏，勾选=恢复之前状态 */
-const showMapPlayers = computed({
-  get: () => {
-    const all = allPlayerIds.value;
-    return all.length === 0 || !all.every((id) => hiddenPlayerIds.value.has(id));
-  },
-  set: (v: boolean) => {
-    const all = allPlayerIds.value;
-    if (all.length === 0) return;
-    if (v) {
-      const saved = hiddenPlayerIdsBeforeSettingsHideAll.value;
-      if (saved != null) {
-        hiddenPlayerIds.value = new Set(saved);
-        hiddenPlayerIdsBeforeSettingsHideAll.value = null;
-      } else {
-        hiddenPlayerIds.value = new Set();
-      }
-    } else {
-      hiddenPlayerIdsBeforeSettingsHideAll.value = Array.from(hiddenPlayerIds.value);
-      hiddenPlayerIds.value = new Set(all);
-    }
-  },
-});
 
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
 type CoverType = 'route_loading' | 'cloud_download' | 'not_found' | 'forbidden' | 'no_data' | 'none';
@@ -1238,9 +1211,10 @@ watch(
   },
   { immediate: true }
 );
-const isLeftTeamHidden = computed(() => leftTeamIdsRef.value.length > 0 && leftTeamIdsRef.value.every((id) => hiddenPlayerIds.value.has(id)));
-const isRightTeamHidden = computed(() => rightTeamIdsRef.value.length > 0 && rightTeamIdsRef.value.every((id) => hiddenPlayerIds.value.has(id)));
+const isLeftTeamHidden = computed(() => leftTeamIdsRef.value.length > 0 && leftTeamIdsRef.value.every(isPlayerHidden));
+const isRightTeamHidden = computed(() => rightTeamIdsRef.value.length > 0 && rightTeamIdsRef.value.every(isPlayerHidden));
 function toggleLeftTeamVisibility() {
+  enablePlayerVisibility();
   const ids = getPlayerIdsFromContainer(upperTeamCardsRef.value);
   const allHidden = ids.length > 0 && ids.every((id) => hiddenPlayerIds.value.has(id));
   const next = new Set(hiddenPlayerIds.value);
@@ -1250,6 +1224,7 @@ function toggleLeftTeamVisibility() {
   syncTeamIdsFromDom();
 }
 function toggleRightTeamVisibility() {
+  enablePlayerVisibility();
   const ids = getPlayerIdsFromContainer(lowerTeamCardsRef.value);
   const allHidden = ids.length > 0 && ids.every((id) => hiddenPlayerIds.value.has(id));
   const next = new Set(hiddenPlayerIds.value);
@@ -1930,11 +1905,6 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.7);
 }
 
-.map-settings { border: 0; padding: 0; margin: 0; min-width: 0; }
-.map-settings legend { padding: 0 0 var(--ds-space-sm); font-size: 12px; color: var(--ds-text-tertiary); }
-.map-settings label { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-lg); padding: var(--ds-space-md) 0; font-size: 13px; color: var(--ds-text-secondary); cursor: pointer; }
-.map-settings input { width: 16px; height: 16px; margin: 0; accent-color: var(--ds-primary); }
-.map-settings input:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 3px; }
 
 .team-cards-container {
   display: flex;

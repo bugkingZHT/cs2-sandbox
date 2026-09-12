@@ -47,7 +47,7 @@
       </div>
 
       <div class="sidebar-footer">
-        <AppPowerMenu :collapsed="sidebarCollapsed" :player-page="hasActiveReplay" @quit="quit" />
+        <AppPowerMenu :collapsed="sidebarCollapsed" @quit="quit" />
       </div>
     </aside>
 
