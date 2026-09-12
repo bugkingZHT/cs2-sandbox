@@ -10,7 +10,7 @@ import (
 )
 
 // Each replay is independently committed; an interrupted write cannot destroy
-// the rest of the library. No database, runtime installation or source copy.
+// the rest of the library. Uploaded source copies are temporary queue inputs.
 func writeJSONAtomic(path string, value any) error {
 	f, err := os.CreateTemp(filepath.Dir(path), ".write-*")
 	if err != nil {
@@ -63,9 +63,15 @@ func (s *Server) loadLibrary() error {
 			// Preserve the directory and expose a recoverable error, never silently erase it.
 			st = State{ID: id, Name: id, Status: "error", Message: "本地索引缺失或损坏，请重新解析源文件", Rounds: []int{}}
 		}
-		if st.Status == "parsing" {
+		if isPending(st.Status) {
 			st.Status = "error"
-			st.Message = "上次解析已中断，请重新选择源文件解析"
+			st.Message = "上次导入已中断，请重新选择文件解析"
+			// Only remove our fixed-name temporary inputs, never SourcePath.
+			os.Remove(filepath.Join(s.root, id, "source.dem"))
+			os.Remove(filepath.Join(s.root, id, "source.zip"))
+			if err := s.persist(st); err != nil {
+				return err
+			}
 		}
 		if st.Status == "ready" {
 			if st.Meta == nil || st.Meta.UUID == "" || len(st.Rounds) == 0 {

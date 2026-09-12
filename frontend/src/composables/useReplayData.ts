@@ -51,6 +51,11 @@ export function normalizeLocalRound(round: ReplayRound): ReplayRound {
 async function refreshLibrary() {
   states.value = await localAPI<LocalState[]>("library");
   rebuildLibrary();
+  const active = states.value.find(s => s.status === "parsing" || s.status === "extracting")
+    || states.value.find(s => s.status === "queued");
+  parsing.value = !!active;
+  parsingStatus.value = active?.message || "";
+  parsingProgress.value = active?.progress || 0;
 }
 function rebuildLibrary() {
   replayList.value = states.value
@@ -69,7 +74,7 @@ function rebuildLibrary() {
     }));
 }
 function applyState(st: LocalState) {
-  parsing.value = st.status === "parsing";
+  parsing.value = ["queued", "extracting", "parsing"].includes(st.status);
   parsingStatus.value = st.message;
   parsingProgress.value = st.progress || 0;
   if (st.id) {
@@ -137,30 +142,35 @@ async function loadRoundData(uuid: string, n: number) {
     if (request === activeRequest) loading.value = false;
   }
 }
-async function refreshState() {
-  const st = await localAPI<LocalState>("state");
-  applyState(st);
-  return st;
-}
-async function parseDemo(path: string) {
-  if (submitting || parsing.value) throw new Error("请等待当前 Demo 解析完成");
+async function parseDemo(source: string | File[]) {
+  if (submitting || (typeof source === "string" && parsing.value)) throw new Error("请等待当前文件导入完成");
   submitting = true;
   try {
-    const st = await localAPI<LocalState>("open", { path });
+    if (typeof source === "string") {
+      const st = await localAPI<LocalState>("open", { path: source });
+      applyState(st);
+    } else {
+      if (!source.length) throw new Error("请至少选择一个 .dem 或 .zip 文件");
+      const form = new FormData();
+      for (const file of source) form.append("files", file, file.name);
+      const batch = await localAPI<{ items: LocalState[] }>("import", form);
+      for (const st of batch.items) applyState(st);
+    }
     error.value = null;
-    applyState(st);
     void watchParsing();
   } finally { submitting = false; }
 }
 function watchParsing(): Promise<void> {
-  return (polling ||= pollParsing().finally(() => { polling = undefined; }));
+  return (polling ||= pollParsing().finally(() => {
+    polling = undefined;
+    if (parsing.value) void watchParsing();
+  }));
 }
 async function pollParsing() {
   try {
   while (parsing.value) {
       await new Promise((resolve) => setTimeout(resolve, 600));
-      const st = await refreshState();
-      if (st.status !== "parsing") break;
+      await refreshLibrary();
   }
   await refreshLibrary();
   } catch (e) {
@@ -195,7 +205,6 @@ function waitForInitialLoad() {
     loading.value = true;
     try {
       await refreshLibrary();
-      await refreshState();
       if (parsing.value) void watchParsing();
     } catch (e) {
       error.value = String(e);

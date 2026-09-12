@@ -8,10 +8,11 @@ export async function localAPI<T = any>(
   url: string,
   body?: unknown,
 ): Promise<T> {
+  const multipart = body instanceof FormData;
   const response = await fetch("/api/" + url, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "X-Local-Token": token, "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: multipart ? { "X-Local-Token": token } : { "X-Local-Token": token, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
   });
   const data = await response.json().catch(() => null);
   if (!response.ok)

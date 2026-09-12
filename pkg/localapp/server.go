@@ -43,6 +43,9 @@ type Server struct {
 	wg        sync.WaitGroup
 	unlock    func()
 	closeOnce sync.Once
+	queue     []importJob
+	working   bool
+	closed    bool
 	Shutdown  func()
 }
 
@@ -78,6 +81,7 @@ func (s *Server) Token() string { return s.token }
 func (s *Server) Close() {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
+		s.closed = true
 		if s.cancel != nil {
 			s.cancel()
 		}
@@ -101,6 +105,7 @@ func (s *Server) Handler(assets fs.FS) http.Handler {
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) { s.mu.Lock(); defer s.mu.Unlock(); send(w, s.state) })
 	mux.HandleFunc("/api/browse", s.browse)
 	mux.HandleFunc("/api/open", s.open)
+	mux.HandleFunc("/api/import", s.importFiles)
 	mux.HandleFunc("/api/round", s.round)
 	mux.HandleFunc("/api/library", s.list)
 	mux.HandleFunc("/api/remove", s.remove)
@@ -185,6 +190,15 @@ func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(405)
 		return
 	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		fail(w, fmt.Errorf("本地服务正在退出"), 503)
+		return
+	}
+	s.wg.Add(1)
+	s.mu.Unlock()
+	defer s.wg.Done()
 	var req struct {
 		Path string `json:"path"`
 	}
@@ -208,43 +222,21 @@ func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("无法读取该 Demo 文件"), 400)
 		return
 	}
-	s.mu.Lock()
-	if s.state.Status == "parsing" {
-		s.mu.Unlock()
-		f.Close()
-		fail(w, fmt.Errorf("请等待当前 Demo 解析完成"), 409)
-		return
-	}
-	// Keep earlier parsed matches available to the local Demo library.
-	b := make([]byte, 8)
-	rand.Read(b)
-	id := hex.EncodeToString(b)
-	if err = os.Mkdir(filepath.Join(s.root, id), 0700); err != nil {
-		s.mu.Unlock()
-		f.Close()
+	f.Close()
+	job, err := s.prepareJob(path, filepath.Base(path), path, st.Size(), false)
+	if err != nil {
 		fail(w, err, 500)
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
-	s.state = State{ID: id, Name: filepath.Base(path), SourcePath: path, Status: "parsing", Message: "正在读取比赛…", Rounds: []int{}, TotalBytes: st.Size()}
-	if err = s.persist(s.state); err != nil {
-		cancel()
-		s.state = State{Status: "idle", Rounds: []int{}}
-		s.mu.Unlock()
-		f.Close()
-		fail(w, err, 500)
+	if err := s.enqueue([]importJob{job}); err != nil {
+		os.RemoveAll(filepath.Join(s.root, job.state.ID))
+		fail(w, err, 503)
 		return
 	}
-	s.library[id] = s.state
-	s.wg.Add(1)
-	go s.parse(ctx, f, id)
-	send(w, s.state)
-	s.mu.Unlock()
+	send(w, job.state)
 }
 
 func (s *Server) parse(ctx context.Context, f *os.File, id string) {
-	defer s.wg.Done()
 	defer f.Close()
 	setError := func(err any) {
 		s.mu.Lock()
@@ -403,7 +395,7 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("回放不存在"), 404)
 		return
 	}
-	if s.library[req.ID].Status == "parsing" {
+	if isPending(s.library[req.ID].Status) {
 		fail(w, fmt.Errorf("解析中不能移除，请等待完成"), 409)
 		return
 	}

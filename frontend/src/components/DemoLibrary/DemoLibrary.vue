@@ -194,13 +194,13 @@
           </div>
         </div>
         <div class="library-actions">
-          <button class="ds-btn ds-btn-primary" @click="emit('open-local')" :disabled="parsing">
+          <button class="ds-btn ds-btn-primary" @click="emit('open-local')">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            <span>{{ parsing ? '解析中...' : '解析 DEMO' }}</span>
+            <span>{{ parsing ? '添加 DEMO' : '解析 DEMO' }}</span>
           </button>
         </div>
       </div>
@@ -216,7 +216,7 @@
     <!-- Empty State -->
     <div v-else-if="demoList.length === 0" class="ds-empty">
       <h3 class="ds-empty-title">暂无 Demo 文件</h3>
-      <p class="ds-empty-description">点击“解析 DEMO”读取本机文件</p>
+      <p class="ds-empty-description">点击“解析 DEMO”选择或拖入 .dem、.zip 文件</p>
     </div>
 
     <!-- Demo Bar List -->

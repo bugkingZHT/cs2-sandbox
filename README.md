@@ -10,8 +10,8 @@
 
 ## 开始使用
 
-1. 下载 [cs2-sandbox-v0.0.2.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/download/v0.0.2/cs2-sandbox-v0.0.2.exe)。
-2. 在“Demo 库”点击“解析 DEMO”，粘贴本机 `.dem` 的完整路径。
+1. 下载并双击 [cs2-sandbox-v0.0.2.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/download/v0.0.2/cs2-sandbox-v0.0.2.exe)。
+2. 在“Demo 库”点击“解析 DEMO”，多选或拖入 `.dem`、`.zip` 文件。ZIP 内各级目录及嵌套 ZIP 中的 Demo 会自动提取并依次解析；解析期间可继续添加文件。
 3. 解析完成后选择回合，进入 2D 播放器复盘。
 
 首次运行无需安装，也不需要登录。已经解析的回放会保存在本机；关闭后再次打开仍可直接播放。
@@ -44,7 +44,7 @@
 
 ## 完全本地
 
-- 不上传 Demo，不需要账号或网络服务。
+- 文件只传给本机服务，不上传到云端，不需要账号或外部网络服务。
 - 原始 `.dem` 文件不会被移动或删除。
 - 解析后的回放库和缓存保存在 `%LOCALAPPDATA%\cs2-sandbox\`。
 - 重复点击 EXE 只会唤起已有工具，不会启动多个本地服务。

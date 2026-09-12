@@ -252,21 +252,24 @@ const currentMapConfig = computed(() => {
   return config;
 });
 
-/** 加载地图 SVG 纹理。双层地图时加载主图 + 辅图。 */
+/** 加载地图纹理。SVG 提高栅格化分辨率，PNG 保持原始分辨率。 */
 async function loadMapTexture(): Promise<{ main: Texture; secondary?: Texture }> {
   const config = currentMapConfig.value;
   const dualLayer = isDualLayerMap(config);
 
   const mainTexture = await Assets.load({
     src: config.mapUrl,
-    data: { resolution: SVG_TEXTURE_RESOLUTION },
+    data: { resolution: config.mapUrl.endsWith('.svg') ? SVG_TEXTURE_RESOLUTION : 1 },
   });
 
   let secondary: Texture | undefined;
   if (dualLayer) {
     try {
-      const svg2Url = getSecondaryMapUrl(config);
-      secondary = await Assets.load({ src: svg2Url, data: { resolution: SVG_TEXTURE_RESOLUTION } });
+      const secondaryUrl = getSecondaryMapUrl(config);
+      secondary = await Assets.load({
+        src: secondaryUrl,
+        data: { resolution: secondaryUrl.endsWith('.svg') ? SVG_TEXTURE_RESOLUTION : 1 },
+      });
     } catch (e) {
       console.warn('[MapCanvas] 辅图加载失败，降级为单层显示', e);
     }
@@ -704,7 +707,8 @@ function getFitScaleAndCenter(): { fitScale: number; centerX: number; centerY: n
   const mapHeight = bounds.height;
   const fitScaleRaw = Math.min(width / mapWidth, height / mapHeight);
   const fitScale = dual ? 2 * fitScaleRaw * MAP_SCALE_FACTOR : fitScaleRaw * MAP_SCALE_FACTOR;
-  const centerX = dual ? -mapSize / 2 : 0;
+  // 按两张图的整体边界居中，避免完整并排的辅图被推到视口外。
+  const centerX = bounds.x + mapWidth / 2;
   const centerY = 0;
   return { fitScale, centerX, centerY };
 }

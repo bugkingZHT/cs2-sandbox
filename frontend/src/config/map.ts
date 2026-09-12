@@ -75,7 +75,7 @@ export const SVG_TEXTURE_RESOLUTION = 4;
 
 export interface MapConfig {
   name: string;
-  /** 底图 SVG 路径 */
+  /** 底图路径，支持 SVG / PNG */
   mapUrl: string;
   leftSideGroundMap?: string; // 左侧卡片背景图
   width: number;
@@ -93,7 +93,7 @@ export interface MapConfig {
     zLayerThreshold: number; // z > threshold 显示主图，否则辅图
     /** 主辅图重叠像素数，辅图向左偏移。0=完全并列，mapSize/2=一半重叠 */
     offset?: number;
-    /** 辅图 SVG 路径，未配置时默认为 ${mapName}_2.svg */
+    /** 辅图路径，未配置时默认为 ${mapName}_2.svg */
     mapUrl2?: string;
   };
   /** 辅图 x 范围，未配置时与主图 xRange 相同 */
@@ -128,12 +128,13 @@ export const MAP_PARSING_SUPPORT: Record<string, boolean> = {
   'de_ancient_v1': false,
   'de_ancient_v2': false,
   'de_anubis': true,
+  'de_cache': true,
   'de_dust': false,
   'de_dust2': true,
   'de_inferno': true,
   'de_mirage': true,
   'de_nuke': true,
-  'de_overpass': false,
+  'de_overpass': true,
   'de_train': false,
   'de_vertigo': false,
   'workshop_preview': false,
@@ -290,6 +291,16 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
       end: 3328
     }
   },
+  // 雷达坐标来源：SteamDatabase/GameTracking-CS2 的
+  // game/csgo/pak01_dir/resource/overviews/de_cache.txt（pos_x=-2000, pos_y=3250, scale=5.5）。
+  'de_cache': {
+    name: 'de_cache',
+    mapUrl: '/map/de_cache.png',
+    width: 1024,
+    height: 1024,
+    xRange: { start: -2000, end: 3632 },
+    yRange: { start: -2382, end: 3250 },
+  },
   'de_dust': {
     name: 'de_dust',
     mapUrl: '/map/de_dust.svg',
@@ -381,7 +392,7 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_overpass': {
     name: 'de_overpass',
-    mapUrl: '/map/de_overpass.svg',
+    mapUrl: '/map/de_overpass.png',
     leftSideGroundMap: '/leftSideGroundMap/de_overpass_left.png',
     width: 1024,
     height: 1024,
@@ -410,21 +421,23 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
   },
   'de_train': {
     name: 'de_train',
-    mapUrl: '/map/de_train.svg',
+    mapUrl: '/map/de_train.png',
     width: 1024,
     height: 1024,
     xRange: {
       start: -2308,
-      end: 1872.05
+      end: 1872.046848
     },
     yRange: {
-      start: -2102.05,
+      start: -2102.046848,
       end: 2078
-    }
+    },
+    // 游戏 overview 的 verticalsections 分界为 -50；两张完整雷达图并排展示。
+    dualLayer: { zLayerThreshold: -50, offset: 0, mapUrl2: '/map/de_train_lower.png' },
   },
   'de_vertigo': {
     name: 'de_vertigo',
-    mapUrl: '/map/de_vertigo.svg',
+    mapUrl: '/map/de_vertigo.png',
     leftSideGroundMap: '/leftSideGroundMap/de_vertigo_left.png',
     width: 1024,
     height: 1024,
@@ -435,7 +448,9 @@ export const MAP_CONFIGS: Record<string, MapConfig> = {
     yRange: {
       start: -2334,
       end: 1762
-    }
+    },
+    // 游戏 overview 的 verticalsections 分界为 11700。
+    dualLayer: { zLayerThreshold: 11700, offset: 0, mapUrl2: '/map/de_vertigo_lower.png' },
   },
   'workshop_preview': {
     name: 'workshop_preview',

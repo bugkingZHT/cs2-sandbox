@@ -23,11 +23,16 @@
     </header>
     <div id="replay-settings-content"></div>
     <p v-if="!playerPage" class="settings-empty">打开对局后，可在这里调整地图显示。</p>
+    <footer class="settings-version">
+      <span>当前版本</span>
+      <span>{{ appVersion }}</span>
+    </footer>
   </dialog>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+const appVersion = __APP_VERSION__;
 defineProps<{ collapsed: boolean; playerPage: boolean }>();
 defineEmits<{ quit: [] }>();
 const trigger = ref<HTMLButtonElement>();
@@ -81,5 +86,6 @@ svg { width: 18px; height: 18px; flex-shrink: 0; }
 .close-button { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--ds-radius-sm); background: transparent; color: var(--ds-text-tertiary); cursor: pointer; }
 .close-button:hover { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
 .settings-empty { font-size: 13px; color: var(--ds-text-tertiary); line-height: 1.6; }
+.settings-version { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-md); margin-top: var(--ds-space-lg); padding-top: var(--ds-space-md); border-top: 1px solid var(--ds-border-default); color: var(--ds-text-tertiary); font-size: 12px; }
 button:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: -2px; }
 </style>
