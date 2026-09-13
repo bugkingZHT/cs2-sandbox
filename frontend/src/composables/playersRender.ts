@@ -2,7 +2,7 @@ import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Frame, PlayerState, ReplayMeta } from '@/types/replay';
 import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
-import { MAP_CANVAS_ELEMENT_SIZES, PLAYER_DISPLAY_CONTROLS } from '@/config/map';
+import { MAP_CANVAS_ELEMENT_SIZES, PLAYER_DISPLAY_CONTROLS, playerHeightScale, type PlayerHeightReferences } from '@/config/map';
 
 /**
  * Player Render Module
@@ -52,6 +52,8 @@ let lastFrameIndex = 0;
 
 // Render context interface
 interface RenderContext {
+  heightReferences?: PlayerHeightReferences;
+  playerHeightScaling: boolean;
   playerSize: number;
   playerNameSize: number;
   playerLabelScale: number;
@@ -226,7 +228,9 @@ const updatePlayerSprite = (
 const playerWorldScale = (player: PlayerState, ctx: RenderContext): number => {
   const center = ctx.worldToMap(player.x, player.y, player.z);
   const edge = ctx.worldToMap(player.x + 1, player.y, player.z);
-  return Math.hypot(edge.x - center.x, edge.y - center.y) * ctx.playerSize / 100;
+  return Math.hypot(edge.x - center.x, edge.y - center.y) * ctx.playerSize / 100
+    * MAP_CANVAS_ELEMENT_SIZES.player.baseScale
+    * (ctx.playerHeightScaling ? playerHeightScale(player.z, ctx.heightReferences) : 1);
 };
 
 // Draw player graphics
@@ -395,6 +399,8 @@ const updateWeaponIcon = async (
 };
 
 export interface DrawPlayersForFrameOptions {
+  heightReferences?: PlayerHeightReferences;
+  playerHeightScaling?: boolean;
   playerSize?: number;
   playerNameSize?: number;
   playerLabelScale?: number;
@@ -415,6 +421,8 @@ export interface DrawPlayersForFrameOptions {
 // Main draw function for players
 export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
   const {
+    heightReferences,
+    playerHeightScaling = true,
     frame,
     meta,
     playerLayer,
@@ -440,6 +448,8 @@ export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
   }
 
   const ctx: RenderContext = {
+    heightReferences,
+    playerHeightScaling,
     playerSize,
     playerNameSize,
     playerLabelScale,

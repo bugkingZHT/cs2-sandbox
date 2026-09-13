@@ -146,6 +146,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { Application, Assets, Container, Sprite, type Texture } from 'pixi.js';
 import type { Frame, PlayerState, ProjectileState, WorldBounds, ProjectileRenderConfig, DroppedEquipment } from '@/types/replay';
 import { MAP_CONFIGS, DEFAULT_MAP, getSecondaryMapUrl, MAP_IMAGE_SIZE, LOGICAL_MAP_SIZE, SVG_TEXTURE_RESOLUTION, isDualLayerMap } from '@/config/map';
+import { createPlayerHeightCalibration } from '@/composables/playerHeight';
 import { MATCH_CONFIG, getDisplayTeam, isSecondHalf } from '@/config/game';
 import { EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { useMapConfig } from '@/composables/useMapConfig';
@@ -165,7 +166,7 @@ import { useMapDisplaySettings } from '@/composables/useMapDisplaySettings';
 import type { MapArea } from '@/composables/grenadeSearch';
 import DrawingBoard from './DrawingBoard.vue';
 
-const { playerSize, playerNameSize } = useMapDisplaySettings();
+const { playerSize, playerNameSize, playerHeightScaling } = useMapDisplaySettings();
 // Preserve the original fit-view text size, then keep it fixed through zoom and resize.
 let playerNameBaseScale = 0;
 
@@ -257,6 +258,13 @@ const currentMapConfig = computed(() => {
   console.log('[MapCanvas] 当前地图配置:', config.name);
   return config;
 });
+
+const calibratePlayerHeights = createPlayerHeightCalibration();
+const heightReferences = computed(() => calibratePlayerHeights(
+  props.frames,
+  props.replayMeta?.uuid ? `${props.replayMeta.uuid}:${currentMapName.value}` : undefined,
+  currentMapConfig.value.dualLayer?.zLayerThreshold,
+));
 
 /** 加载地图纹理。SVG 提高栅格化分辨率，PNG 保持原始分辨率。 */
 async function loadMapTexture(): Promise<{ main: Texture; secondary?: Texture }> {
@@ -895,6 +903,8 @@ const drawPlayersForFrame = () => {
 
   // Draw players using external renderer（隐藏大卡上勾选隐藏的玩家；设置-玩家取消勾选=全部隐藏，由 hiddenPlayerIds 传入）
   drawPlayersForFrameExternal({
+    heightReferences: heightReferences.value,
+    playerHeightScaling: playerHeightScaling.value,
     playerSize: playerSize.value,
     playerNameSize: playerNameSize.value,
     playerLabelScale: playerNameBaseScale > 0 ? playerNameBaseScale / state.scale : 1,
@@ -1003,7 +1013,8 @@ watch(
 );
 
 // 大卡上点击眼睛隐藏/显示玩家后，立即重绘地图
-watch([playerSize, playerNameSize], () => drawPlayersForFrame());
+watch([playerSize, playerNameSize, playerHeightScaling], () => drawPlayersForFrame());
+watch(heightReferences, () => drawPlayersForFrame());
 
 // All zoom paths (wheel, buttons, pinch, reset and resize) update this shared scale.
 watch(() => state.scale, () => {

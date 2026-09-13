@@ -3,11 +3,56 @@ export const MAP_IMAGE_SIZE = 2048;
 /** 逻辑地图尺寸（与 config width/height 一致）；SVG 为 2x 故 MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE，zoom 按逻辑尺寸计算 */
 export const LOGICAL_MAP_SIZE = 1024;
 
-/** 100% preserves the previous slider midpoints on Dust2; marker dimensions use world units. */
+/** Percentages remain unchanged; marker dimensions use world units. */
 export const PLAYER_DISPLAY_CONTROLS = {
   playerSize: { min: 50, max: 150, step: 5, default: 100 },
   playerNameSize: { min: 50, max: 150, step: 5, default: 100 },
 } as const;
+
+/** Asymmetric height cue: gentle shrinkage below the floor, stronger enlargement above. */
+export const PLAYER_HEIGHT_SCALE = {
+  shrink: { maxChange: 0.12, worldUnits: 512 },
+  grow: { maxChange: 0.46, worldUnits: 128 },
+} as const;
+
+export interface PlayerHeightReferences {
+  main?: number;
+  lower?: number;
+  layerThreshold?: number;
+}
+
+/** Calibrate each radar layer independently from stable height samples. */
+export function getPlayerHeightReferences(histogram: Record<string, number> | undefined, layerThreshold?: number): PlayerHeightReferences {
+  const entries = Object.entries(histogram ?? {})
+    .map(([z, count]) => ({ z: Number(z), count }))
+    .filter(e => Number.isFinite(e.z) && Number.isFinite(e.count) && e.count > 0)
+    .sort((a, b) => a.z - b.z);
+  const median = (samples: typeof entries): number | undefined => {
+    const halfway = samples.reduce((total, e) => total + e.count, 0) / 2;
+    let weight = 0;
+    for (let i = 0; i < samples.length; i++) {
+      weight += samples[i].count;
+      if (weight > halfway) return samples[i].z;
+      if (weight === halfway && samples[i + 1]) return (samples[i].z + samples[i + 1].z) / 2;
+    }
+    return undefined;
+  };
+  if (!Number.isFinite(layerThreshold)) return { main: median(entries) };
+  return {
+    main: median(entries.filter(e => e.z > layerThreshold!)),
+    lower: median(entries.filter(e => e.z <= layerThreshold!)),
+    layerThreshold,
+  };
+}
+
+export function playerHeightScale(z: number | undefined, references?: PlayerHeightReferences): number {
+  const referenceZ = references?.layerThreshold != null && z != null && z <= references.layerThreshold
+    ? references.lower : references?.main;
+  if (!Number.isFinite(z) || !Number.isFinite(referenceZ)) return 1;
+  const relativeZ = z! - referenceZ!;
+  const curve = relativeZ >= 0 ? PLAYER_HEIGHT_SCALE.grow : PLAYER_HEIGHT_SCALE.shrink;
+  return 1 + curve.maxChange * Math.tanh(relativeZ / curve.worldUnits);
+}
 
 /**
  * Canvas 地图上所有展示元素的尺寸配置
@@ -16,6 +61,8 @@ export const PLAYER_DISPLAY_CONTROLS = {
 export const MAP_CANVAS_ELEMENT_SIZES = {
   /** 玩家相关 */
   player: {
+    /** Increase the whole marker by 10% without changing stored slider percentages. */
+    baseScale: 1.1,
     /** 世界单位半径：Dust2 的 4505.6 世界单位 / 2048 画布像素，保留原 15px 基准 */
     aliveRadius: 33,
     /** 死亡玩家圆圈半径（世界单位） */

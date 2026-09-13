@@ -8,13 +8,14 @@ const settings = reactive({
   showMapProjectiles: true,
   showMapDropped: true,
   showMapBomb: true,
+  playerHeightScaling: true,
   playerSize: PLAYER_DISPLAY_CONTROLS.playerSize.default as number,
   playerNameSize: PLAYER_DISPLAY_CONTROLS.playerNameSize.default as number,
 });
 
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
-  for (const key of ['showMapPlayers', 'showMapProjectiles', 'showMapDropped', 'showMapBomb'] as const) {
+  for (const key of ['showMapPlayers', 'showMapProjectiles', 'showMapDropped', 'showMapBomb', 'playerHeightScaling'] as const) {
     if (typeof saved?.[key] === 'boolean') settings[key] = saved[key];
   }
   for (const key of ['playerSize', 'playerNameSize'] as const) {

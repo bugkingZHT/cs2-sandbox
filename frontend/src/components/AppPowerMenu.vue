@@ -31,6 +31,7 @@
       <label><span>投掷物</span><input type="checkbox" v-model="showMapProjectiles" /></label>
       <label><span>掉落道具</span><input type="checkbox" v-model="showMapDropped" /></label>
       <label><span>C4</span><input type="checkbox" v-model="showMapBomb" /></label>
+      <label><span>高度缩放效果</span><input type="checkbox" v-model="playerHeightScaling" /></label>
       <div class="size-control">
         <label for="map-player-size"><span>玩家圆大小</span><output for="map-player-size">{{ playerSize }}%</output></label>
         <input id="map-player-size" type="range" v-model.number="playerSize" v-bind="playerSizeRange" aria-describedby="map-player-size-hint" />
@@ -73,7 +74,7 @@ import { ref } from 'vue';
 import { useMapDisplaySettings } from '@/composables/useMapDisplaySettings';
 import { PLAYER_DISPLAY_CONTROLS } from '@/config/map';
 import { localAPI } from '@/local/api';
-const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb, playerSize, playerNameSize } = useMapDisplaySettings();
+const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb, playerHeightScaling, playerSize, playerNameSize } = useMapDisplaySettings();
 const { default: defaultPlayerSize, ...playerSizeRange } = PLAYER_DISPLAY_CONTROLS.playerSize;
 const { default: defaultPlayerNameSize, ...playerNameSizeRange } = PLAYER_DISPLAY_CONTROLS.playerNameSize;
 function resetPlayerAppearance() {
