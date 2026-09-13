@@ -18,6 +18,8 @@ try {
 } finally { Pop-Location }
 & $taskGo test -mod=vendor ./pkg/localapp ./cmd/local
 if ($LASTEXITCODE) { throw 'Local backend tests failed.' }
-& $taskGo build -mod=vendor -trimpath -ldflags='-s -w -H windowsgui' -o $OutputPath ./cmd/local
+$taskBuildStamp = [Guid]::NewGuid().ToString('N')
+& $taskGo build -mod=vendor -trimpath -ldflags="-s -w -H windowsgui -X main.buildStamp=$taskBuildStamp" -o $OutputPath ./cmd/local
 if ($LASTEXITCODE) { throw 'EXE build failed.' }
 Write-Host "Built $OutputPath (all frontend assets embedded)."
+Write-Host "Build UID (SHA-256): $((Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash.ToLowerInvariant())"

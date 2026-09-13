@@ -36,6 +36,11 @@ func importName(name string) string {
 }
 
 func (s *Server) prepareJob(source, name, origin string, size int64, owned bool) (importJob, error) {
+	unlock, err := s.lockLibrary()
+	if err != nil {
+		return importJob{}, err
+	}
+	defer unlock()
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {
 		return importJob{}, err
@@ -48,6 +53,7 @@ func (s *Server) prepareJob(source, name, origin string, size int64, owned bool)
 	job := importJob{path: source, owned: owned, state: State{
 		ID: id, Name: name, AliasName: defaultAlias(name), SourcePath: origin, TotalBytes: size,
 		Status: "queued", Message: "等待解析", Rounds: []int{},
+		Owner: s.owner, Staged: s.shared,
 	}}
 	if strings.EqualFold(filepath.Ext(name), ".zip") {
 		job.state.Message = "等待解压"
@@ -79,6 +85,11 @@ func (s *Server) enqueueUnique(jobs []importJob) (importResult, error) {
 	if s.closed {
 		return result, fmt.Errorf("本地服务正在退出")
 	}
+	unlock, err := s.beginLibraryUpdate()
+	if err != nil {
+		return result, err
+	}
+	defer unlock()
 	known := s.knownNames()
 	// Snapshot archive names before this batch, so siblings in one ZIP are accepted.
 	previous := s.knownNames()
@@ -93,6 +104,12 @@ func (s *Server) enqueueUnique(jobs []importJob) (importResult, error) {
 			continue
 		}
 		known[job.state.Name] = true
+		if s.shared {
+			job.state.Staged = false
+			if err := s.persist(job.state); err != nil {
+				return result, err
+			}
+		}
 		s.library[job.state.ID] = job.state
 		result.Items = append(result.Items, job.state)
 		if isPending(job.state.Status) {
@@ -118,7 +135,7 @@ func (s *Server) runQueue(ctx context.Context) {
 			for _, job := range s.queue {
 				st := s.library[job.state.ID]
 				st.Status, st.Message = "error", "导入已中断，请重新选择文件解析"
-				s.persist(st)
+				s.persistWorkerState(st)
 				s.library[st.ID] = st
 				if s.state.ID == st.ID {
 					s.state = st
@@ -160,7 +177,7 @@ func (s *Server) importError(id string, err error) {
 	defer s.mu.Unlock()
 	st := s.library[id]
 	st.Status, st.Message = "error", err.Error()
-	if saveErr := s.persist(st); saveErr != nil {
+	if saveErr := s.persistWorkerState(st); saveErr != nil {
 		st.Message += "；保存失败：" + saveErr.Error()
 	}
 	s.library[id] = st
