@@ -121,6 +121,7 @@
           :frames="effectiveFrames" 
           :bounds="bounds"
           :current-frame-index="effectiveFrameIndex"
+          :current-time-ms="isGrenadeAnalyzeMode ? grenadeLocalPlaybackTimeMs : currentTimeMs"
           :replay-meta="effectiveReplay"
           :is-playing="isPlaying"
           :is-dragging="isDraggingTimeline"
