@@ -226,6 +226,7 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 			e.builder.prevFrame = nil
 		}
 		frame := e.builder.frameOne()
+		moveCoincidentShots(e.builder.prevFrame, &frame)
 		if len(frames) > 0 && frame.Round != startRound {
 			// Retain the first sampled frame of the next round instead of appending it to the previous one.
 			e.pendingFrame = &frame
@@ -355,6 +356,7 @@ type replayBuilder struct {
 	bombSite          string
 	activeProjectiles map[int]entity.ProjectileFrame
 	currentKillEvents map[int]entity.KillEvent
+	pendingShots      map[int]shotSample
 	prevFrame         *entity.Frame
 	resolveFreezeTime bool
 	inFreezeTime      bool
@@ -467,6 +469,8 @@ func (b *replayBuilder) frameOne() entity.Frame {
 			Inventory:     inventory,
 			ActiveWeapon:  activeWeapon,
 			Buttons:       buttons,
+			ShotsFired:    b.pendingShots[pl.UserID].count,
+			ShotYaw:       b.pendingShots[pl.UserID].yaw,
 			Kills:         pl.Kills(),
 			Assists:       pl.Assists(),
 			Deaths:        pl.Deaths(),
@@ -476,6 +480,7 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		// Track this player in the player registry
 		b.trackPlayer(pl)
 	}
+	clear(b.pendingShots)
 
 	// Calculate round time info
 	roundTimeInfo := b.calculateRoundTime(gs, currentTick)

@@ -11,7 +11,7 @@ var ButtonWatching = []common.ButtonBitMask{
 	common.ButtonBack,      // S
 	common.ButtonMoveLeft,  // A
 	common.ButtonMoveRight, // D
-	common.ButtonSpeed,		// Shift (静步)
+	common.ButtonSpeed,     // Shift (静步)
 	common.ButtonJump,      // 跳跃
 	common.ButtonDuck,      // 蹲下
 }
@@ -57,6 +57,10 @@ type PlayerFrame struct {
 
 	// 玩家按键状态
 	Buttons []uint64 `json:"buttons"`
+	// Actual gunshots since the previous output frame, independent of held buttons.
+	ShotsFired int `json:"shotsFired"`
+	// Aim direction of the latest shot in that interval (before switching weapons).
+	ShotYaw float32 `json:"shotYaw"`
 
 	// 玩家本局比赛的总击杀数
 	Kills int `json:"kills"`

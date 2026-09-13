@@ -247,13 +247,33 @@ const drawPlayerGraphics = (
   // Store radius for label positioning
   (g as any)._radius = radius;
 
+  const activeWeaponId = Number(player.activeWeapon || 0);
+  const isUtility = isUtilityItem(activeWeaponId);
+  // Actual shots include right-click fire and shots between output samples.
+  const isFiring = (player.shotsFired ?? 0) > 0;
+  if (isFiring) {
+    // Use shot-time aim even if the player turned, switched items or died before
+    // this sample. Current held items and interpolated aim must not hide a shot.
+    const shotAngle = ((player.shotYaw ?? player.yaw) * Math.PI) / -180;
+    const lineLen = PLAYER_STYLE.attackLen * 8;
+    const segments = 10;
+    for (let i = segments - 1; i >= 0; i--) {
+      const t1 = i / segments;
+      const t2 = (i + 1) / segments;
+      const x1 = Math.cos(shotAngle) * lineLen * t1;
+      const y1 = Math.sin(shotAngle) * lineLen * t1;
+      const x2 = Math.cos(shotAngle) * lineLen * t2;
+      const y2 = Math.sin(shotAngle) * lineLen * t2;
+      const alpha = 1 - (t1 + t2) / 2;
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 5, color: 0xffffff, alpha: alpha * 0.6 });
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 3, color, alpha });
+    }
+  }
+
   if (player.alive) {
     // Draw direction triangle
-    const isAttacking = player.buttons?.includes(1); // 1 = common.ButtonAttack
-    const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
-    const isUtility = isUtilityItem(activeWeaponId); // knife, C4, grenades
     const useWhiteTri = isUtility; // Non-gun: small white triangle
-    const triColor = useWhiteTri ? 0xffffff : (isAttacking ? 0xcc3333 : color);
+    const triColor = useWhiteTri ? 0xffffff : (isFiring ? 0xcc3333 : color);
     // Keep the utility triangle proportional to the rebased marker dimensions.
     const utilityInset = useWhiteTri ? MAP_CANVAS_ELEMENT_SIZES.player.directionTriangle.utilityInset : 0;
     const triLen = (PLAYER_STYLE.triLen - utilityInset) * sizeScale;
@@ -268,37 +288,6 @@ const drawPlayerGraphics = (
     const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triW;
     const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triW;
 
-    // If firing, draw enhanced team-colored line with glow and gradient
-    if (isAttacking && !isUtility) {
-      // Line starts from player center (0, 0) and extends outward
-      const lineLen = PLAYER_STYLE.attackLen * 8; // Increased from 6 to 8 for longer line
-      const endX = Math.cos(angleRad) * lineLen;
-      const endY = Math.sin(angleRad) * lineLen;
-      
-      // Get team color (blue for CT, yellow/orange for T)
-      const teamColor = color; // Use the same team color as player circle
-      
-      // Draw gradient line: from opaque at player to transparent at end
-      // Create multiple segments for gradient effect (draw in reverse to layer correctly)
-      const segments = 10;
-      for (let i = segments - 1; i >= 0; i--) {
-        const t1 = i / segments;
-        const t2 = (i + 1) / segments;
-        const x1 = Math.cos(angleRad) * lineLen * t1;
-        const y1 = Math.sin(angleRad) * lineLen * t1;
-        const x2 = Math.cos(angleRad) * lineLen * t2;
-        const y2 = Math.sin(angleRad) * lineLen * t2;
-        
-        // Alpha decreases from 1.0 (at player) to 0.0 (at end)
-        const segmentAlpha = 1.0 - (t1 + t2) / 2;
-        
-        // Draw white glow for this segment
-        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 5, color: 0xffffff, alpha: segmentAlpha * 0.6 });
-        
-        // Draw colored line for this segment on top
-        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 3, color: teamColor, alpha: segmentAlpha });
-      }
-    }
     // Triangle fill
     g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
   }

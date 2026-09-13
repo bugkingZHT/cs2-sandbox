@@ -85,6 +85,21 @@ await withModules(async (settings, server) => {
       }
     }
   }
+  const drawShotCase = (state) => {
+    drawPlayersForFrame({
+      ...options,
+      frame: { round: 1, players: { 1: { alive: true, x: 0, y: 0, yaw: 0, team: 3, activeWeapon: '303', ...state } } },
+    });
+    return circle.getLocalBounds();
+  };
+  assert.ok(drawShotCase({ buttons: [], shotsFired: 1, shotYaw: 0 }).width > 400, 'actual shot renders without a held attack button');
+  assert.ok(drawShotCase({ buttons: [2048], shotsFired: 1, shotYaw: 0 }).width > 400, 'right-click fire renders from the event');
+  assert.ok(drawShotCase({ buttons: [1], shotsFired: 0 }).width < 100, 'holding attack without a shot does not render gunfire');
+  assert.ok(drawShotCase({ activeWeapon: '405', shotsFired: 1, shotYaw: 90 }).height > 400, 'switching to a knife does not hide an earlier shot; shot-time aim is retained');
+  assert.ok(drawShotCase({ alive: false, shotsFired: 1, shotYaw: 0 }).width > 400, 'a shot just before death remains visible');
+  assert.ok(drawShotCase({ activeWeapon: '405', buttons: [1], shotsFired: 0 }).width < 100, 'knife attack is not a gunshot');
+  assert.ok(drawShotCase({ buttons: [1] }).width < 100, 'buttons alone never imply a gunshot');
+  assert.ok(drawShotCase({ shotsFired: 0 }).width < 100, 'the following idle sample clears the shot effect');
   resetPlayerRenderer();
   world.destroy({ children: true });
 });

@@ -37,7 +37,7 @@ globalThis.fetch = async (url, init) => {
           timeMs: 10,
           tick: 1,
           round: Number(q.get("n")),
-          players: { 1: { x: 1, y: 2, activeWeapon: 7, inventory: [7, 44], buttons: [1, 2, 8, 65536] } },
+          players: { 1: { x: 1, y: 2, activeWeapon: 7, inventory: [7, 44], buttons: [1, 2, 8, 65536], shotsFired: 1, shotYaw: 90 } },
           projectiles: { 2: { type: 44, entityID: 2, throwerID: 1 } },
           killEvents: { 3: { weaponId: 7 } },
           droppedEquipment: [{ type: 7 }],
@@ -62,6 +62,8 @@ try {
   await data.loadRoundData("one", 1);
   assert.equal(data.replay.value.uuid, "one");
   assert.deepEqual(data.frames.value[0].players[1].inventory, ["7", "44"]);
+  assert.equal(data.frames.value[0].players[1].shotsFired, 1);
+  assert.equal(data.frames.value[0].players[1].shotYaw, 90);
   assert.equal(data.frames.value[0].projectiles[2].type, "44");
   assert.equal(data.frames.value[0].killEvents[3].weaponId, "7");
   assert.equal(data.bounds.value.minX, 1);

@@ -11,6 +11,7 @@ import (
 )
 
 func (b *replayBuilder) registerEventHandlers() {
+	b.parser.RegisterEventHandler(b.recordShot)
 	// Inferno start ticks use the server clock, not the demo-relative ingame tick.
 	b.parser.RegisterNetMessageHandler(func(m *msg.CNETMsg_Tick) {
 		if m.Tick != nil {
@@ -33,6 +34,7 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.bombSite = ""
 		b.activeProjectiles = make(map[int]entity.ProjectileFrame)
 		b.currentKillEvents = make(map[int]entity.KillEvent)
+		clear(b.pendingShots)
 		b.inFreezeTime = true // Enter freeze time at round start
 		b.roundStartTick = b.parser.GameState().IngameTick()
 		b.freezeEndTick = 0

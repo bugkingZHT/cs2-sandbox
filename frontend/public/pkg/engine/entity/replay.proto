@@ -25,6 +25,8 @@ message PlayerFramePB {
   int32 kills = 21;
   int32 assists = 22;
   int32 deaths = 23;
+  int32 shots_fired = 24;
+  float shot_yaw = 25;
 }
 
 message PointPB {
