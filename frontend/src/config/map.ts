@@ -3,6 +3,12 @@ export const MAP_IMAGE_SIZE = 2048;
 /** 逻辑地图尺寸（与 config width/height 一致）；SVG 为 2x 故 MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE，zoom 按逻辑尺寸计算 */
 export const LOGICAL_MAP_SIZE = 1024;
 
+/** 100% uses the previous slider midpoints: circle 150%, name 125%. */
+export const PLAYER_DISPLAY_CONTROLS = {
+  playerSize: { min: 50, max: 150, step: 5, default: 100 },
+  playerNameSize: { min: 50, max: 150, step: 5, default: 100 },
+} as const;
+
 /**
  * Canvas 地图上所有展示元素的尺寸配置
  * 可根据需要单独调整各元素大小
@@ -11,20 +17,20 @@ export const MAP_CANVAS_ELEMENT_SIZES = {
   /** 玩家相关 */
   player: {
     /** 存活玩家圆圈半径 */
-    aliveRadius: 10,
+    aliveRadius: 15,
     /** 死亡玩家圆圈半径（死亡标识） */
-    deadRadius: 7.5,
+    deadRadius: 11.25,
     /** 玩家名字字体大小 */
-    nameSize: 24,
+    nameSize: 30,
     /** 方向指示三角 */
     directionTriangle: {
-      length: 8,
-      width: 6,
+      length: 12,
+      width: 9,
     },
     /** 开火线长度系数（实际绘制会乘 8） */
     attackLineLength: 60,
     /** 手持道具/C4 图标尺寸（玩家身上的 grenade、C4 等） */
-    weaponIconSize: 15,
+    weaponIconSize: 22.5,
     /** 死亡叉相对圆圈半径的比例 */
     deathCrossScale: 0.7,
     /** 致盲状态外圈偏移量 */

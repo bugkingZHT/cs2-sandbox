@@ -27,6 +27,17 @@
       <label><span>投掷物</span><input type="checkbox" v-model="showMapProjectiles" /></label>
       <label><span>掉落道具</span><input type="checkbox" v-model="showMapDropped" /></label>
       <label><span>C4</span><input type="checkbox" v-model="showMapBomb" /></label>
+      <div class="size-control">
+        <label for="map-player-size"><span>玩家圆大小</span><output for="map-player-size">{{ playerSize }}%</output></label>
+        <input id="map-player-size" type="range" v-model.number="playerSize" v-bind="playerSizeRange" aria-describedby="map-player-size-hint" />
+        <p id="map-player-size-hint">随地图等比例缩放</p>
+      </div>
+      <div class="size-control">
+        <label for="map-player-name-size"><span>玩家名称大小</span><output for="map-player-name-size">{{ playerNameSize }}%</output></label>
+        <input id="map-player-name-size" type="range" v-model.number="playerNameSize" v-bind="playerNameSizeRange" aria-describedby="map-player-name-size-hint" />
+        <p id="map-player-name-size-hint">缩放地图时，文字大小保持不变</p>
+      </div>
+      <button class="reset-player-appearance" type="button" @click="resetPlayerAppearance">恢复默认大小</button>
     </fieldset>
     <footer class="settings-version">
       <span>当前版本</span>
@@ -38,7 +49,14 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useMapDisplaySettings } from '@/composables/useMapDisplaySettings';
-const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb } = useMapDisplaySettings();
+import { PLAYER_DISPLAY_CONTROLS } from '@/config/map';
+const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb, playerSize, playerNameSize } = useMapDisplaySettings();
+const { default: defaultPlayerSize, ...playerSizeRange } = PLAYER_DISPLAY_CONTROLS.playerSize;
+const { default: defaultPlayerNameSize, ...playerNameSizeRange } = PLAYER_DISPLAY_CONTROLS.playerNameSize;
+function resetPlayerAppearance() {
+  playerSize.value = defaultPlayerSize;
+  playerNameSize.value = defaultPlayerNameSize;
+}
 const appVersion = __APP_VERSION__;
 defineProps<{ collapsed: boolean }>();
 defineEmits<{ quit: [] }>();
@@ -95,8 +113,17 @@ svg { width: 18px; height: 18px; flex-shrink: 0; }
 .map-settings { border: 0; padding: 0; margin: 0; min-width: 0; }
 .map-settings legend { padding: 0 0 var(--ds-space-sm); font-size: 12px; color: var(--ds-text-tertiary); }
 .map-settings label { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-lg); padding: var(--ds-space-md) 0; font-size: 13px; color: var(--ds-text-secondary); cursor: pointer; }
-.map-settings input { width: 16px; height: 16px; margin: 0; accent-color: var(--ds-primary); }
+.map-settings input { margin: 0; accent-color: var(--ds-primary); }
+.map-settings input[type="checkbox"] { width: 16px; height: 16px; }
 .map-settings input:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 3px; }
+.map-settings > label + .size-control { margin-top: var(--ds-space-sm); }
+.size-control + .size-control { margin-top: var(--ds-space-md); }
+.size-control label { padding: var(--ds-space-sm) 0; }
+.size-control output { color: var(--ds-text-primary); font-variant-numeric: tabular-nums; }
+.size-control input[type="range"] { display: block; width: 100%; height: 22px; cursor: pointer; }
+.size-control p { margin: 4px 0 0; font-size: 12px; color: var(--ds-text-tertiary); }
+.reset-player-appearance { margin-top: var(--ds-space-md); padding: 4px 0; border: 0; background: transparent; color: var(--ds-text-secondary); font-size: 12px; cursor: pointer; }
+.reset-player-appearance:hover { color: var(--ds-text-primary); }
 .settings-version { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-md); margin-top: var(--ds-space-lg); padding-top: var(--ds-space-md); border-top: 1px solid var(--ds-border-default); color: var(--ds-text-tertiary); font-size: 12px; }
 button:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: -2px; }
 </style>

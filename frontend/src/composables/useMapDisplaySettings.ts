@@ -1,22 +1,35 @@
 import { reactive, toRefs, watch } from 'vue';
+import { PLAYER_DISPLAY_CONTROLS } from '@/config/map';
 
 const storageKey = 'cs2-sandbox-map-display';
+const playerSizeVersion = 2;
 const settings = reactive({
   showMapPlayers: true,
   showMapProjectiles: true,
   showMapDropped: true,
   showMapBomb: true,
+  playerSize: PLAYER_DISPLAY_CONTROLS.playerSize.default as number,
+  playerNameSize: PLAYER_DISPLAY_CONTROLS.playerNameSize.default as number,
 });
 
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
-  for (const key of Object.keys(settings) as (keyof typeof settings)[]) {
+  for (const key of ['showMapPlayers', 'showMapProjectiles', 'showMapDropped', 'showMapBomb'] as const) {
     if (typeof saved?.[key] === 'boolean') settings[key] = saved[key];
+  }
+  for (const key of ['playerSize', 'playerNameSize'] as const) {
+    // Previous percentages used different baselines; start them at the new defaults.
+    if (saved?.playerSizeVersion !== playerSizeVersion) continue;
+    const value = saved?.[key];
+    const { min, max } = PLAYER_DISPLAY_CONTROLS[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      settings[key] = Math.min(max, Math.max(min, value));
+    }
   }
 } catch { /* Use defaults when browser storage is unavailable or corrupt. */ }
 
 watch(settings, value => {
-  try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* Settings still work in memory. */ }
+  try { localStorage.setItem(storageKey, JSON.stringify({ ...value, playerSizeVersion })); } catch { /* Settings still work in memory. */ }
 }, { flush: 'sync' });
 
 // Shared by the always-mounted settings dialog and any subsequently opened replay.

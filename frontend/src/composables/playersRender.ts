@@ -2,7 +2,7 @@ import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Frame, PlayerState, ReplayMeta } from '@/types/replay';
 import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
-import { MAP_CANVAS_ELEMENT_SIZES } from '@/config/map';
+import { MAP_CANVAS_ELEMENT_SIZES, PLAYER_DISPLAY_CONTROLS } from '@/config/map';
 
 /**
  * Player Render Module
@@ -52,6 +52,9 @@ let lastFrameIndex = 0;
 
 // Render context interface
 interface RenderContext {
+  playerSize: number;
+  playerNameSize: number;
+  playerLabelScale: number;
   playerLayer: Container;
   currentFrameIndex: number;
   currentRound: number; // For team color flipping in second half
@@ -75,6 +78,20 @@ const lerpAngle = (start: number, end: number, factor: number): number => {
   while (diff > 180) diff -= 360;
   while (diff < -180) diff += 360;
   return start + diff * factor;
+};
+
+const positionPlayerLabel = (sprite: PlayerSprite) => {
+  sprite.label.x = sprite.currentX;
+  sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius
+    + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset * sprite.label.scale.y;
+};
+
+/** Cancel map zoom for names only, including while playback is paused. */
+export const updatePlayerLabelScale = (scale: number) => {
+  playerSpriteMap.forEach(sprite => {
+    sprite.label.scale.set(scale);
+    positionPlayerLabel(sprite);
+  });
 };
 
 // Clear all players from the layer
@@ -117,8 +134,7 @@ export const startPlayerAnimation = (playerLayer: Container, isPlaying: boolean)
 
         sprite.graphics.x = sprite.currentX;
         sprite.graphics.y = sprite.currentY;
-        sprite.label.x = sprite.currentX;
-        sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset;
+        positionPlayerLabel(sprite);
 
         needsUpdate = true;
       }
@@ -215,7 +231,8 @@ const drawPlayerGraphics = (
 
   // Get team color (automatically handles second half flipping)
   const color = getTeamColor(player.team || 0, ctx.currentRound, 'PRIMARY');
-  const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
+  const sizeScale = ctx.playerSize / 100;
+  const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * sizeScale;
   const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
 
   // Store radius for label positioning
@@ -228,9 +245,9 @@ const drawPlayerGraphics = (
     const isUtility = isUtilityItem(activeWeaponId); // knife, C4, grenades
     const useWhiteTri = isUtility; // Non-gun: small white triangle
     const triColor = useWhiteTri ? 0xffffff : (isAttacking ? 0xcc3333 : color);
-    // When utility (white triangle), shrink triangle by 2px on each dimension
-    const triLen = PLAYER_STYLE.triLen - (useWhiteTri ? 2 : 0);
-    const triW = PLAYER_STYLE.triWidth - (useWhiteTri ? 2 : 0);
+    // Keep the utility triangle proportional to the rebased marker dimensions.
+    const triLen = (PLAYER_STYLE.triLen - (useWhiteTri ? 3 : 0)) * sizeScale;
+    const triW = (PLAYER_STYLE.triWidth - (useWhiteTri ? 3 : 0)) * sizeScale;
 
     const tipX = Math.cos(angleRad) * (radius + triLen);
     const tipY = Math.sin(angleRad) * (radius + triLen);
@@ -299,8 +316,9 @@ const drawPlayerGraphics = (
   g.y = playerSprite.currentY;
   // 阵亡玩家不显示 name
   playerSprite.label.visible = !!player.alive;
-  playerSprite.label.x = playerSprite.currentX;
-  playerSprite.label.y = playerSprite.currentY + radius + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset;
+  playerSprite.label.style.fontSize = PLAYER_STYLE.nameSize * ctx.playerNameSize / 100;
+  playerSprite.label.scale.set(ctx.playerLabelScale);
+  positionPlayerLabel(playerSprite);
 };
 
 // Update weapon icon for player (grenades and C4 only)
@@ -344,18 +362,18 @@ const updateWeaponIcon = async (
     if (!playerSprite.weaponIcon) {
       playerSprite.weaponIcon = new Sprite(texture);
       playerSprite.weaponIcon.anchor.set(0.5);
-      const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize;
-      playerSprite.weaponIcon.width = iconSize;
-      playerSprite.weaponIcon.height = iconSize;
       ctx.playerLayer.addChild(playerSprite.weaponIcon);
     } else {
       playerSprite.weaponIcon.texture = texture;
     }
+    const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize * ctx.playerSize / 100;
+    playerSprite.weaponIcon.width = iconSize;
+    playerSprite.weaponIcon.height = iconSize;
 
     // C4 active (held in hand): center, red - same as grenade active state
     // C4 carried (in inventory): bottom-right, red
     // Grenades (501-506) active: center, white
-    const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
+    const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * ctx.playerSize / 100;
     const offset = radius * 0.55;
     const isC4Active = displayItemId === 404 && activeWeaponId === 404;
     const isC4Carried = displayItemId === 404 && activeWeaponId !== 404;
@@ -377,6 +395,9 @@ const updateWeaponIcon = async (
 };
 
 export interface DrawPlayersForFrameOptions {
+  playerSize?: number;
+  playerNameSize?: number;
+  playerLabelScale?: number;
   frame: Frame | undefined;
   meta?: ReplayMeta | null;
   playerLayer: Container | null;
@@ -405,6 +426,9 @@ export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
     onPlayerPointerMove,
     onPlayerPointerOut,
     hiddenPlayerIds,
+    playerSize = PLAYER_DISPLAY_CONTROLS.playerSize.default,
+    playerNameSize = PLAYER_DISPLAY_CONTROLS.playerNameSize.default,
+    playerLabelScale = 1,
   } = options;
   const hiddenSet = hiddenPlayerIds && hiddenPlayerIds.length > 0 ? new Set(hiddenPlayerIds) : null;
 
@@ -416,6 +440,9 @@ export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
   }
 
   const ctx: RenderContext = {
+    playerSize,
+    playerNameSize,
+    playerLabelScale,
     playerLayer,
     currentFrameIndex,
     currentRound: frame.round,

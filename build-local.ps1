@@ -11,6 +11,8 @@ try {
  if ($LASTEXITCODE) { throw 'Local frontend adapter tests failed.' }
  node test-batch-import.mjs
  if ($LASTEXITCODE) { throw 'Batch import frontend tests failed.' }
+ node test-player-display.mjs
+ if ($LASTEXITCODE) { throw 'Player display tests failed.' }
  node node_modules/vite/bin/vite.js build --config vite.local.config.ts
  if ($LASTEXITCODE) { throw 'Frontend build failed.' }
 } finally { Pop-Location }
