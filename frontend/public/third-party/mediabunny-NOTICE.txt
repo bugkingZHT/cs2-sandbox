@@ -1,0 +1,8 @@
+Mediabunny 1.56.2
+Copyright (c) Vanilagy and contributors.
+License: Mozilla Public License 2.0 (see mediabunny-LICENSE.txt).
+
+This application includes an unmodified version of Mediabunny.
+The corresponding source code, including the src directory, is available in:
+https://registry.npmjs.org/mediabunny/-/mediabunny-1.56.2.tgz
+Project: https://github.com/Vanilagy/mediabunny

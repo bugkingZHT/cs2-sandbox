@@ -32,7 +32,7 @@ export default defineConfig({
         const out = resolve(__dirname, "../web/localdist");
         renameSync(resolve(out, "local.html"), resolve(out, "index.html"));
         writeFileSync(resolve(out, ".gitkeep"), "");
-        for (const dir of ["map", "weapons", "utility", "icons", "logo"])
+        for (const dir of ["map", "weapons", "utility", "icons", "logo", "third-party"])
           cpSync(resolve(__dirname, "public", dir), resolve(out, dir), {
             recursive: true,
           });
