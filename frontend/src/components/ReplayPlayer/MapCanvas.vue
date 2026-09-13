@@ -155,6 +155,7 @@ import {
   drawProjectilesForFrame as drawProjectilesForFrameExternal,
   drawBombForFrame,
   preloadProjectileAssets,
+  updateFlyingProjectilePositions,
 } from '../../composables/projectilesRender';
 import {
   drawPlayersForFrame as drawPlayersForFrameExternal,
@@ -175,6 +176,7 @@ const props = withDefaults(
     frames: Frame[] | undefined;
     bounds: WorldBounds | null | undefined;
     currentFrameIndex: number;
+    currentTimeMs: number;
     replayMeta?: any;
     isPlaying?: boolean;
     isDragging?: boolean;
@@ -893,13 +895,86 @@ const drawProjectilesForFrame = async (
   });
 };
 
-const drawPlayersForFrame = () => {
+const MAX_INTERPOLATION_GAP_MS = 500;
+const MAX_INTERPOLATION_DISTANCE = 512;
+
+const lerpNumber = (from: number, to: number, progress: number) =>
+  from + (to - from) * progress;
+
+const lerpAngle = (from: number, to: number, progress: number) => {
+  const delta = ((to - from + 540) % 360) - 180;
+  return from + delta * progress;
+};
+
+/**
+ * Build a display-only frame from the replay clock. Discrete state continues to
+ * come from the current sample; only spatial values are blended toward the next
+ * sample. This keeps events exact while making sparse movement samples smooth.
+ */
+const getDisplayFrame = (): Frame | undefined => {
+  const frames = props.frames;
+  const frame = frames?.[props.currentFrameIndex];
+  const nextFrame = frames?.[props.currentFrameIndex + 1];
+  if (!frame || !nextFrame || !props.isPlaying || props.isDragging) return frame;
+
+  const gapMs = nextFrame.timeMs - frame.timeMs;
+  if (gapMs <= 0 || gapMs > MAX_INTERPOLATION_GAP_MS || frame.round !== nextFrame.round) {
+    return frame;
+  }
+
+  const progress = Math.max(0, Math.min(1, (props.currentTimeMs - frame.timeMs) / gapMs));
+  if (progress <= 0) return frame;
+
+  const players: Record<number, PlayerState> = { ...frame.players };
+  for (const [id, current] of Object.entries(frame.players ?? {})) {
+    const next = nextFrame.players?.[Number(id)];
+    if (!next || current.alive !== next.alive) continue;
+
+    const dx = next.x - current.x;
+    const dy = next.y - current.y;
+    const dz = (next.z ?? 0) - (current.z ?? 0);
+    if (Math.hypot(dx, dy, dz) > MAX_INTERPOLATION_DISTANCE) continue;
+
+    players[Number(id)] = {
+      ...current,
+      x: lerpNumber(current.x, next.x, progress),
+      y: lerpNumber(current.y, next.y, progress),
+      z: lerpNumber(current.z ?? 0, next.z ?? 0, progress),
+      yaw: lerpAngle(current.yaw, next.yaw, progress),
+      pitch: current.pitch != null && next.pitch != null
+        ? lerpNumber(current.pitch, next.pitch, progress)
+        : current.pitch,
+    };
+  }
+
+  const projectiles: Record<number, ProjectileState> | undefined = frame.projectiles
+    ? { ...frame.projectiles }
+    : undefined;
+  if (projectiles) {
+    for (const [id, current] of Object.entries(frame.projectiles ?? {})) {
+      const next = nextFrame.projectiles?.[Number(id)];
+      if (!next || current.isExploded || next.isExploded || current.type !== next.type) continue;
+      projectiles[Number(id)] = {
+        ...current,
+        x: lerpNumber(current.x, next.x, progress),
+        y: lerpNumber(current.y, next.y, progress),
+        z: lerpNumber(current.z, next.z, progress),
+      };
+    }
+  }
+
+  return { ...frame, players, projectiles };
+};
+
+const drawPlayersForFrame = (drawAuxiliaryLayers = true) => {
   if (!playerLayer || !mapSprite || !props.frames) return;
-  const frame = props.frames[props.currentFrameIndex];
+  const frame = getDisplayFrame();
   if (!frame) return;
 
-  // Clear projectiles (they don't need smooth transitions)
-  clearProjectiles();
+  if (drawAuxiliaryLayers) {
+    // Auxiliary entities remain tied to source frames and event timestamps.
+    clearProjectiles();
+  }
 
   // Draw players using external renderer（隐藏大卡上勾选隐藏的玩家；设置-玩家取消勾选=全部隐藏，由 hiddenPlayerIds 传入）
   drawPlayersForFrameExternal({
@@ -912,7 +987,9 @@ const drawPlayersForFrame = () => {
     meta: props.replayMeta,
     playerLayer,
     currentFrameIndex: props.currentFrameIndex,
-    isPlaying: props.isPlaying || false,
+    // The frame already contains the exact clock-based interpolated position.
+    // Snap Pixi objects to it instead of applying a second easing pass.
+    isPlaying: false,
     isDragging: props.isDragging || false,
     worldToMap,
     onPlayerPointerOver,
@@ -922,6 +999,8 @@ const drawPlayersForFrame = () => {
   });
 
   // Draw projectiles / dropped if enabled（隐藏玩家时，其投掷物一并隐藏；设置中可关闭投掷/掉落图层）
+  if (!drawAuxiliaryLayers) return;
+
   const showProj = props.showMapProjectiles !== false;
   const showDropped = props.showMapDropped !== false;
   if ((showProj || showDropped) && (frame.projectiles || frame.droppedEquipment)) {
@@ -1008,6 +1087,16 @@ watch(
     // 只在帧索引变化时重绘，不监听frames变化
     if (props.frames && props.frames.length > 0) {
       drawPlayersForFrame();
+    }
+  },
+);
+
+watch(
+  () => props.currentTimeMs,
+  () => {
+    if (props.isPlaying && !props.isDragging) {
+      drawPlayersForFrame(false);
+      updateFlyingProjectilePositions(getDisplayFrame()?.projectiles, worldToMap);
     }
   },
 );

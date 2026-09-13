@@ -237,8 +237,81 @@ const DEFAULT_LOGIC_CONFIG: ProjectileRenderConfig = {
 export const clearProjectilesLayer = (projectileLayer: Container | null) => {
   if (!projectileLayer) return;
   projectileLayer.removeChildren();
+  flyingProjectileVisuals.clear();
   // 清除烟雾清除状态
   clearSmokeClearState();
+};
+
+interface FlyingProjectileVisual {
+  sprite?: Sprite;
+  trajectory?: Graphics;
+  hitArea?: Graphics;
+  trajectoryColor?: number;
+}
+
+const flyingProjectileVisuals = new Map<number, FlyingProjectileVisual>();
+
+const drawTrajectoryPath = (
+  graphics: Graphics,
+  proj: ProjectileState,
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number },
+  width: number,
+  color: number,
+  alpha: number,
+  drawPoints: boolean,
+) => {
+  graphics.clear();
+  if (!proj.trajectory?.length || proj.isExploded) return;
+
+  const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y, proj.trajectory[0].z);
+  graphics.moveTo(firstPoint.x, firstPoint.y);
+  for (let i = 1; i < proj.trajectory.length; i++) {
+    const point = proj.trajectory[i];
+    const mapPoint = worldToMap(point.x, point.y, point.z);
+    graphics.lineTo(mapPoint.x, mapPoint.y);
+  }
+  const currentMapPos = worldToMap(proj.x, proj.y, proj.z);
+  graphics.lineTo(currentMapPos.x, currentMapPos.y).stroke({ width, color, alpha });
+
+  if (drawPoints) {
+    const { trajectoryPointRadius } = MAP_CANVAS_ELEMENT_SIZES.projectile;
+    for (const point of proj.trajectory) {
+      const mapPoint = worldToMap(point.x, point.y, point.z);
+      graphics.circle(mapPoint.x, mapPoint.y, trajectoryPointRadius).fill({ color, alpha: 1 });
+    }
+  }
+};
+
+/** Update only already-rendered flying objects between source samples. */
+export const updateFlyingProjectilePositions = (
+  projectiles: Record<number, ProjectileState> | undefined,
+  worldToMap: (x: number, y: number, z?: number) => { x: number; y: number },
+) => {
+  if (!projectiles) return;
+  flyingProjectileVisuals.forEach((visual, entityId) => {
+    const proj = projectiles[entityId];
+    if (!proj || proj.isExploded) return;
+
+    if (visual.sprite) {
+      const mapPos = worldToMap(proj.x, proj.y, proj.z);
+      visual.sprite.x = mapPos.x;
+      visual.sprite.y = mapPos.y;
+    }
+    if (visual.trajectory) {
+      drawTrajectoryPath(
+        visual.trajectory,
+        proj,
+        worldToMap,
+        MAP_CANVAS_ELEMENT_SIZES.projectile.trajectoryLineWidth,
+        visual.trajectoryColor ?? 0xff6b6b,
+        0.8,
+        true,
+      );
+    }
+    if (visual.hitArea) {
+      drawTrajectoryPath(visual.hitArea, proj, worldToMap, 12, 0x000000, 0.001, false);
+    }
+  });
 };
 
 interface RenderContext {
@@ -372,31 +445,12 @@ const drawTrajectory = (
   }
 
   const trajectoryG = new Graphics();
-  
-  // 先顺序连接所有 trajectory 检查点
-  if (proj.trajectory.length > 0) {
-    const firstPoint = worldToMap(proj.trajectory[0].x, proj.trajectory[0].y, proj.trajectory[0].z);
-    trajectoryG.moveTo(firstPoint.x, firstPoint.y);
-    
-    for (let i = 1; i < proj.trajectory.length; i++) {
-      const pt = proj.trajectory[i];
-      const mapPoint = worldToMap(pt.x, pt.y, pt.z);
-      trajectoryG.lineTo(mapPoint.x, mapPoint.y);
-    }
-    
-    // 最后连接到投掷物当前实际位置
-    const currentMapPos = worldToMap(proj.x, proj.y, proj.z);
-    trajectoryG.lineTo(currentMapPos.x, currentMapPos.y);
-  }
-
-  const { trajectoryLineWidth, trajectoryPointRadius } = MAP_CANVAS_ELEMENT_SIZES.projectile;
-  trajectoryG.stroke({ width: trajectoryLineWidth, color: trajColor, alpha: 0.8 });
-
-  // 绘制碰撞点（未来的碰撞点）
-  for (const cp of proj.trajectory) {
-    const cpMapPos = worldToMap(cp.x, cp.y, cp.z);
-    trajectoryG.circle(cpMapPos.x, cpMapPos.y, trajectoryPointRadius).fill({ color: trajColor, alpha: 1.0 });
-  }
+  const { trajectoryLineWidth } = MAP_CANVAS_ELEMENT_SIZES.projectile;
+  drawTrajectoryPath(trajectoryG, proj, worldToMap, trajectoryLineWidth, trajColor, 0.8, true);
+  const visual = flyingProjectileVisuals.get(proj.entityID) ?? {};
+  visual.trajectory = trajectoryG;
+  visual.trajectoryColor = trajColor;
+  flyingProjectileVisuals.set(proj.entityID, visual);
 
   // 可解析的投掷物：添加点击与 hover（用于提示「点击投掷物解析道具」）
   if (onProjectileClick) {
@@ -417,6 +471,7 @@ const drawTrajectory = (
     }
     
     hitArea.stroke({ width: 12, color: 0x000000, alpha: 0.001 });
+    visual.hitArea = hitArea;
     hitArea.eventMode = 'static';
     hitArea.cursor = 'pointer';
     hitArea.addEventListener('pointerdown', (e: { stopPropagation: () => void }) => {
@@ -496,6 +551,9 @@ const drawIcon = async (
     }
 
     projectileLayer.addChild(sprite);
+    const visual = flyingProjectileVisuals.get(proj.entityID) ?? {};
+    visual.sprite = sprite;
+    flyingProjectileVisuals.set(proj.entityID, visual);
   } catch (error) {
     console.warn('[投掷物] 加载图标失败:', assetPath, error);
   }
