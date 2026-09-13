@@ -346,6 +346,8 @@ func (e *DemoEngine) Close() error {
 }
 
 type replayBuilder struct {
+	serverTick        uint32
+	hasServerTick     bool
 	parser            demoinfocs.Parser
 	currentRound      int
 	roundGeneration   int
@@ -562,6 +564,10 @@ func (b *replayBuilder) frameOne() entity.Frame {
 
 	// Add all projectiles from previous frame to the combined map first
 	for id, proj := range prevFrameProjectiles {
+		// Infernos are authoritative live entities, never carried over by TTL.
+		if proj.IsExploded && (proj.Type == common.EqMolotov || proj.Type == common.EqIncendiary) {
+			continue
+		}
 		combinedProjectiles[id] = proj
 	}
 
@@ -582,13 +588,6 @@ func (b *replayBuilder) frameOne() entity.Frame {
 	projectiles := make(map[int]entity.ProjectileFrame)
 
 	for id, proj := range combinedProjectiles {
-		// Resolve unknown equipment type using helper function
-		if proj.Type == common.EqUnknown {
-			resolvedType := entity.ResolveUnknownEquipmentType(proj, prevFrameProjectiles)
-			if resolvedType != common.EqUnknown {
-				proj.Type = resolvedType
-			}
-		}
 		// Determine if this projectile comes from active projectiles
 		isFromActive := false
 		if _, exists := activeProjectiles[id]; exists {
@@ -640,28 +639,6 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		projectiles[id] = finalProj
 	}
 
-	// Remove Active Molotovs and Incendiaries if Active Smoke is present in scale
-	// Only check active projectiles (exploded with positive TTL)
-	activeSmokeProjectiles := make(map[int]entity.ProjectileFrame)
-	for id, proj := range projectiles {
-		if proj.Type == common.EqSmoke && proj.IsExploded && proj.TTL > 0 {
-			activeSmokeProjectiles[id] = proj
-		}
-	}
-
-	// If there are active smokes, check each fire projectile
-	if len(activeSmokeProjectiles) > 0 {
-		for id, proj := range projectiles {
-			if (proj.Type == common.EqMolotov || proj.Type == common.EqIncendiary) && proj.IsExploded {
-				fireRadius := entity.GetProjectileConfigByType(proj.Type).ExplosionRadius
-				if entity.HasSmokeInRadius(proj, activeSmokeProjectiles, fireRadius) {
-					// Remove fire from projectiles (smoke extinguished it)
-					delete(projectiles, id)
-				}
-			}
-		}
-	}
-
 	// Clear activeProjectiles and rebuild it based on current frame
 	// Active projectiles are those that are exploded and have positive TTL
 	newActiveProjectiles := make(map[int]entity.ProjectileFrame)
@@ -671,6 +648,14 @@ func (b *replayBuilder) frameOne() entity.Frame {
 		}
 	}
 	b.activeProjectiles = newActiveProjectiles
+
+	if b.hasServerTick {
+		for id, inferno := range gs.Infernos() {
+			if fire, ok := infernoProjectile(inferno, b.serverTick, b.parser.TickTime()); ok {
+				projectiles[id] = fire
+			}
+		}
+	}
 
 	// Extract dropped equipment - only track grenades/throwables that newly appeared this round
 	// At round frame 0, build blacklist of all current drops (old throwables from previous round)

@@ -1,4 +1,26 @@
-# CS2 AnimGraph 2 兼容修复
+# CS2 Demo 解析兼容修复
+
+## 燃烧效果直接读取 Inferno 网络状态
+
+`xxttggxg.dem` 第二回合最早的两处火焰属于 Diff（燃烧瓶）和 damage（燃烧弹）。原实现把 `InfernoStart` 写成 `EqUnknown`，再用上一输出帧的附近弹体猜类型。距离平方与线性阈值混用使匹配范围只有约 14 单位，而样本中的弹体与火焰起点相差约 67 和 42 单位，最终导出未知类型、TTL 为 0。
+
+最终方案移除了空间匹配及烟雾距离灭火推测。每个输出帧直接读取 `GameState.Infernos()`：
+
+- `m_nInfernoType`：0 为燃烧瓶，1 为燃烧弹；不按投掷者阵营猜类型。
+- `m_hOwnerEntity`：通过解析器的 `Inferno.Thrower()` 获取投掷者。
+- `m_nFireEffectTickBegin` 与 `m_nFireLifetime`：使用 `CNETMsg_Tick` 的服务器时钟计算剩余时长，不能使用 demo 相对 tick；样本中两种火分别为 7 秒和 5.5 秒。
+- `m_bFireIsBurning` 与 `m_bInPostEffectTime`：实体还存在但已停止燃烧时，不再输出效果；也不从上一帧复制已消失的火焰。
+
+这些是当前样本实际传输的实体字段。字段定义亦可参照 [CounterStrikeSharp CInferno](https://docs.cssharp.dev/api/CounterStrikeSharp.API.Core.CInferno.html)，燃烧点状态读取可参照 [demoinfocs Inferno 实现](https://github.com/markus-wa/demoinfocs-golang/blob/master/pkg/demoinfocs/common/inferno.go)。不支持的火焰类型或缺失的关键状态不会通过附近弹体、投掷者阵营进行猜测。此修复识别火焰效果及所属玩家，不将独立的 inferno ID 冒充原弹体 ID。
+
+`TestInfernoNetworkState` 覆盖真实时长、回放从燃烧中途开始、提前灭火、残留效果、部分火点存活及缺失字段。`TestDemoRoundTwoFireEffects` 在 1:1、1:4、1:8 采样下验证上述两处火焰的类型、正 TTL 和完整持续时间：
+
+```powershell
+$env:CS_FIRE_TEST_FILE='C:\Users\A\Desktop\xxttggxg.dem'
+go test -mod=vendor -count=1 -v ./pkg/engine -run 'TestInfernoNetworkState|TestDemoRoundTwoFireEffects'
+```
+
+已解析的缓存需用新构建重新解析，才能补齐这些燃烧效果。
 
 ## 文件头缺少地图名的录制兼容
 
