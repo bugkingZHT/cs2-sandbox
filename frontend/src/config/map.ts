@@ -3,7 +3,7 @@ export const MAP_IMAGE_SIZE = 2048;
 /** 逻辑地图尺寸（与 config width/height 一致）；SVG 为 2x 故 MAP_IMAGE_SIZE = 2 * LOGICAL_MAP_SIZE，zoom 按逻辑尺寸计算 */
 export const LOGICAL_MAP_SIZE = 1024;
 
-/** 100% uses the previous slider midpoints: circle 150%, name 125%. */
+/** 100% preserves the previous slider midpoints on Dust2; marker dimensions use world units. */
 export const PLAYER_DISPLAY_CONTROLS = {
   playerSize: { min: 50, max: 150, step: 5, default: 100 },
   playerNameSize: { min: 50, max: 150, step: 5, default: 100 },
@@ -16,25 +16,30 @@ export const PLAYER_DISPLAY_CONTROLS = {
 export const MAP_CANVAS_ELEMENT_SIZES = {
   /** 玩家相关 */
   player: {
-    /** 存活玩家圆圈半径 */
-    aliveRadius: 15,
-    /** 死亡玩家圆圈半径（死亡标识） */
-    deadRadius: 11.25,
+    /** 世界单位半径：Dust2 的 4505.6 世界单位 / 2048 画布像素，保留原 15px 基准 */
+    aliveRadius: 33,
+    /** 死亡玩家圆圈半径（世界单位） */
+    deadRadius: 24.75,
     /** 玩家名字字体大小 */
     nameSize: 30,
-    /** 方向指示三角 */
+    /** 方向指示三角（世界单位） */
     directionTriangle: {
-      length: 12,
-      width: 9,
+      length: 26.4,
+      width: 19.8,
+      utilityInset: 6.6,
     },
     /** 开火线长度系数（实际绘制会乘 8） */
     attackLineLength: 60,
-    /** 手持道具/C4 图标尺寸（玩家身上的 grenade、C4 等） */
-    weaponIconSize: 22.5,
+    /** 手持道具/C4 图标尺寸（世界单位） */
+    weaponIconSize: 49.5,
+    /** 玩家标记描边宽度（世界单位） */
+    borderWidth: 3.3,
+    blindStrokeWidth: 4.4,
+    deathStrokeWidth: 5.5,
     /** 死亡叉相对圆圈半径的比例 */
     deathCrossScale: 0.7,
-    /** 致盲状态外圈偏移量 */
-    blindEffectOffset: 4.5,
+    /** 致盲状态外圈偏移量（世界单位） */
+    blindEffectOffset: 9.9,
     /** 名字与圆圈的垂直偏移 */
     labelOffset: 4,
   },

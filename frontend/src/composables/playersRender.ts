@@ -220,6 +220,15 @@ const updatePlayerSprite = (
   }
 };
 
+// Use the same projection as player positions, including each floor's scale and offset.
+// The returned scale converts world dimensions to local canvas pixels; container zoom
+// is applied by Pixi afterwards. Labels have their own screen-size compensation.
+const playerWorldScale = (player: PlayerState, ctx: RenderContext): number => {
+  const center = ctx.worldToMap(player.x, player.y, player.z);
+  const edge = ctx.worldToMap(player.x + 1, player.y, player.z);
+  return Math.hypot(edge.x - center.x, edge.y - center.y) * ctx.playerSize / 100;
+};
+
 // Draw player graphics
 const drawPlayerGraphics = (
   playerSprite: PlayerSprite,
@@ -231,7 +240,7 @@ const drawPlayerGraphics = (
 
   // Get team color (automatically handles second half flipping)
   const color = getTeamColor(player.team || 0, ctx.currentRound, 'PRIMARY');
-  const sizeScale = ctx.playerSize / 100;
+  const sizeScale = playerWorldScale(player, ctx);
   const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * sizeScale;
   const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
 
@@ -246,8 +255,9 @@ const drawPlayerGraphics = (
     const useWhiteTri = isUtility; // Non-gun: small white triangle
     const triColor = useWhiteTri ? 0xffffff : (isAttacking ? 0xcc3333 : color);
     // Keep the utility triangle proportional to the rebased marker dimensions.
-    const triLen = (PLAYER_STYLE.triLen - (useWhiteTri ? 3 : 0)) * sizeScale;
-    const triW = (PLAYER_STYLE.triWidth - (useWhiteTri ? 3 : 0)) * sizeScale;
+    const utilityInset = useWhiteTri ? MAP_CANVAS_ELEMENT_SIZES.player.directionTriangle.utilityInset : 0;
+    const triLen = (PLAYER_STYLE.triLen - utilityInset) * sizeScale;
+    const triW = (PLAYER_STYLE.triWidth - utilityInset) * sizeScale;
 
     const tipX = Math.cos(angleRad) * (radius + triLen);
     const tipY = Math.sin(angleRad) * (radius + triLen);
@@ -297,18 +307,18 @@ const drawPlayerGraphics = (
   g.circle(0, 0, radius).fill(player.alive ? color : 0x888888);
 
   // Dark border for contrast
-  g.circle(0, 0, radius).stroke({ width: 1.5, color: 0x000000, alpha: 0.5 });
+  g.circle(0, 0, radius).stroke({ width: MAP_CANVAS_ELEMENT_SIZES.player.borderWidth * sizeScale, color: 0x000000, alpha: 0.5 });
 
   // 致盲状态视觉效果 (外圈白线)
   if (player.alive && (player.isBlinded || (player.flashDuration && player.flashDuration > 0))) {
-    g.circle(0, 0, radius + MAP_CANVAS_ELEMENT_SIZES.player.blindEffectOffset).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+    g.circle(0, 0, radius + MAP_CANVAS_ELEMENT_SIZES.player.blindEffectOffset * sizeScale).stroke({ width: MAP_CANVAS_ELEMENT_SIZES.player.blindStrokeWidth * sizeScale, color: 0xffffff, alpha: 0.9 });
   }
 
   if (!player.alive) {
     const crossSize = radius * MAP_CANVAS_ELEMENT_SIZES.player.deathCrossScale;
     g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);
     g.moveTo(crossSize, -crossSize).lineTo(-crossSize, crossSize);
-    g.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
+    g.stroke({ width: MAP_CANVAS_ELEMENT_SIZES.player.deathStrokeWidth * sizeScale, color: 0xffffff, alpha: 0.9 });
   }
 
   // Set position (either current interpolated or target)
@@ -366,14 +376,15 @@ const updateWeaponIcon = async (
     } else {
       playerSprite.weaponIcon.texture = texture;
     }
-    const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize * ctx.playerSize / 100;
+    const sizeScale = playerWorldScale(player, ctx);
+    const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize * sizeScale;
     playerSprite.weaponIcon.width = iconSize;
     playerSprite.weaponIcon.height = iconSize;
 
     // C4 active (held in hand): center, red - same as grenade active state
     // C4 carried (in inventory): bottom-right, red
     // Grenades (501-506) active: center, white
-    const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * ctx.playerSize / 100;
+    const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * sizeScale;
     const offset = radius * 0.55;
     const isC4Active = displayItemId === 404 && activeWeaponId === 404;
     const isC4Carried = displayItemId === 404 && activeWeaponId !== 404;

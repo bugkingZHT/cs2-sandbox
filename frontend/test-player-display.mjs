@@ -28,7 +28,7 @@ await withModules(async (settings, server) => {
   const options = {
     frame: { round: 1, players: { 1: { alive: true, x: 0, y: 0, yaw: 0, team: 3, name: 'Player' } } },
     playerLayer, currentFrameIndex: 0, isPlaying: false, isDragging: false,
-    worldToMap: () => ({ x: 0, y: 0 }),
+    worldToMap: (x, y) => ({ x: x / 2.2, y: -y / 2.2 }),
   };
   drawPlayersForFrame(options);
   const circle = playerLayer.children.find(child => child instanceof Graphics);
@@ -45,7 +45,7 @@ await withModules(async (settings, server) => {
   assert.equal(screenFontSize(), initialFont, 'paused names remain the same screen size after zoom');
   assert.equal(screenCircleWidth(), initialCircle * 2, 'circles follow map zoom proportionally');
   const screenGap = () => (label.y - 15) * world.scale.x;
-  assert.equal(screenGap(), 2, 'name spacing remains stable on screen');
+  assert.ok(Math.abs(screenGap() - 2) < 1e-9, 'name spacing remains stable on screen');
   settings.playerSize.value = 150;
   settings.playerNameSize.value = 150;
   drawPlayersForFrame({ ...options, playerSize: 150, playerNameSize: 150, playerLabelScale: 0.5 });
@@ -56,6 +56,35 @@ await withModules(async (settings, server) => {
   world.scale.set(0.5);
   updatePlayerLabelScale(1);
   assert.equal(screenFontSize(), initialFont * 1.5, 'resetting zoom preserves the selected name size');
+
+  const { MAP_CONFIGS, MAP_IMAGE_SIZE } = await server.ssrLoadModule('/src/config/map.ts');
+  const scenarios = ['de_dust2', 'de_mirage', 'de_nuke'].map(name => ({
+    name, range: MAP_CONFIGS[name].xRange, imageSize: MAP_IMAGE_SIZE, z: 100,
+  }));
+  scenarios.push(
+    { name: 'double resolution', range: MAP_CONFIGS.de_dust2.xRange, imageSize: MAP_IMAGE_SIZE * 2, z: 100 },
+    { name: 'lower floor with different scale', range: { start: -2000, end: 6000 }, imageSize: MAP_IMAGE_SIZE, z: -600 },
+  );
+  for (const scenario of scenarios) {
+    const pixelsPerUnit = scenario.imageSize / (scenario.range.end - scenario.range.start);
+    const worldToMap = (x, y, z) => {
+      assert.equal(z, scenario.z, 'radius projection uses the same floor as the player');
+      return { x: (x - scenario.range.start) * pixelsPerUnit + 1000, y: -y * pixelsPerUnit - 200 };
+    };
+    for (const alive of [true, false]) {
+      for (const percent of [50, 100, 150]) {
+        drawPlayersForFrame({
+          ...options, worldToMap, playerSize: percent,
+          frame: { round: 1, players: { 1: { alive, x: 300, y: 200, z: scenario.z, yaw: 0, team: 3, name: 'Player' } } },
+        });
+        const expectedWorldRadius = (alive ? 33 : 24.75) * percent / 100;
+        const expectedPixelRadius = expectedWorldRadius * pixelsPerUnit;
+        assert.ok(circle.containsPoint({ x: 0, y: expectedPixelRadius * 0.95 }), `${scenario.name}: world radius interior`);
+        assert.ok(!circle.containsPoint({ x: 0, y: expectedPixelRadius * 1.1 }), `${scenario.name}: world radius exterior`);
+        assert.equal(label.style.fontSize, 30, 'map scale does not change font size');
+      }
+    }
+  }
   resetPlayerRenderer();
   world.destroy({ children: true });
 });
@@ -69,4 +98,4 @@ await withModules(settings => {
   assert.equal(settings.playerSize.value, 150, 'saved values are clamped to slider bounds');
   assert.equal(settings.playerNameSize.value, 100, 'invalid saved sizes use defaults');
 });
-console.log('PASS: player size controls, fixed screen-size names, proportional circle zoom, paused updates and persisted settings');
+console.log('PASS: world-unit player sizes across maps, resolutions and floors; fixed screen-size names, proportional zoom, paused updates and persisted settings');
