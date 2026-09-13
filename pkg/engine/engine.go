@@ -30,14 +30,15 @@ type DemoEngine struct {
 	roundLimit        int // Limit for number of rounds to parse (0 = no limit)
 	frameRatio        int // Parse 1 frame every N game frames: 1=1:1, 2=1:2, 4=1:4
 	// Singleton state for streaming parsing
-	parser            demoinfocs.Parser
-	builder           *replayBuilder
-	uuid              string
-	initialized       bool
-	eofReached        bool // Track if EOF has been reached
-	totalParsedFrames int  // Output frames (after frame ratio)
-	totalRawFrames    int  // Game frames advanced (raw, for progress reporting)
-	pendingFrame      *entity.Frame
+	parser             demoinfocs.Parser
+	builder            *replayBuilder
+	uuid               string
+	initialized        bool
+	eofReached         bool // Track if EOF has been reached
+	totalParsedFrames  int  // Output frames (after frame ratio)
+	totalRawFrames     int  // Game frames advanced (raw, for progress reporting)
+	pendingFrame       *entity.Frame
+	pendingParserFrame bool // Metadata lookahead has parsed a frame the round iterator must still process.
 }
 
 func NewDemoEngine(config EngineConfig) *DemoEngine {
@@ -101,21 +102,31 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 		return nil, fmt.Errorf("no frames available in demo file")
 	}
 
-	gs := e.parser.GameState()
-	var mapName string
-	if h := e.parser.Header(); h != nil {
-		mapName = h.MapName
-	}
-	// Fallback to ConVars if header not yet parsed
-	if mapName == "" {
-		if convars := gs.Rules().ConVars(); convars != nil {
-			if name, ok := convars["host_map"]; ok {
-				mapName = name
-			}
+	mapName := e.mapName()
+	// FileHeader may omit the map; ServerInfo arrives in a later signon packet.
+	// Bound startup lookahead and stop at gameplay so metadata extraction cannot
+	// consume a match with missing metadata. Keep the last command for the iterator.
+	const maxMetadataLookahead = 64
+	for i := 0; mapName == "" && i < maxMetadataLookahead; i++ {
+		gs := e.parser.GameState()
+		if gs.IsMatchStarted() && !gs.IsWarmupPeriod() {
+			break
 		}
+		more, err = e.parser.ParseNextFrame()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse demo metadata: %w", err)
+		}
+		if !more {
+			e.eofReached = true
+			e.pendingParserFrame = false
+			break
+		}
+		e.totalRawFrames++
+		e.pendingParserFrame = true
+		mapName = e.mapName()
 	}
 
-	// Create ReplayMeta with header info only (no frame traversal)
+	// Create ReplayMeta with startup metadata.
 	// Note: TotalFrames and TotalDurationMs are 0 here because in CS2 demos,
 	// this information is only available in CDemoFileInfo message at the end of the demo.
 	// These will be backfilled in Phase 3 after parsing is complete.
@@ -130,6 +141,13 @@ func (e *DemoEngine) ExtractMetadata() (*entity.ReplayMeta, error) {
 
 	log.Printf("[ExtractMetadata] Metadata extracted: Map=%s, UUID=%s, EngineVersion=%s", mapName, e.uuid, EngineVersion)
 	return meta, nil
+}
+
+func (e *DemoEngine) mapName() string {
+	if h := e.parser.Header(); h != nil && h.MapName != "" {
+		return h.MapName
+	}
+	return e.parser.GameState().Rules().ConVars()["host_map"]
 }
 
 func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound, error) {
@@ -154,7 +172,16 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 		return &entity.ReplayRound{UUID: e.uuid, Round: startRound, Frames: frames}
 	}
 	for {
-		more, err := e.parser.ParseNextFrame()
+		more := true
+		var err error
+		if e.pendingParserFrame {
+			e.pendingParserFrame = false
+		} else {
+			more, err = e.parser.ParseNextFrame()
+			if more && err == nil {
+				e.totalRawFrames++
+			}
+		}
 		if err != nil && err != io.EOF {
 			return nil, err
 		}
@@ -162,7 +189,6 @@ func (e *DemoEngine) ParseNextRound(onStatus func(string)) (*entity.ReplayRound,
 			e.eofReached = true
 			return finish(), nil
 		}
-		e.totalRawFrames++
 		if onStatus != nil && e.totalRawFrames%1000 == 0 {
 			onStatus(fmt.Sprint(e.totalRawFrames))
 		}
@@ -227,6 +253,10 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 	log.Println("[BackfillMeta] Backfilling metadata with final statistics...")
 
 	gs := e.parser.GameState()
+	mapName := meta.MapName
+	if mapName == "" {
+		mapName = e.mapName()
+	}
 
 	log.Printf("[BackfillMeta] Current round: %d, Round results count: %d", e.builder.currentRound, len(e.builder.roundResults))
 	if len(e.builder.roundResults) > 0 {
@@ -258,7 +288,7 @@ func (e *DemoEngine) BackfillMeta(meta *entity.ReplayMeta) (*entity.ReplayMeta, 
 		UploadTime:       meta.UploadTime,
 		EngineVersion:    meta.EngineVersion, // Preserve engine version
 		ProjectileRender: meta.ProjectileRender,
-		MapName:          meta.MapName,
+		MapName:          mapName,
 		FileName:         meta.FileName,   // Preserve original filename
 		OriginPath:       meta.OriginPath, // Preserve original file path
 		// Preserve parsing state fields
@@ -305,6 +335,7 @@ func (e *DemoEngine) Close() error {
 	e.eofReached = false
 	e.totalParsedFrames = 0
 	e.totalRawFrames = 0
+	e.pendingParserFrame = false
 
 	// Force GC to release parser and builder memory
 	runtime.GC()

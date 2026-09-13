@@ -91,6 +91,12 @@ func TestRealDemo(t *testing.T) {
 	if st.Status != "ready" || len(st.Rounds) < 3 || st.Meta == nil || len(st.Meta.ServerPlayer) < 10 {
 		t.Fatalf("incomplete replay: %+v", st)
 	}
+	if st.Meta.MapName == "" {
+		t.Fatal("ready replay has no map name")
+	}
+	if expected := os.Getenv("CS_DEMO_TEST_MAP"); expected != "" && st.Meta.MapName != expected {
+		t.Fatalf("map=%q; want %q", st.Meta.MapName, expected)
+	}
 	seen := map[int]bool{}
 	if !sawProgress || st.Progress != 100 {
 		t.Fatal("missing real parsing progress")

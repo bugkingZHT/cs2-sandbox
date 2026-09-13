@@ -1,5 +1,22 @@
 # CS2 AnimGraph 2 兼容修复
 
+## 文件头缺少地图名的录制兼容
+
+`xxttggxg.dem`（network protocol 14181）的首条 `CDemoFileHeader.map_name` 为空，第二条 demo command 中的 `CSVCMsg_ServerInfo.map_name` 为 `de_nuke`；`host_map` 也为空。`jjxhss.dem` 同样缺少文件头地图名，但 ServerInfo 提供 `de_dust2`。因此不能只在第一条 command 之后读取文件头，也不能只依赖 ConVar 兜底。
+
+修复在内嵌解析器中用 ServerInfo 补齐空的 Header.MapName，保留已有文件头值。共享 engine 在地图缺失时最多继续解析 64 条开场 command，遇到地图名或正式比赛开始即停止；最后一条预读 command 留给回合迭代器处理，保持帧统计和采样位置。原有 `host_map` 兜底保留，BackfillMeta 也会补齐稍后才出现的地图名。本地与 WASM 共用此逻辑。
+
+`pkg/engine/map_metadata_test.go` 用真实 protobuf demo 消息流覆盖正常文件头、空地图名、延迟 signon、预读上限及最终回填、全部来源缺失，并检查消费 command 数和原始帧计数。真实文件测试新增非空地图断言及可选 `CS_DEMO_TEST_MAP` 预期值。
+
+本机完整解析与缓存重载回归：`xxttggxg.dem` 为 `de_nuke`，24 回合、61,011 帧，与原缓存帧数一致；Ancient 对照文件为 `de_ancient`，24 回合、37,194 帧。WASM 编译通过。已有 `entry.json` 不会因源码更新自动迁移，使用新构建重新解析后才会写入修复后的地图名。
+
+```powershell
+$env:CS_DEMO_TEST_FILE='C:\Users\A\Desktop\xxttggxg.dem'
+$env:CS_DEMO_TEST_MAP='de_nuke'
+go test -mod=vendor -count=1 -v ./pkg/localapp -run '^TestRealDemo$'
+go test -mod=vendor ./pkg/engine -run TestMapMetadataSources
+```
+
 项目使用的是 `pkg/demoinfocs` 内嵌源码，而不是直接引用上游 Go module；仅执行 `go get -u` 不会更新实际解析器。
 
 ## 原因与上游来源
