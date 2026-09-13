@@ -6,11 +6,11 @@
 
 <p align="center">CS2 Demo 复盘与分析沙盒</p>
 
-`cs2-sandbox` 是一个免安装的 Windows 小工具。双击 EXE，在浏览器中打开本地回放工作台，选择 `.dem` 文件即可开始复盘。Demo 不会上传，所有解析、播放和缓存都在你的电脑上完成。
+`cs2-sandbox` 是一个免安装的 Windows Demo 复盘工具。双击 EXE，可在浏览器中打开控制台，上传解析 `.dem` 文件即可开始，所有解析、播放和缓存都在你的电脑上快速完成。
 
 ## 开始使用
 
-1. 下载并双击 [cs2-sandbox-v0.0.3.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/download/v0.0.3/cs2-sandbox-v0.0.3.exe)。
+1. 下载并双击 [cs2-sandbox-v0.0.4.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/download/v0.0.4/cs2-sandbox-v0.0.4.exe)。
 2. 在“Demo 库”点击“解析 DEMO”，多选或拖入 `.dem`、`.zip` 文件。ZIP 内各级目录及嵌套 ZIP 中的 Demo 会自动提取并依次解析；解析期间可继续添加文件。
 3. 解析完成后选择回合，进入 2D 播放器复盘。
 
@@ -47,11 +47,9 @@
 - 文件只传给本机服务，不上传到云端，不需要账号或外部网络服务。
 - 原始 `.dem` 文件不会被移动或删除。
 - 解析后的回放库和缓存保存在 `%LOCALAPPDATA%\cs2-sandbox\`。
-- 重复点击同一构建的 EXE 只会唤起该构建的已有页面；不同构建可以并行运行，由系统自动分配不同端口，并共享 Demo 库。
-- 任务管理器中的进程名称带构建 UID 前缀，例如 `cs2-sandbox-20cf17ddba4bbe53.exe`。启动及排查方式见 [多版本实例说明](docs/build-instances.md)。
+- 重复点击同一版本的 EXE 只会唤起该版本的已有页面；不同版本之间相互独立但共享已解析的 Demo 库。
+- 开发者：任务管理器中的进程名称带构建 UID 前缀，例如 `cs2-sandbox-20cf17ddba4bbe53.exe`，由系统自动分配不同端口，并共享 Demo 库。启动及排查方式见 [多版本实例说明](docs/build-instances.md)。
 
-## 版本
+## 版本更新
 
-当前版本：`v0.0.2` · Windows x64
-
-修复道具解析模式下新版 Demo 的玩家按键状态缺失问题。已解析的旧缓存需要重新解析源 `.dem` 文件才能补齐按键数据。
+修复部分 Demo map 解析失效与部分关键投掷物与开火事件丢失问题，优化显示与动画效果。
