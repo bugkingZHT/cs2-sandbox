@@ -15,6 +15,31 @@ import (
 
 func fmtRoundURL(id string, n int) string { return fmt.Sprintf("/api/round?id=%s&n=%d", id, n) }
 
+func TestBuildInfo(t *testing.T) {
+	s, err := newAt(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.BuildUID = strings.Repeat("a1", 32)
+	w := call(s, "GET", "/api/build-info", "")
+	var info struct {
+		UID string `json:"uid"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &info); err != nil || w.Code != http.StatusOK || info.UID != s.BuildUID {
+		t.Fatalf("wrong running build info: %d %s (%v)", w.Code, w.Body.String(), err)
+	}
+	if w := call(s, "POST", "/api/build-info", ""); w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("unexpected write allowed: %d", w.Code)
+	}
+	r := httptest.NewRequest("GET", "http://127.0.0.1:8000/api/build-info", nil)
+	w = httptest.NewRecorder()
+	s.Handler(fstest.MapFS{}).ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("unauthenticated build info exposed: %d", w.Code)
+	}
+}
+
 func call(s *Server, method, path, body string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, "http://127.0.0.1:8000"+path, strings.NewReader(body))
 	r.Header.Set("X-Local-Token", s.Token())
@@ -90,6 +115,12 @@ func TestRealDemo(t *testing.T) {
 	}
 	if st.Status != "ready" || len(st.Rounds) < 3 || st.Meta == nil || len(st.Meta.ServerPlayer) < 10 {
 		t.Fatalf("incomplete replay: %+v", st)
+	}
+	if st.Meta.MapName == "" {
+		t.Fatal("ready replay has no map name")
+	}
+	if expected := os.Getenv("CS_DEMO_TEST_MAP"); expected != "" && st.Meta.MapName != expected {
+		t.Fatalf("map=%q; want %q", st.Meta.MapName, expected)
 	}
 	seen := map[int]bool{}
 	if !sawProgress || st.Progress != 100 {

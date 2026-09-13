@@ -9,11 +9,40 @@ import (
 	"unsafe"
 )
 
-const instanceName = `Global\cs2-sandbox.SingleInstance.v1`
+const instanceNamePrefix = `Global\cs2-sandbox.SingleInstance.v2.`
 
 var instanceKernel = syscall.NewLazyDLL("kernel32.dll")
 var createInstanceEvent = instanceKernel.NewProc("CreateEventW")
 var signalInstanceEvent = instanceKernel.NewProc("SetEvent")
+var openInstanceEvent = instanceKernel.NewProc("OpenEventW")
+
+// A duplicate launcher can activate the matching build without spawning even a
+// transient digest-named child. Creation still uses acquireInstance atomically.
+func activateExistingInstance(name string, notify bool) (bool, error) {
+	text, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return false, err
+	}
+	handle, _, callErr := openInstanceEvent.Call(0x0002, 0, uintptr(unsafe.Pointer(text))) // EVENT_MODIFY_STATE
+	if handle == 0 {
+		if callErr == syscall.ERROR_FILE_NOT_FOUND {
+			return false, nil
+		}
+		if callErr == syscall.ERROR_ACCESS_DENIED {
+			log.Print("此构建已在其他会话运行，系统拒绝激活访问")
+			return true, nil
+		}
+		return false, fmt.Errorf("查找已有构建实例失败：%w", callErr)
+	}
+	defer syscall.CloseHandle(syscall.Handle(handle))
+	if notify {
+		ok, _, err := signalInstanceEvent.Call(handle)
+		if ok == 0 {
+			return true, fmt.Errorf("激活已有构建实例失败：%w", err)
+		}
+	}
+	return true, nil
+}
 
 // A named auto-reset event doubles as the machine-wide lifetime guard and the
 // activation channel. The owner keeps its handle for the entire server lifetime.

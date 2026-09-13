@@ -20,6 +20,9 @@ export interface PlayerState {
   assists?: number;
   deaths?: number;
   buttons?: number[];
+  /** Actual gunshots since the previous sample. */
+  shotsFired?: number;
+  shotYaw?: number;
   
   // Metadata fields (enriched from PlayerInfo, not in frame)
   id?: number;

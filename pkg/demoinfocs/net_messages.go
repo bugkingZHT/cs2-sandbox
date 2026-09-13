@@ -33,6 +33,10 @@ func (p *parser) handleSetConVar(setConVar *msg.CNETMsg_SetConVar) {
 }
 
 func (p *parser) handleServerInfo(srvInfo *msg.CSVCMsg_ServerInfo) {
+	// Some recordings omit map_name in CDemoFileHeader but include it here.
+	if p.header != nil && p.header.MapName == "" {
+		p.header.MapName = srvInfo.GetMapName()
+	}
 	// srvInfo.MapCrc might be interesting as well
 	p.tickInterval = srvInfo.GetTickInterval()
 

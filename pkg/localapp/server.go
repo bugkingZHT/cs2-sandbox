@@ -33,6 +33,8 @@ type State struct {
 	Rounds     []int              `json:"rounds"`
 	Meta       *entity.ReplayMeta `json:"meta"`
 	SourcePath string             `json:"sourcePath,omitempty"`
+	Owner      string             `json:"owner,omitempty"`
+	Staged     bool               `json:"staged,omitempty"`
 }
 
 type Server struct {
@@ -49,6 +51,12 @@ type Server struct {
 	working   bool
 	closed    bool
 	Shutdown  func()
+	// BuildUID is the running executable's SHA-256, set before serving requests.
+	BuildUID     string
+	shared       bool
+	owner        string
+	compatMu     sync.Mutex
+	compatUnlock func()
 }
 
 func New() (*Server, error) {
@@ -56,25 +64,50 @@ func New() (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newAt(filepath.Join(base, "cs2-sandbox"))
+	return newSharedAt(filepath.Join(base, "cs2-sandbox"))
 }
 
 func newAt(root string) (*Server, error) {
+	return newStore(root, false)
+}
+
+func newSharedAt(root string) (*Server, error) {
+	return newStore(root, true)
+}
+
+func newStore(root string, shared bool) (*Server, error) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, err
 	}
-	unlock, err := lockStore(root)
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	s := &Server{root: root, shared: shared, token: hex.EncodeToString(b), library: make(map[string]State), state: State{Status: "idle", Rounds: []int{}}}
+	var err error
+	if shared {
+		if err := os.MkdirAll(filepath.Join(root, ".transactions"), 0700); err != nil {
+			return nil, err
+		}
+		ownerBytes := make([]byte, 16)
+		if _, err := rand.Read(ownerBytes); err != nil {
+			return nil, err
+		}
+		s.owner = hex.EncodeToString(ownerBytes)
+		leaseDir := filepath.Join(root, ".sessions", s.owner)
+		if err := os.MkdirAll(leaseDir, 0700); err != nil {
+			return nil, err
+		}
+		s.unlock, err = lockStore(leaseDir)
+	} else {
+		s.unlock, err = lockStore(root)
+	}
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, 32)
-	if _, err = rand.Read(b); err != nil {
-		unlock()
-		return nil, err
-	}
-	s := &Server{root: root, unlock: unlock, token: hex.EncodeToString(b), library: make(map[string]State), state: State{Status: "idle", Rounds: []int{}}}
-	if err := s.loadLibrary(); err != nil {
-		unlock()
+	if err := s.refreshLibrary(); err != nil {
+		s.unlock()
+		s.closeSharedAccess()
 		return nil, err
 	}
 	return s, nil
@@ -90,6 +123,7 @@ func (s *Server) Close() {
 		s.mu.Unlock()
 		s.wg.Wait()
 		s.unlock()
+		s.closeSharedAccess()
 	})
 }
 func send(w http.ResponseWriter, v any) {
@@ -104,6 +138,13 @@ func fail(w http.ResponseWriter, err error, code int) {
 
 func (s *Server) Handler(assets fs.FS) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/build-info", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		send(w, map[string]string{"uid": s.BuildUID})
+	})
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) { s.mu.Lock(); defer s.mu.Unlock(); send(w, s.state) })
 	mux.HandleFunc("/api/browse", s.browse)
 	mux.HandleFunc("/api/open", s.open)
@@ -250,7 +291,7 @@ func (s *Server) parse(ctx context.Context, f *os.File, id string) {
 		s.mu.Lock()
 		s.state.Status = "error"
 		s.state.Message = fmt.Sprint(err)
-		if saveErr := s.persist(s.state); saveErr != nil {
+		if saveErr := s.persistWorkerState(s.state); saveErr != nil {
 			s.state.Message += "；保存失败：" + saveErr.Error()
 		}
 		s.library[id] = s.state
@@ -331,7 +372,7 @@ func (s *Server) parse(ctx context.Context, f *os.File, id string) {
 	if len(s.state.Rounds) == 0 {
 		s.state.Status = "error"
 		s.state.Message = "Demo 中没有可播放的回合"
-		if err := s.persist(s.state); err != nil {
+		if err := s.persistWorkerState(s.state); err != nil {
 			s.state.Message += "；保存失败：" + err.Error()
 		}
 		s.library[id] = s.state
@@ -349,7 +390,7 @@ func (s *Server) parse(ctx context.Context, f *os.File, id string) {
 	s.state.Message = "解析完成"
 	s.state.Progress = 100
 	s.state.BytesRead = s.state.TotalBytes
-	if err := s.persist(s.state); err != nil {
+	if err := s.persistWorkerState(s.state); err != nil {
 		s.state.Status = "error"
 		s.state.Message = "解析完成但保存失败：" + err.Error()
 	}
@@ -359,6 +400,10 @@ func (s *Server) parse(ctx context.Context, f *os.File, id string) {
 func (s *Server) round(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.refreshLibrary(); err != nil {
+		fail(w, err, 500)
+		return
+	}
 	n, err := strconv.Atoi(r.URL.Query().Get("n"))
 	if err != nil || n < 0 {
 		fail(w, fmt.Errorf("无效回合"), 400)
@@ -376,6 +421,10 @@ func (s *Server) round(w http.ResponseWriter, r *http.Request) {
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.refreshLibrary(); err != nil {
+		fail(w, err, 500)
+		return
+	}
 	items := make([]State, 0, len(s.library))
 	for _, st := range s.library {
 		items = append(items, st)
@@ -399,6 +448,12 @@ func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	unlock, err := s.beginLibraryUpdate()
+	if err != nil {
+		fail(w, err, 503)
+		return
+	}
+	defer unlock()
 	if _, ok := s.library[req.ID]; !ok {
 		fail(w, fmt.Errorf("回放不存在"), 404)
 		return

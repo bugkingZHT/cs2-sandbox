@@ -120,6 +120,8 @@ func PlayerFrameToProtoPB(player *PlayerFrame) *PlayerFramePB {
 		FlashDuration: player.FlashDuration,
 		IsBlinded:     player.IsBlinded,
 		ActiveWeapon:  int32(player.ActiveWeapon),
+		ShotsFired:    int32(player.ShotsFired),
+		ShotYaw:       player.ShotYaw,
 		Kills:         int32(player.Kills),
 		Assists:       int32(player.Assists),
 		Deaths:        int32(player.Deaths),

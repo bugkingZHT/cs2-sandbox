@@ -47,9 +47,19 @@ func (s *Server) rename(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	unlock, err := s.beginLibraryUpdate()
+	if err != nil {
+		fail(w, err, 503)
+		return
+	}
+	defer unlock()
 	st, ok := s.library[req.ID]
 	if !ok {
 		fail(w, fmt.Errorf("Demo 不存在"), 404)
+		return
+	}
+	if s.shared && isPending(st.Status) && st.Owner != s.owner {
+		fail(w, fmt.Errorf("其他版本正在解析此 Demo，请等待完成后重命名"), 409)
 		return
 	}
 	st.AliasName = req.AliasName

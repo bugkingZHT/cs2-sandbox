@@ -915,8 +915,20 @@ func (p *parser) bindWeaponS2(entity st.Entity) {
 	// Detect weapon firing, we don't use m_iClip1 because it would not work with weapons such as the knife (no ammo).
 	// WeaponFire events for grenades are dispatched when the grenade's projectile is created.
 	if equipment.Class() != common.EqClassGrenade && !p.disableMimicSource1GameEvents {
+		// Entity creation/checkpoints replay the current value through OnUpdate.
+		// A previously fired weapon is not a new shot; only a newer timestamp is.
+		var lastShotTime float32
+		if initial := entity.PropertyValueMust("m_fLastShotTime"); initial.Any != nil {
+			lastShotTime = initial.Float()
+		}
 		entity.Property("m_fLastShotTime").OnUpdate(func(val st.PropertyValue) {
 			if val.Any == nil {
+				return
+			}
+			shotTime := val.Float()
+			previous := lastShotTime
+			lastShotTime = shotTime
+			if shotTime <= 0 || shotTime <= previous {
 				return
 			}
 
@@ -932,7 +944,7 @@ func (p *parser) bindWeaponS2(entity st.Entity) {
 				shooter = equipment.Owner
 			}
 
-			if shooter != nil && val.Float() > 0 {
+			if shooter != nil {
 				p.eventDispatcher.Dispatch(events.WeaponFire{
 					Shooter: shooter,
 					Weapon:  equipment,

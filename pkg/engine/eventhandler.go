@@ -5,11 +5,20 @@ import (
 
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/common"
 	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/events"
+	"github.com/bugkingzht/cs-demobox/pkg/demoinfocs/msg"
 
 	"github.com/bugkingzht/cs-demobox/pkg/engine/entity"
 )
 
 func (b *replayBuilder) registerEventHandlers() {
+	b.parser.RegisterEventHandler(b.recordShot)
+	// Inferno start ticks use the server clock, not the demo-relative ingame tick.
+	b.parser.RegisterNetMessageHandler(func(m *msg.CNETMsg_Tick) {
+		if m.Tick != nil {
+			b.serverTick = m.GetTick()
+			b.hasServerTick = true
+		}
+	})
 	// Warmup/restart RoundStart events are not additional competitive rounds.
 	b.parser.RegisterEventHandler(func(e events.RoundStart) {
 		gs := b.parser.GameState()
@@ -25,6 +34,7 @@ func (b *replayBuilder) registerEventHandlers() {
 		b.bombSite = ""
 		b.activeProjectiles = make(map[int]entity.ProjectileFrame)
 		b.currentKillEvents = make(map[int]entity.KillEvent)
+		clear(b.pendingShots)
 		b.inFreezeTime = true // Enter freeze time at round start
 		b.roundStartTick = b.parser.GameState().IngameTick()
 		b.freezeEndTick = 0
@@ -147,28 +157,8 @@ func (b *replayBuilder) registerEventHandlers() {
 		delete(b.activeProjectiles, e.GrenadeEntityID)
 	})
 
-	// Fire event handlers (Infernos)
-	b.parser.RegisterEventHandler(func(e events.InfernoStart) {
-		throwerName := ""
-		throwerID := 0
-		if thrower := e.Inferno.Thrower(); thrower != nil {
-			throwerName = thrower.Name
-			throwerID = thrower.UserID
-		}
-		b.activeProjectiles[e.Inferno.Entity.ID()] = entity.ProjectileFrame{
-			Type:        common.EqUnknown,
-			X:           e.Inferno.Entity.Position().X,
-			Y:           e.Inferno.Entity.Position().Y,
-			Z:           e.Inferno.Entity.Position().Z,
-			ThrowerName: throwerName,
-			ThrowerID:   throwerID,
-			EntityID:    e.Inferno.Entity.ID(),
-			IsExploded:  true,
-		}
-	})
-	b.parser.RegisterEventHandler(func(e events.InfernoExpired) {
-		delete(b.activeProjectiles, e.Inferno.Entity.ID())
-	})
+	// Fires are read from live Inferno entities in frameOne(), including their
+	// networked type, lifetime and extinguished state. No trajectory matching.
 
 	// Explosion event handlers
 	b.parser.RegisterEventHandler(func(e events.HeExplode) {

@@ -8,7 +8,7 @@
         </button>
         <button class="sidebar-tool" :class="{ recording: tabRecorder.isRecording.value }" :disabled="!tabRecorder.isSupported || tabRecorder.isConverting.value" @click="tabRecorder.isRecording.value ? tabRecorder.stopRecording() : tabRecorder.startRecording()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="12" cy="12" r="3"/></svg>
-          <span>{{ tabRecorder.isRecording.value ? '停止录屏' : '录屏' }}</span>
+          <span>{{ tabRecorder.isRecording.value ? '停止录屏' : tabRecorder.isConverting.value ? `正在生成 MP4 ${tabRecorder.convertingProgress.value}%` : '录屏' }}</span>
           <span v-if="tabRecorder.isRecording.value" class="recording-dot"></span>
         </button>
         <div v-if="tabRecorder.pendingDownload.value" class="recording-download">

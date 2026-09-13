@@ -2,7 +2,7 @@ import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Frame, PlayerState, ReplayMeta } from '@/types/replay';
 import { isUtilityItem, EQUIPMENT_ID_MAP } from '@/config/equipment';
 import { MATCH_CONFIG, getDisplayTeam, TEAM_COLORS, getTeamColor } from '@/config/game';
-import { MAP_CANVAS_ELEMENT_SIZES } from '@/config/map';
+import { MAP_CANVAS_ELEMENT_SIZES, PLAYER_DISPLAY_CONTROLS, playerHeightScale, type PlayerHeightReferences } from '@/config/map';
 
 /**
  * Player Render Module
@@ -52,6 +52,11 @@ let lastFrameIndex = 0;
 
 // Render context interface
 interface RenderContext {
+  heightReferences?: PlayerHeightReferences;
+  playerHeightScaling: boolean;
+  playerSize: number;
+  playerNameSize: number;
+  playerLabelScale: number;
   playerLayer: Container;
   currentFrameIndex: number;
   currentRound: number; // For team color flipping in second half
@@ -75,6 +80,20 @@ const lerpAngle = (start: number, end: number, factor: number): number => {
   while (diff > 180) diff -= 360;
   while (diff < -180) diff += 360;
   return start + diff * factor;
+};
+
+const positionPlayerLabel = (sprite: PlayerSprite) => {
+  sprite.label.x = sprite.currentX;
+  sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius
+    + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset * sprite.label.scale.y;
+};
+
+/** Cancel map zoom for names only, including while playback is paused. */
+export const updatePlayerLabelScale = (scale: number) => {
+  playerSpriteMap.forEach(sprite => {
+    sprite.label.scale.set(scale);
+    positionPlayerLabel(sprite);
+  });
 };
 
 // Clear all players from the layer
@@ -117,8 +136,7 @@ export const startPlayerAnimation = (playerLayer: Container, isPlaying: boolean)
 
         sprite.graphics.x = sprite.currentX;
         sprite.graphics.y = sprite.currentY;
-        sprite.label.x = sprite.currentX;
-        sprite.label.y = sprite.currentY + (sprite.graphics as any)._radius + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset;
+        positionPlayerLabel(sprite);
 
         needsUpdate = true;
       }
@@ -204,6 +222,17 @@ const updatePlayerSprite = (
   }
 };
 
+// Use the same projection as player positions, including each floor's scale and offset.
+// The returned scale converts world dimensions to local canvas pixels; container zoom
+// is applied by Pixi afterwards. Labels have their own screen-size compensation.
+const playerWorldScale = (player: PlayerState, ctx: RenderContext): number => {
+  const center = ctx.worldToMap(player.x, player.y, player.z);
+  const edge = ctx.worldToMap(player.x + 1, player.y, player.z);
+  return Math.hypot(edge.x - center.x, edge.y - center.y) * ctx.playerSize / 100
+    * MAP_CANVAS_ELEMENT_SIZES.player.baseScale
+    * (ctx.playerHeightScaling ? playerHeightScale(player.z, ctx.heightReferences) : 1);
+};
+
 // Draw player graphics
 const drawPlayerGraphics = (
   playerSprite: PlayerSprite,
@@ -215,22 +244,44 @@ const drawPlayerGraphics = (
 
   // Get team color (automatically handles second half flipping)
   const color = getTeamColor(player.team || 0, ctx.currentRound, 'PRIMARY');
-  const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
+  const sizeScale = playerWorldScale(player, ctx);
+  const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * sizeScale;
   const angleRad = (playerSprite.currentYaw * Math.PI) / -180;
 
   // Store radius for label positioning
   (g as any)._radius = radius;
 
+  const activeWeaponId = Number(player.activeWeapon || 0);
+  const isUtility = isUtilityItem(activeWeaponId);
+  // Actual shots include right-click fire and shots between output samples.
+  const isFiring = (player.shotsFired ?? 0) > 0;
+  if (isFiring) {
+    // Use shot-time aim even if the player turned, switched items or died before
+    // this sample. Current held items and interpolated aim must not hide a shot.
+    const shotAngle = ((player.shotYaw ?? player.yaw) * Math.PI) / -180;
+    const lineLen = PLAYER_STYLE.attackLen * 8;
+    const segments = 10;
+    for (let i = segments - 1; i >= 0; i--) {
+      const t1 = i / segments;
+      const t2 = (i + 1) / segments;
+      const x1 = Math.cos(shotAngle) * lineLen * t1;
+      const y1 = Math.sin(shotAngle) * lineLen * t1;
+      const x2 = Math.cos(shotAngle) * lineLen * t2;
+      const y2 = Math.sin(shotAngle) * lineLen * t2;
+      const alpha = 1 - (t1 + t2) / 2;
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 5, color: 0xffffff, alpha: alpha * 0.6 });
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 3, color, alpha });
+    }
+  }
+
   if (player.alive) {
     // Draw direction triangle
-    const isAttacking = player.buttons?.includes(1); // 1 = common.ButtonAttack
-    const activeWeaponId = player.activeWeapon ? Number(player.activeWeapon) : 0;
-    const isUtility = isUtilityItem(activeWeaponId); // knife, C4, grenades
     const useWhiteTri = isUtility; // Non-gun: small white triangle
-    const triColor = useWhiteTri ? 0xffffff : (isAttacking ? 0xcc3333 : color);
-    // When utility (white triangle), shrink triangle by 2px on each dimension
-    const triLen = PLAYER_STYLE.triLen - (useWhiteTri ? 2 : 0);
-    const triW = PLAYER_STYLE.triWidth - (useWhiteTri ? 2 : 0);
+    const triColor = useWhiteTri ? 0xffffff : (isFiring ? 0xcc3333 : color);
+    // Keep the utility triangle proportional to the rebased marker dimensions.
+    const utilityInset = useWhiteTri ? MAP_CANVAS_ELEMENT_SIZES.player.directionTriangle.utilityInset : 0;
+    const triLen = (PLAYER_STYLE.triLen - utilityInset) * sizeScale;
+    const triW = (PLAYER_STYLE.triWidth - utilityInset) * sizeScale;
 
     const tipX = Math.cos(angleRad) * (radius + triLen);
     const tipY = Math.sin(angleRad) * (radius + triLen);
@@ -241,37 +292,6 @@ const drawPlayerGraphics = (
     const bx2 = Math.cos(angleRad) * radius + Math.cos(baseAngle2) * triW;
     const by2 = Math.sin(angleRad) * radius + Math.sin(baseAngle2) * triW;
 
-    // If firing, draw enhanced team-colored line with glow and gradient
-    if (isAttacking && !isUtility) {
-      // Line starts from player center (0, 0) and extends outward
-      const lineLen = PLAYER_STYLE.attackLen * 8; // Increased from 6 to 8 for longer line
-      const endX = Math.cos(angleRad) * lineLen;
-      const endY = Math.sin(angleRad) * lineLen;
-      
-      // Get team color (blue for CT, yellow/orange for T)
-      const teamColor = color; // Use the same team color as player circle
-      
-      // Draw gradient line: from opaque at player to transparent at end
-      // Create multiple segments for gradient effect (draw in reverse to layer correctly)
-      const segments = 10;
-      for (let i = segments - 1; i >= 0; i--) {
-        const t1 = i / segments;
-        const t2 = (i + 1) / segments;
-        const x1 = Math.cos(angleRad) * lineLen * t1;
-        const y1 = Math.sin(angleRad) * lineLen * t1;
-        const x2 = Math.cos(angleRad) * lineLen * t2;
-        const y2 = Math.sin(angleRad) * lineLen * t2;
-        
-        // Alpha decreases from 1.0 (at player) to 0.0 (at end)
-        const segmentAlpha = 1.0 - (t1 + t2) / 2;
-        
-        // Draw white glow for this segment
-        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 5, color: 0xffffff, alpha: segmentAlpha * 0.6 });
-        
-        // Draw colored line for this segment on top
-        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: 3, color: teamColor, alpha: segmentAlpha });
-      }
-    }
     // Triangle fill
     g.moveTo(bx1, by1).lineTo(tipX, tipY).lineTo(bx2, by2).closePath().fill({ color: triColor, alpha: 0.95 });
   }
@@ -280,18 +300,18 @@ const drawPlayerGraphics = (
   g.circle(0, 0, radius).fill(player.alive ? color : 0x888888);
 
   // Dark border for contrast
-  g.circle(0, 0, radius).stroke({ width: 1.5, color: 0x000000, alpha: 0.5 });
+  g.circle(0, 0, radius).stroke({ width: MAP_CANVAS_ELEMENT_SIZES.player.borderWidth * sizeScale, color: 0x000000, alpha: 0.5 });
 
   // 致盲状态视觉效果 (外圈白线)
   if (player.alive && (player.isBlinded || (player.flashDuration && player.flashDuration > 0))) {
-    g.circle(0, 0, radius + MAP_CANVAS_ELEMENT_SIZES.player.blindEffectOffset).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+    g.circle(0, 0, radius + MAP_CANVAS_ELEMENT_SIZES.player.blindEffectOffset * sizeScale).stroke({ width: MAP_CANVAS_ELEMENT_SIZES.player.blindStrokeWidth * sizeScale, color: 0xffffff, alpha: 0.9 });
   }
 
   if (!player.alive) {
     const crossSize = radius * MAP_CANVAS_ELEMENT_SIZES.player.deathCrossScale;
     g.moveTo(-crossSize, -crossSize).lineTo(crossSize, crossSize);
     g.moveTo(crossSize, -crossSize).lineTo(-crossSize, crossSize);
-    g.stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 });
+    g.stroke({ width: MAP_CANVAS_ELEMENT_SIZES.player.deathStrokeWidth * sizeScale, color: 0xffffff, alpha: 0.9 });
   }
 
   // Set position (either current interpolated or target)
@@ -299,8 +319,9 @@ const drawPlayerGraphics = (
   g.y = playerSprite.currentY;
   // 阵亡玩家不显示 name
   playerSprite.label.visible = !!player.alive;
-  playerSprite.label.x = playerSprite.currentX;
-  playerSprite.label.y = playerSprite.currentY + radius + MAP_CANVAS_ELEMENT_SIZES.player.labelOffset;
+  playerSprite.label.style.fontSize = PLAYER_STYLE.nameSize * ctx.playerNameSize / 100;
+  playerSprite.label.scale.set(ctx.playerLabelScale);
+  positionPlayerLabel(playerSprite);
 };
 
 // Update weapon icon for player (grenades and C4 only)
@@ -344,18 +365,19 @@ const updateWeaponIcon = async (
     if (!playerSprite.weaponIcon) {
       playerSprite.weaponIcon = new Sprite(texture);
       playerSprite.weaponIcon.anchor.set(0.5);
-      const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize;
-      playerSprite.weaponIcon.width = iconSize;
-      playerSprite.weaponIcon.height = iconSize;
       ctx.playerLayer.addChild(playerSprite.weaponIcon);
     } else {
       playerSprite.weaponIcon.texture = texture;
     }
+    const sizeScale = playerWorldScale(player, ctx);
+    const iconSize = MAP_CANVAS_ELEMENT_SIZES.player.weaponIconSize * sizeScale;
+    playerSprite.weaponIcon.width = iconSize;
+    playerSprite.weaponIcon.height = iconSize;
 
     // C4 active (held in hand): center, red - same as grenade active state
     // C4 carried (in inventory): bottom-right, red
     // Grenades (501-506) active: center, white
-    const radius = player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius;
+    const radius = (player.alive ? PLAYER_STYLE.aliveRadius : PLAYER_STYLE.deadRadius) * sizeScale;
     const offset = radius * 0.55;
     const isC4Active = displayItemId === 404 && activeWeaponId === 404;
     const isC4Carried = displayItemId === 404 && activeWeaponId !== 404;
@@ -377,6 +399,11 @@ const updateWeaponIcon = async (
 };
 
 export interface DrawPlayersForFrameOptions {
+  heightReferences?: PlayerHeightReferences;
+  playerHeightScaling?: boolean;
+  playerSize?: number;
+  playerNameSize?: number;
+  playerLabelScale?: number;
   frame: Frame | undefined;
   meta?: ReplayMeta | null;
   playerLayer: Container | null;
@@ -394,6 +421,8 @@ export interface DrawPlayersForFrameOptions {
 // Main draw function for players
 export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
   const {
+    heightReferences,
+    playerHeightScaling = true,
     frame,
     meta,
     playerLayer,
@@ -405,6 +434,9 @@ export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
     onPlayerPointerMove,
     onPlayerPointerOut,
     hiddenPlayerIds,
+    playerSize = PLAYER_DISPLAY_CONTROLS.playerSize.default,
+    playerNameSize = PLAYER_DISPLAY_CONTROLS.playerNameSize.default,
+    playerLabelScale = 1,
   } = options;
   const hiddenSet = hiddenPlayerIds && hiddenPlayerIds.length > 0 ? new Set(hiddenPlayerIds) : null;
 
@@ -416,6 +448,11 @@ export const drawPlayersForFrame = (options: DrawPlayersForFrameOptions) => {
   }
 
   const ctx: RenderContext = {
+    heightReferences,
+    playerHeightScaling,
+    playerSize,
+    playerNameSize,
+    playerLabelScale,
     playerLayer,
     currentFrameIndex,
     currentRound: frame.round,

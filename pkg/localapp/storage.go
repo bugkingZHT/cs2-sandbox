@@ -48,10 +48,15 @@ func validEntryID(id string) bool {
 }
 
 func (s *Server) loadLibrary() error {
+	return s.loadLibrarySnapshot(true)
+}
+
+func (s *Server) loadLibrarySnapshot(recoverPending bool) error {
 	dirs, err := os.ReadDir(s.root)
 	if err != nil {
 		return err
 	}
+	library := make(map[string]State)
 	for _, dir := range dirs {
 		if !dir.IsDir() || !validEntryID(dir.Name()) || dir.Type()&os.ModeSymlink != 0 {
 			continue
@@ -63,8 +68,13 @@ func (s *Server) loadLibrary() error {
 			// Preserve the directory and expose a recoverable error, never silently erase it.
 			st = State{ID: id, Name: id, Status: "error", Message: "本地索引缺失或损坏，请重新解析源文件", Rounds: []int{}}
 		}
-		if isPending(st.Status) {
+		alive := s.shared && s.ownerAlive(st.Owner)
+		if st.Staged && alive {
+			continue // An upload is not published until cross-process deduplication commits it.
+		}
+		if isPending(st.Status) && recoverPending && !alive {
 			st.Status = "error"
+			st.Staged = false
 			st.Message = "上次导入已中断，请重新选择文件解析"
 			// Only remove our fixed-name temporary inputs, never SourcePath.
 			os.Remove(filepath.Join(s.root, id, "source.dem"))
@@ -88,7 +98,7 @@ func (s *Server) loadLibrary() error {
 				st.Message = "本地解析缓存不完整，请重新解析源文件"
 			}
 		}
-		if st.Status != "ready" && st.Status != "error" {
+		if st.Status != "ready" && st.Status != "error" && !(isPending(st.Status) && (alive || !recoverPending)) {
 			st.Status = "error"
 			st.Message = "不支持的本地记录状态"
 		}
@@ -104,8 +114,14 @@ func (s *Server) loadLibrary() error {
 				st.UploadName = importName(origin)
 			}
 		}
-		s.library[id] = st
+		if s.shared && alive && st.Owner == s.owner && isPending(st.Status) {
+			if active, ok := s.library[id]; ok && isPending(active.Status) {
+				st = active // Keep the owning process's in-memory progress and queued aliases.
+			}
+		}
+		library[id] = st
 	}
+	s.library = library
 	return nil
 }
 

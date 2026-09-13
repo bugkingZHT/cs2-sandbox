@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/bugkingzht/cs-demobox/pkg/localapp"
@@ -12,20 +13,38 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 )
 
 func main() {
 	if err := run(); err != nil {
 		log.Print(err)
-		showStartupError(err.Error())
+		if noBrowser := flag.Lookup("no-browser"); noBrowser == nil || noBrowser.Value.String() != "true" {
+			showStartupError(err.Error())
+		}
+		os.Exit(1)
 	}
 }
 func run() error {
 	noBrowser := flag.Bool("no-browser", false, "Do not open a browser (for diagnostics)")
 	address := flag.String("listen", "127.0.0.1:0", "Loopback listen address")
+	buildInfo := flag.Bool("build-info", false, "Print executable SHA-256 identity without starting a server")
 	flag.Parse()
-	instance, err := acquireInstance(instanceName, !*noBrowser)
+	identity, err := currentBuildIdentity()
+	if err != nil {
+		return err
+	}
+	if *buildInfo {
+		return json.NewEncoder(os.Stdout).Encode(identity)
+	}
+	if existing, err := activateExistingInstance(identity.instanceName(), !*noBrowser); err != nil || existing {
+		return err
+	}
+	if launched, err := launchNamedProcess(identity); err != nil || launched {
+		return err
+	}
+	instance, err := acquireInstance(identity.instanceName(), !*noBrowser)
 	if err != nil {
 		return err
 	}
@@ -50,10 +69,16 @@ func run() error {
 		return err
 	}
 	defer app.Close()
+	app.BuildUID = identity.UID
 	ln, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err
 	}
+	defer ln.Close()
+	if err := identity.writeRuntimeInfo(ln.Addr().String()); err != nil {
+		return err
+	}
+	defer os.Remove(filepath.Join(identity.RuntimeDir, "instance.json"))
 	server := &http.Server{Handler: app.Handler(assets), ReadHeaderTimeout: 10 * time.Second}
 	app.Shutdown = func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

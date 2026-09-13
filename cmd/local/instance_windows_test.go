@@ -9,6 +9,43 @@ import (
 	"time"
 )
 
+func TestDifferentBuildInstances(t *testing.T) {
+	base := fmt.Sprintf(`Local\cs2-build-test-%d-%d-`, os.Getpid(), time.Now().UnixNano())
+	if found, err := activateExistingInstance(base+"build-a", true); err != nil || found {
+		t.Fatal("unstarted build incorrectly found", found, err)
+	}
+	a, err := acquireInstance(base+"build-a", false)
+	if err != nil || a == nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := acquireInstance(base+"build-b", false)
+	if err != nil || b == nil {
+		t.Fatal("different build could not coexist", err)
+	}
+	defer b.Close()
+	activatedA, activatedB := make(chan struct{}, 1), make(chan struct{}, 1)
+	a.Watch(func() { activatedA <- struct{}{} })
+	b.Watch(func() { activatedB <- struct{}{} })
+	if found, err := activateExistingInstance(base+"build-a", true); err != nil || !found {
+		t.Fatal("launcher did not find matching build", found, err)
+	}
+	duplicate, err := acquireInstance(base+"build-a", false)
+	if err != nil || duplicate != nil {
+		t.Fatal("same build started twice", err)
+	}
+	select {
+	case <-activatedA:
+	case <-time.After(3 * time.Second):
+		t.Fatal("matching build did not receive activation")
+	}
+	select {
+	case <-activatedB:
+		t.Fatal("activation reached another build")
+	default:
+	}
+}
+
 func TestInstanceActivation(t *testing.T) {
 	name := fmt.Sprintf(`Local\cs2-sandbox-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
 	first, err := acquireInstance(name, false)
