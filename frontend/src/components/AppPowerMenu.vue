@@ -33,7 +33,7 @@
       <label><span>C4</span><input type="checkbox" v-model="showMapBomb" /></label>
       <label><span>高度缩放效果</span><input type="checkbox" v-model="playerHeightScaling" /></label>
       <div class="size-control">
-        <label for="map-player-size"><span>玩家圆大小</span><output for="map-player-size">{{ playerSize }}%</output></label>
+        <label for="map-player-size"><span>玩家图标大小</span><output for="map-player-size">{{ playerSize }}%</output></label>
         <input id="map-player-size" type="range" v-model.number="playerSize" v-bind="playerSizeRange" aria-describedby="map-player-size-hint" />
         <p id="map-player-size-hint">随地图等比例缩放</p>
       </div>
