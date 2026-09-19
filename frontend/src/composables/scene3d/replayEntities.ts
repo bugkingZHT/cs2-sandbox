@@ -8,6 +8,8 @@ import { effectGrowth, type ProjectileEffectStarts } from './projectileEffects';
 import type { ShotFlights } from './shotFlights';
 import { ReplayShots, type ShotRenderOptions } from './replayShots';
 import { projectileKind, projectileTypeId, resolveProjectileTeam, PROJECTILE_TEAM_STYLES, projectileEffectDefaults } from './projectileStyle';
+import { equipmentKind, isHandheldUtility } from './equipmentKinds';
+import { EquipmentModels } from './equipmentModels';
 
 export interface EntityOptions extends ShotRenderOptions {
   replayMeta?: ReplayMeta;
@@ -33,6 +35,9 @@ interface PlayerVisual {
   torso: THREE.Mesh;
   head: THREE.Mesh;
   bearing: THREE.Group;
+  weaponRig: THREE.Group;
+  weapon: THREE.Mesh;
+  arms: THREE.Mesh;
   fieldOfView: THREE.Mesh;
   corpse: THREE.Group;
   fragments: THREE.InstancedMesh;
@@ -123,13 +128,12 @@ export class ReplayEntities {
   readonly smoke: THREE.InstancedMesh;
   readonly flames: THREE.InstancedMesh;
   readonly bomb: THREE.Group;
+  readonly equipment: EquipmentModels;
   private readonly geometry = {
     body: new THREE.CylinderGeometry(15, 18, 42, 10),
     head: new THREE.SphereGeometry(13, 10, 6),
     fieldOfView: createFieldOfViewGeometry(),
     fragment: new THREE.IcosahedronGeometry(1, 0),
-    marker: new THREE.IcosahedronGeometry(13, 0),
-    box: new THREE.BoxGeometry(12, 17, 11),
     ring: new THREE.RingGeometry(22, 27, 32),
     effect: new THREE.RingGeometry(0.86, 1, 40),
     particle: new THREE.IcosahedronGeometry(1, 1),
@@ -158,12 +162,13 @@ export class ReplayEntities {
   private nameScale = 1;
 
   constructor(private readonly gradientMap: THREE.DataTexture) {
+    this.equipment = new EquipmentModels(gradientMap);
     this.group.name = 'replay-entities';
     this.ct = new THREE.MeshToonMaterial({ color: CT_COLOR, gradientMap });
     this.t = new THREE.MeshToonMaterial({ color: T_COLOR, gradientMap });
     this.neutral = new THREE.MeshToonMaterial({ color: 0x8a949a, gradientMap });
     this.white = new THREE.MeshToonMaterial({ color: 0xfff8d9, gradientMap });
-    this.c4Material = new THREE.MeshToonMaterial({ color: 0xecc361, gradientMap });
+    this.c4Material = new THREE.MeshToonMaterial({ color: 0x9e3633, gradientMap });
     for (const [team, color] of [[3, CT_COLOR], [2, T_COLOR], [0, 0x999999]]) {
       this.fieldsOfView.set(team, new THREE.MeshBasicMaterial({
         color, map: this.fieldOfViewFade, transparent: true, opacity: 0.46,
@@ -195,7 +200,8 @@ export class ReplayEntities {
     this.flames.count = 0;
     this.bomb = new THREE.Group();
     this.bomb.name = 'bomb';
-    const bombBox = new THREE.Mesh(new THREE.BoxGeometry(25, 18, 20), this.c4Material);
+    const bombBox = this.equipment.create('c4', this.c4Material);
+    bombBox.rotation.x = -Math.PI / 2;
     bombBox.position.y = 12;
     bombBox.castShadow = true;
     const bombRing = new THREE.Mesh(this.geometry.ring, this.selectionMaterial);
@@ -232,10 +238,19 @@ export class ReplayEntities {
     fieldOfView.position.y = 28;
     fieldOfView.raycast = () => undefined;
     bearing.add(fieldOfView);
+    const weaponRig = new THREE.Group();
+    weaponRig.name = `player-weapon-${id}`;
+    weaponRig.position.y = 52;
+    const weapon = this.equipment.create('rifle', this.neutral);
+    const arms = new THREE.Mesh(this.equipment.longArms, this.neutral);
+    arms.castShadow = true;
+    weaponRig.add(arms, weapon);
+    bearing.add(weaponRig);
     body.add(bearing);
-    const c4 = new THREE.Mesh(this.geometry.box, this.c4Material);
+    const c4 = this.equipment.create('c4', this.c4Material);
+    c4.scale.setScalar(0.7);
     c4.position.set(-19, 30, 0);
-    body.add(c4);
+    bearing.add(c4);
     const corpse = new THREE.Group();
     const fragments = new THREE.InstancedMesh(this.geometry.fragment, this.neutral, FRAGMENT_COUNT);
     fragments.name = `death-fragments-${id}`;
@@ -254,7 +269,7 @@ export class ReplayEntities {
     label.raycast = () => undefined;
     group.add(body, corpse, selection, label);
     this.group.add(group);
-    const visual: PlayerVisual = { group, body, torso, head, bearing, fieldOfView, corpse, fragments,
+    const visual: PlayerVisual = { group, body, torso, head, bearing, weaponRig, weapon, arms, fieldOfView, corpse, fragments,
       deathGroundOffset: 0, c4, selection, label, labelText: '', labelPixels: { width: 80, height: 18 } };
     this.players.set(id, visual);
     return visual;
@@ -292,11 +307,7 @@ export class ReplayEntities {
     const group = new THREE.Group();
     group.name = `projectile-${id}`;
     group.userData.projectileId = id;
-    const marker = new THREE.Mesh(this.geometry.marker, this.projectileMaterials.get(0));
-    marker.castShadow = true;
-    const hull = new THREE.Mesh(this.geometry.marker, this.outline);
-    hull.scale.setScalar(1.13);
-    marker.add(hull);
+    const marker = this.equipment.create(equipmentKind(projectile.type) ?? 'hegrenade', this.projectileMaterials.get(0)!);
     const effect = new THREE.Mesh(this.geometry.effect, new THREE.MeshBasicMaterial({
       color: 0x999999, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false, toneMapped: false,
     }));
@@ -471,7 +482,21 @@ export class ReplayEntities {
         this.updateDeath(visual, id, deathAge, scale);
       } else if (player.alive) visual.deathPose = undefined;
       visual.bearing.rotation.y = THREE.MathUtils.degToRad(player.yaw || 0);
-      visual.c4.visible = options.showMapBomb !== false && (player.inventory || []).some(item => item === '404' || item === 'c4');
+      const heldKind = equipmentKind(player.activeWeapon);
+      this.equipment.set(visual.weapon, heldKind, heldKind === 'c4' ? this.c4Material : material);
+      visual.weaponRig.visible = !!heldKind && (heldKind !== 'c4' || options.showMapBomb !== false);
+      const utility = !!heldKind && isHandheldUtility(heldKind);
+      const knife = heldKind === 'knife';
+      // Keep hand-held canisters and the blade upright even when looking up/down.
+      visual.weaponRig.rotation.z = utility || knife ? 0
+        : -THREE.MathUtils.degToRad(Number.isFinite(player.pitch) ? player.pitch! : 0);
+      visual.weapon.rotation.z = knife ? Math.PI / 2 : 0;
+      // Rotate the knife around its grip, keeping the handle inside the hand.
+      visual.weapon.position.set(utility ? 23 : knife ? 18 : 20, utility ? -4 : knife ? -15 : 0, 0);
+      visual.arms.geometry = utility || heldKind === 'knife' ? this.equipment.utilityArms
+        : heldKind === 'pistol' ? this.equipment.shortArms : this.equipment.longArms;
+      visual.arms.material = material;
+      visual.c4.visible = heldKind !== 'c4' && options.showMapBomb !== false && (player.inventory || []).some(item => equipmentKind(item) === 'c4');
       visual.selection.visible = id === this.selectedPlayer && (player.alive || visual.corpse.visible);
       visual.selection.scale.setScalar(scale);
       visual.label.visible = player.alive;
@@ -501,12 +526,12 @@ export class ReplayEntities {
       visual.kind = kind;
       visual.team = team;
       // Team owns every trail/effect hue, including direct seeks and reused IDs.
-      visual.marker.material = this.projectileMaterials.get(team)!;
+      this.equipment.set(visual.marker, equipmentKind(projectile.type), this.projectileMaterials.get(team)!);
       visual.line.material = this.trajectoryMaterials.get(team)!;
       const ring = visual.effect.material as THREE.MeshBasicMaterial;
       ring.color.setHex(style.trail);
       (visual.blast.material as THREE.MeshToonMaterial).color.setHex(style.blast);
-      visual.marker.visible = !projectile.isExploded;
+      visual.marker.visible &&= !projectile.isExploded;
       visual.marker.rotation.set(options.currentTimeMs / 450, options.currentTimeMs / 700, 0);
       visual.marker.scale.setScalar(this.selectedProjectile === id ? 1.45 : 1);
       visual.effect.visible = !!projectile.isExploded;
@@ -668,6 +693,7 @@ export class ReplayEntities {
 
   /** Resources unattached to the scene (e.g. cached materials) need explicit disposal too. */
   dispose(): void {
+    this.equipment.dispose();
     this.shots.dispose();
     for (const geometry of Object.values(this.geometry)) geometry.dispose();
     for (const material of [this.ct, this.t, this.neutral, this.white, this.c4Material,

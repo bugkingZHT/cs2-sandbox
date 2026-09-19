@@ -34,12 +34,14 @@ const fixtureEntry = { ...entry, status: 'ready', rounds: [1], meta: fixtureMeta
 const entryModule = `
 import { createApp, h, reactive, ref } from 'vue';
 import * as THREE from 'three';
+import { MUZZLE_OFFSET, SHOT_SPEED } from '/src/composables/scene3d/shotFlights.ts';
 import MapCanvas3D from '/src/components/ReplayPlayer/MapCanvas3D.vue';
 const props = reactive(${JSON.stringify({ frames, replayMeta: meta, mapName: 'de_ancient', currentFrameIndex: 0, currentTimeMs: 0, isPlaying: false, hiddenPlayerIds: [] })});
 const component = ref();
 window.sceneErrors = []; window.clickedProjectile = null;
 window.props3d = props;
 window.THREE = THREE;
+window.shotConstants = { MUZZLE_OFFSET, SHOT_SPEED };
 window.app3d = createApp({ setup: () => () => h(MapCanvas3D, { ...props, ref: component,
   onError: message => window.sceneErrors.push(message),
   onProjectileClick: proj => { window.clickedProjectile = proj.entityID; },
@@ -465,7 +467,8 @@ try {
       assert.equal(launched.endpoint.playerId, 2, 'the bullet terminates on the struck player');
       assert.ok(launched.endpoint.distance > 500 && launched.endpoint.distance < 600, 'player collision occurs on the body silhouette before its center');
     } else assert.equal(launched.endpoint.distance, 240, 'a nearer wall blocks the player behind it');
-    const arrival = 100 + (launched.endpoint.distance - 28) / 4.8;
+    const { MUZZLE_OFFSET, SHOT_SPEED } = await page.evaluate(() => window.shotConstants);
+    const arrival = 100 + (launched.endpoint.distance - MUZZLE_OFFSET) / SHOT_SPEED;
     await seek(arrival - .25);
     const approaching = await shotState();
     assert.ok(approaching.effects[0].visible && !approaching.effects[4].visible && approaching.head < launched.endpoint.distance, 'before contact the bullet remains in flight without a premature impact');
@@ -543,7 +546,8 @@ try {
       return { id, kind: visual.kind, team: visual.team, visible: visible(visual.group), marker: visible(visual.marker), ring: visible(visual.effect),
         position: visual.group.position.toArray(),
         color: visual.line.material.color.toArray(), opacity: visual.line.material.opacity, line: visible(visual.line),
-        material: visual.line.material.uuid, ringColor: visual.effect.material.color.toArray(), markerColor: visual.marker.material.color.toArray(),
+        material: visual.line.material.uuid, ringColor: visual.effect.material.color.toArray(), markerColor: visual.marker.children[0].material.color.toArray(),
+        modelKind: visual.marker.userData.equipmentKind, modelGeometry: visual.marker.geometry.uuid,
         ringScale: visual.effect.scale.toArray(), ringOpacity: visual.effect.material.opacity, ttl: visual.projectile.ttl,
         burstVisible: visible(visual.burst), burst, blast: visible(visual.blast), shards: visible(visual.shards),
         shardCount: visual.shards.count, shardMatrices: Array.from(visual.shards.instanceMatrix.array.slice(0, visual.shards.count * 16)),
@@ -559,7 +563,9 @@ try {
   const flyingGrenades = await grenadeState();
   for (const row of [0, 1]) {
     const grenades = flyingGrenades.projectiles.slice(row * 6, row * 6 + 6), first = grenades[0];
+    assert.equal(new Set(grenades.map(grenade => grenade.modelGeometry)).size, 6, 'all utility types have distinct physical models');
     for (const grenade of grenades) {
+      assert.equal(grenade.modelKind, grenade.kind);
       assert.ok(grenade.marker && grenade.line && !grenade.burstVisible, 'every grenade type has a flying marker and trajectory before detonation');
       assert.deepEqual(grenade.color, first.color, 'all six grenade types have byte-identical team trajectory RGB');
       assert.equal(grenade.opacity, first.opacity, 'all six grenade types have identical team trajectory opacity');

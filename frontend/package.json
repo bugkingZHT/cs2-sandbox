@@ -8,6 +8,7 @@
     "preview": "vite preview --config vite.local.config.ts",
     "test:local": "node test-local-data.mjs && node test-batch-import.mjs && node test-player-display.mjs && node test-replay-sampling.mjs",
     "test:3d": "node test-3d-browser.mjs",
+    "test:equipment": "node test-equipment-browser.mjs",
     "test:maps": "node test-map-catalog-browser.mjs",
     "test:recording": "node test-recording.mjs"
   },

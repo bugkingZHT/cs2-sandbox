@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { ReplayMeta } from '@/types/replay';
 import { getDisplayTeam } from '@/config/game';
 import type { ScenePoint } from './sampleReplayFrame';
-import { SHOT_SPEED, SHOT_RANGE, MUZZLE_OFFSET, MUZZLE_DURATION_MS, IMPACT_DURATION_MS,
+import { SHOT_SPEED, SHOT_RANGE, MUZZLE_DURATION_MS, IMPACT_DURATION_MS,
   type ShotFlight, type ShotFlights } from './shotFlights';
 
 export interface ShotRenderOptions {
@@ -91,7 +91,7 @@ export class ReplayShots {
     bullet.renderOrder = 5;
     muzzle.renderOrder = 6;
     muzzleCore.renderOrder = impact.renderOrder = 7;
-    muzzle.position.x = muzzleCore.position.x = MUZZLE_OFFSET;
+    muzzle.position.x = muzzleCore.position.x = event.muzzleOffset;
     for (const mesh of [bullet, core, muzzle, muzzleCore, impact]) {
       mesh.raycast = () => undefined;
       group.add(mesh);
@@ -138,7 +138,8 @@ export class ReplayShots {
       if (hidden.has(event.shooterId)) continue;
       const endpoint = this.endpoint(event, options.shotDistanceAt);
       const age = options.currentTimeMs - event.timeMs;
-      const flightDuration = Math.max(0, endpoint.distance - MUZZLE_OFFSET) / SHOT_SPEED;
+      const muzzleOffset = event.muzzleOffset;
+      const flightDuration = Math.max(0, endpoint.distance - muzzleOffset) / SHOT_SPEED;
       const duration = Math.max(MUZZLE_DURATION_MS, flightDuration + (endpoint.kind === 'range' ? 0 : IMPACT_DURATION_MS));
       if (age < 0 || age >= duration || options.currentTimeMs >= event.endTimeMs) continue;
       let visual = this.activeVisuals.get(event.key);
@@ -147,6 +148,7 @@ export class ReplayShots {
         this.activeVisuals.set(event.key, visual);
       }
       visual.event = event;
+      visual.muzzle.position.x = visual.muzzleCore.position.x = muzzleOffset;
       visual.endpoint = endpoint;
       visual.seen = true;
       visual.group.name = `shot-${event.key}`;
@@ -163,13 +165,13 @@ export class ReplayShots {
 
       // Only a short segment travels with the head. It never stretches back to
       // the player's current position and survives subsequent non-firing frames.
-      const head = Math.min(endpoint.distance, MUZZLE_OFFSET + age * SHOT_SPEED);
-      const tail = Math.max(MUZZLE_OFFSET, head - 64);
+      const head = Math.min(endpoint.distance, muzzleOffset + age * SHOT_SPEED);
+      const tail = Math.max(muzzleOffset, head - 64);
       visual.bullet.position.x = visual.core.position.x = tail;
       visual.bullet.scale.set(Math.max(0, head - tail), 5.5, 5.5);
       visual.core.scale.set(Math.max(0, head - tail), 2.1, 2.1);
-      visual.bullet.visible = visual.core.visible = head > MUZZLE_OFFSET && age < flightDuration;
-      const muzzleSpace = Math.max(0, endpoint.distance - MUZZLE_OFFSET);
+      visual.bullet.visible = visual.core.visible = head > muzzleOffset && age < flightDuration;
+      const muzzleSpace = Math.max(0, endpoint.distance - muzzleOffset);
       visual.muzzle.visible = visual.muzzleCore.visible = age < MUZZLE_DURATION_MS && muzzleSpace > 0;
       const flare = 0.55 + 0.45 * Math.max(0, 1 - age / MUZZLE_DURATION_MS) ** 2;
       const flameLength = Math.min(flare, muzzleSpace / 54);

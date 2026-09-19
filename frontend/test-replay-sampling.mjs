@@ -1,8 +1,30 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'vite';
 
 const server = await createServer({ configFile: 'vite.local.config.ts', server: { middlewareMode: true }, appType: 'custom' });
 try {
+  const { equipmentKind } = await server.ssrLoadModule('/src/composables/scene3d/equipmentKinds.ts');
+  // Read the parser contract so frontend IDs cannot silently drift from emitted data.
+  const parserEquipment = readFileSync(new URL('../pkg/demoinfocs/common/equipment.go', import.meta.url), 'utf8');
+  const parserIds = Object.fromEntries([...parserEquipment.matchAll(/(Eq\w+)\s+EquipmentType\s*=\s*(\d+)/g)].map(m => [m[1], Number(m[2])]));
+  for (const [kind, names] of Object.entries({
+    pistol: 'P2000 Glock P250 Deagle FiveSeven DualBerettas Tec9 CZ USP Revolver Zeus',
+    smg: 'MP7 MP9 Bizon Mac10 UMP P90 MP5',
+    shotgun: 'SawedOff Nova Mag7 XM1014', machinegun: 'M249 Negev',
+    rifle: 'Galil Famas AK47 M4A4 M4A1 SG553 AUG', sniper: 'Scout SSG08 AWP Scar20 G3SG1',
+    knife: 'Knife', c4: 'Bomb', smoke: 'Smoke', flash: 'Flash', hegrenade: 'HE',
+    molotov: 'Molotov', incendiary: 'Incendiary', decoy: 'Decoy',
+  })) for (const name of names.split(' ')) {
+    assert.ok(parserIds[`Eq${name}`]);
+    assert.equal(equipmentKind(String(parserIds[`Eq${name}`])), kind, `parser ${name} resolves to the correct held silhouette`);
+  }
+  for (const [name, kind] of Object.entries({ weapon_awp: 'sniper', weapon_m4a1_silencer: 'rifle', weapon_mp5sd: 'smg',
+    weapon_knife_karambit: 'knife', weapon_smokegrenade_projectile: 'smoke', incgrenade: 'incendiary',
+    flashbang: 'flash', he: 'hegrenade', weapon_c4: 'c4' })) assert.equal(equipmentKind(name), kind);
+  for (const unknown of [undefined, '', '0', '406', '999', 'missing', 'constructor', '__proto__']) {
+    assert.equal(equipmentKind(unknown), undefined, 'unknown equipment and defuse kits must not appear as guns');
+  }
   const { sampleReplayFrame, demoToScene, sceneToDemo, demoDirectionToScene } =
     await server.ssrLoadModule('/src/composables/scene3d/sampleReplayFrame.ts');
   const { buildProjectileTrails, trailPointCount } =
@@ -234,6 +256,19 @@ try {
     players: { 1: shooting(changes), ...targets }, ...frameChanges,
   });
   const fullFlightMs = (SHOT_RANGE - MUZZLE_OFFSET) / SHOT_SPEED;
+  const { ReplayShots } = await server.ssrLoadModule('/src/composables/scene3d/replayShots.ts');
+  const sniperFrames = [shotFrame(0, { activeWeapon: '309' }), shotFrame(100, { activeWeapon: '303', shotsFired: 0 })];
+  const sniperFlights = buildShotFlights(sniperFrames), sniperFlight = sniperFlights.active(1, 100)[0];
+  assert.equal(sniperFlight.muzzleOffset, 76, 'a flying sniper shot retains its launch muzzle after switching to a rifle');
+  assert.equal(sniperFlight.endTimeMs, (SHOT_RANGE - 76) / SHOT_SPEED + IMPACT_DURATION_MS);
+  const shotRenderer = new ReplayShots();
+  shotRenderer.update(sniperFlights, 1, { currentTimeMs: 0 });
+  const pooledShot = [...shotRenderer.activeVisuals.values()][0];
+  assert.equal(pooledShot.muzzle.position.x, 76, 'the sniper flash starts at the long barrel tip');
+  shotRenderer.update(buildShotFlights([shotFrame(0, { activeWeapon: '303' })]), 1, { currentTimeMs: 0 });
+  assert.equal([...shotRenderer.activeVisuals.values()][0], pooledShot, 'different gun categories reuse the same effect object');
+  assert.equal(pooledShot.muzzle.position.x, 48, 'a reused rifle flash returns to the shorter barrel tip');
+  shotRenderer.dispose();
   const shotSource = [shotFrame(100, {}, { 2: targetPlayer() }), shotFrame(200, { shotsFired: 0 }, { 2: targetPlayer() })];
   const originalShots = structuredClone(shotSource);
   const shotIndex = buildShotFlights(shotSource);
@@ -243,7 +278,7 @@ try {
   assert.deepEqual(shot.hit, { distance: 490, playerId: 2 }, 'stationary player collision hits the front of its 18u proxy');
   assert.equal(shot.team, 3);
   const hitArrival = shot.timeMs + (shot.hit.distance - MUZZLE_OFFSET) / SHOT_SPEED;
-  assert.equal(hitArrival, 196.25, 'muzzle offset is included exactly once in flight travel time');
+  assert.equal(hitArrival, 100 + (490 - 48) / 4.8, 'muzzle offset is included exactly once in flight travel time');
   assert.equal(shot.endTimeMs, hitArrival + IMPACT_DURATION_MS);
   assert.deepEqual(shotIndex.active(1, 99.999), [], 'a future shot never appears early');
   assert.equal(shotIndex.active(1, 150)[0], shot, 'flying bullets outlive the next source sample without shots');
@@ -259,7 +294,7 @@ try {
   assert.equal(lastShot.hit, undefined, 'a shooter cannot hit their own proxy');
   assert.equal(lastShot.endTimeMs, fullFlightMs + IMPACT_DURATION_MS, 'a genuine clip endpoint allows the complete bounded flight');
   const pointBlank = buildShotFlights([shotFrame(0, {}, { 2: targetPlayer({ x: 28 }) })]).active(1, 0)[0];
-  assert.equal(pointBlank.hit.distance, MUZZLE_OFFSET);
+  assert.equal(pointBlank.hit.distance, 10, 'an enemy inside the longer gun barrel is hit at its near body surface');
   assert.equal(pointBlank.endTimeMs, MUZZLE_DURATION_MS, 'point-blank impact does not shorten the muzzle flash');
   const angled = buildShotFlights([shotFrame(0, { x: 10, y: 20, z: 100, yaw: 0, shotYaw: 90, pitch: -30 })]).active(1, 0)[0];
   assert.deepEqual(angled.origin, { x: 10, y: 152, z: -20 });
@@ -270,11 +305,11 @@ try {
   assert.equal(buildShotFlights([shotFrame(0, {}, { 2: targetPlayer({ z: 200 }) })]).active(1, 0)[0].hit, undefined,
     'a horizontal bullet does not hit a player merely overlapping in XY');
 
-  const movingFrames = [shotFrame(0, {}, { 2: targetPlayer({ x: 268, y: 200 }) }),
-    shotFrame(100, { shotsFired: 0 }, { 2: targetPlayer({ x: 268, y: -200 }) })];
+  const movingFrames = [shotFrame(0, {}, { 2: targetPlayer({ x: MUZZLE_OFFSET + 240, y: 200 }) }),
+    shotFrame(100, { shotsFired: 0 }, { 2: targetPlayer({ x: MUZZLE_OFFSET + 240, y: -200 }) })];
   const crossingHit = buildShotFlights(movingFrames).active(1, 0)[0].hit;
   assert.equal(crossingHit.playerId, 2);
-  assert.ok(Math.abs(crossingHit.distance - 250) < 1e-9, 'relative segment collision catches a moving player between two clear endpoint poses');
+  assert.ok(Math.abs(crossingHit.distance - (MUZZLE_OFFSET + 222)) < 1e-9, 'relative segment collision catches a moving player between two clear endpoint poses');
   const movingAway = [shotFrame(0, {}, { 2: targetPlayer({ x: 268, y: 0 }) }),
     shotFrame(100, { shotsFired: 0 }, { 2: targetPlayer({ x: 268, y: 200 }) })];
   assert.equal(buildShotFlights(movingAway).active(1, 0)[0].hit, undefined, 'a target leaving the ray before arrival is not hit at its old position');

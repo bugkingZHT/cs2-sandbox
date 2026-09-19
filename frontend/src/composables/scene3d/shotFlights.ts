@@ -1,9 +1,10 @@
 import type { Frame, PlayerState } from '../../types/replay';
 import { demoDirectionToScene, demoToScene, type ScenePoint } from './sampleReplayFrame';
+import { equipmentKind, weaponMuzzleOffset } from './equipmentKinds';
 
 export const SHOT_SPEED = 4.8;
 export const SHOT_RANGE = 1800;
-export const MUZZLE_OFFSET = 28;
+export const MUZZLE_OFFSET = weaponMuzzleOffset();
 export const MUZZLE_DURATION_MS = 70;
 export const IMPACT_DURATION_MS = 60;
 const MAX_FLIGHT_MS = (SHOT_RANGE - MUZZLE_OFFSET) / SHOT_SPEED;
@@ -21,6 +22,7 @@ export interface ShotFlight {
   readonly team: number;
   readonly origin: Readonly<ScenePoint>;
   readonly direction: Readonly<ScenePoint>;
+  readonly muzzleOffset: number;
   /** Distance from origin, including the muzzle offset; effects wait for arrival. */
   readonly hit?: { readonly distance: number; readonly playerId: number };
 }
@@ -93,9 +95,10 @@ function flightBoundary(frames: readonly Frame[], index: number, shooterId: numb
 }
 
 function playerHit(frames: readonly Frame[], index: number, shooterId: number, origin: ScenePoint,
-  direction: ScenePoint, endTimeMs: number): ShotFlight['hit'] {
+  direction: ScenePoint, endTimeMs: number, muzzleOffset: number): ShotFlight['hit'] {
   const shotTime = frames[index].timeMs;
-  const arrivalTime = Math.min(shotTime + MAX_FLIGHT_MS, endTimeMs);
+  const maxFlightMs = (SHOT_RANGE - muzzleOffset) / SHOT_SPEED;
+  const arrivalTime = Math.min(shotTime + maxFlightMs, endTimeMs);
   for (let i = index; i < frames.length && frames[i].timeMs < arrivalTime; i++) {
     const current = frames[i];
     const next = frames[i + 1];
@@ -103,13 +106,24 @@ function playerHit(frames: readonly Frame[], index: number, shooterId: number, o
     const stopTime = Math.min(arrivalTime, next?.timeMs ?? arrivalTime);
     const duration = stopTime - startTime;
     if (!(duration > 0)) break;
-    const startDistance = MUZZLE_OFFSET + SHOT_SPEED * (startTime - shotTime);
+    const startDistance = muzzleOffset + SHOT_SPEED * (startTime - shotTime);
     let closest: ShotFlight['hit'];
     for (const key in current.players) {
       const playerId = Number(key);
       const target = current.players[key];
       if (playerId === shooterId || !Number.isFinite(playerId) || !target.alive || !validPosition(target)) continue;
       const feet = demoToScene(target.x, target.y, target.z);
+      if (i === index) {
+        // A longer held gun must not shoot through someone between the body and
+        // its muzzle. These contacts are immediate, before the visible flight.
+        const near = intersectPlayer({ x: origin.x - feet.x, y: origin.y - feet.y, z: origin.z - feet.z },
+          { x: direction.x * muzzleOffset, y: direction.y * muzzleOffset, z: direction.z * muzzleOffset });
+        if (near !== undefined) {
+          const distance = near * muzzleOffset;
+          if (!closest || distance < closest.distance) closest = { distance, playerId };
+          continue;
+        }
+      }
       const after = next?.players[key];
       // Match the display sampler: hold a dying, replaced or teleporting player
       // until its discrete boundary rather than sweeping across the discontinuity.
@@ -133,7 +147,7 @@ function playerHit(frames: readonly Frame[], index: number, shooterId: number, o
       const hitTime = startTime + fraction * duration;
       // A boundary sample decides whether a target is still alive there. The
       // final range endpoint is inclusive, but a clip/shooter cutoff is not.
-      if (hitTime >= stopTime && !(stopTime === shotTime + MAX_FLIGHT_MS && stopTime < endTimeMs)) continue;
+      if (hitTime >= stopTime && !(stopTime === shotTime + maxFlightMs && stopTime < endTimeMs)) continue;
       const distance = startDistance + SHOT_SPEED * duration * fraction;
       if (!closest || distance < closest.distance) closest = { distance, playerId };
     }
@@ -165,14 +179,15 @@ export function buildShotFlights(source: readonly Frame[]): ShotFlights {
       if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) continue;
       const origin = demoToScene(player.x, player.y, (player.z ?? 0) + 52);
       const direction = demoDirectionToScene(yaw, pitch);
+      const muzzleOffset = weaponMuzzleOffset(equipmentKind(player.activeWeapon));
       const boundary = flightBoundary(frames, i, shooterId, frame.timeMs + MAX_VISIBLE_MS);
-      const hit = playerHit(frames, i, shooterId, origin, direction, boundary);
-      const arrival = frame.timeMs + ((hit?.distance ?? SHOT_RANGE) - MUZZLE_OFFSET) / SHOT_SPEED;
+      const hit = playerHit(frames, i, shooterId, origin, direction, boundary, muzzleOffset);
+      const arrival = frame.timeMs + Math.max(0, (hit?.distance ?? SHOT_RANGE) - muzzleOffset) / SHOT_SPEED;
       const flight: ShotFlight = {
         key: `${frame.round}:${frame.timeMs}:${shooterId}`,
         shooterId, round: frame.round, timeMs: frame.timeMs,
         endTimeMs: Math.min(boundary, Math.max(frame.timeMs + MUZZLE_DURATION_MS, arrival + IMPACT_DURATION_MS)),
-        team: player.team ?? 0, origin, direction, hit,
+        team: player.team ?? 0, origin, direction, hit, muzzleOffset,
       };
       let shots = rounds.get(frame.round);
       if (!shots) rounds.set(frame.round, shots = []);
