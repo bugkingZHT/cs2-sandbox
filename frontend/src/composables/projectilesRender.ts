@@ -289,6 +289,12 @@ export const updateFlyingProjectilePositions = (
 ) => {
   if (!projectiles) return;
   flyingProjectileVisuals.forEach((visual, entityId) => {
+    // A fresh 2D canvas may receive clock updates before its first full draw.
+    // Never reuse references destroyed when the preceding canvas was unmounted.
+    if (visual.sprite?.destroyed || visual.trajectory?.destroyed || visual.hitArea?.destroyed) {
+      flyingProjectileVisuals.delete(entityId);
+      return;
+    }
     const proj = projectiles[entityId];
     if (!proj || proj.isExploded) return;
 

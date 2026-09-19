@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { Container, Graphics, Text } from 'pixi.js';
 
-let saved = JSON.stringify({ showMapPlayers: false, playerSize: 150, playerNameSize: 125 });
+let saved = JSON.stringify({ showMapPlayers: false, showMapProjectiles: false, showMapBomb: false, playerSize: 150, playerNameSize: 125 });
 globalThis.localStorage = {
   getItem: () => saved,
   setItem: (_key, value) => { saved = value; },
@@ -17,7 +17,7 @@ async function withModules(check) {
 }
 
 await withModules(async (settings, server) => {
-  assert.equal(settings.showMapPlayers.value, false, 'existing layer preferences survive');
+  assert.equal(settings.defaultMapView.value, '2d', 'users without a saved player preference default to 2D');
   assert.equal(settings.playerSize.value, 100, 'old circle midpoint becomes the new 100% default');
   assert.equal(settings.playerNameSize.value, 100);
   assert.equal(settings.playerHeightScaling.value, true, 'height scaling defaults on for existing settings');
@@ -178,7 +178,9 @@ await withModules(async (settings, server) => {
     assert.equal(circle.getLocalBounds().height, enabledHeight, 're-enabling restores the height cue immediately');
   }
   settings.playerHeightScaling.value = false;
+  settings.defaultMapView.value = '3d';
   assert.equal(JSON.parse(saved).playerSize, 150, 'toggle preserves the existing slider percentage');
+  assert.equal(['showMapPlayers', 'showMapProjectiles', 'showMapBomb'].some(key => key in JSON.parse(saved)), false, 'retired visibility settings are removed from persisted settings');
   resetPlayerRenderer();
   world.destroy({ children: true });
 });
@@ -187,11 +189,13 @@ await withModules(settings => {
   assert.equal(settings.playerSize.value, 150, 'circle size survives reload');
   assert.equal(settings.playerNameSize.value, 150, 'name size survives reload');
   assert.equal(settings.playerHeightScaling.value, false, 'disabled height scaling survives reload');
+  assert.equal(settings.defaultMapView.value, '3d', 'default player preference survives reload');
 });
 saved = JSON.stringify({ playerSizeVersion: 2, playerSize: 9999, playerNameSize: 'broken', playerHeightScaling: 'broken' });
 await withModules(settings => {
   assert.equal(settings.playerSize.value, 150, 'saved values are clamped to slider bounds');
   assert.equal(settings.playerNameSize.value, 100, 'invalid saved sizes use defaults');
   assert.equal(settings.playerHeightScaling.value, true, 'invalid height toggle uses the enabled default');
+  assert.equal(settings.defaultMapView.value, '2d', 'invalid player preference falls back to 2D');
 });
 console.log('PASS: world-unit player sizes across maps, resolutions and floors; fixed screen-size names, proportional zoom, paused updates and persisted settings');

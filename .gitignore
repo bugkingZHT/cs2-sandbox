@@ -45,6 +45,27 @@ coverage.html
 # Environment files
 .env
 .env.local
+.env.*
+!.env.example
+!.env.sample
+!.env.*.example
+.secrets/
+
+# Local browser sessions can contain cookies and authentication tokens
+.auth/
+*.har
+frontend/playwright-report/
+frontend/test-results/
+
+# Private Demo recordings and offline Source 2 conversion inputs/intermediates.
+# Reduced runtime geometry in frontend/public/map/3d/*.json stays versioned.
+*.dem
+*.dem.gz
+*.dem.bz2
+*.vpk
+*.nav
+*.glb
+*.gltf
 
 # Temporary files
 tmp/

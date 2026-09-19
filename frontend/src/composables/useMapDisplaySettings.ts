@@ -3,11 +3,10 @@ import { PLAYER_DISPLAY_CONTROLS } from '@/config/map';
 
 const storageKey = 'cs2-sandbox-map-display';
 const playerSizeVersion = 2;
+type MapView = '2d' | '3d';
 const settings = reactive({
-  showMapPlayers: true,
-  showMapProjectiles: true,
+  defaultMapView: '2d' as MapView,
   showMapDropped: true,
-  showMapBomb: true,
   playerHeightScaling: true,
   playerSize: PLAYER_DISPLAY_CONTROLS.playerSize.default as number,
   playerNameSize: PLAYER_DISPLAY_CONTROLS.playerNameSize.default as number,
@@ -15,7 +14,8 @@ const settings = reactive({
 
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
-  for (const key of ['showMapPlayers', 'showMapProjectiles', 'showMapDropped', 'showMapBomb', 'playerHeightScaling'] as const) {
+  if (saved?.defaultMapView === '2d' || saved?.defaultMapView === '3d') settings.defaultMapView = saved.defaultMapView;
+  for (const key of ['showMapDropped', 'playerHeightScaling'] as const) {
     if (typeof saved?.[key] === 'boolean') settings[key] = saved[key];
   }
   for (const key of ['playerSize', 'playerNameSize'] as const) {

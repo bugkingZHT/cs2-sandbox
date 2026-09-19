@@ -1,8 +1,5 @@
 <template>
   <section class="replay-rounds" aria-label="回合选择">
-    <div class="rounds-heading">
-      <h2>回合 <span>{{ totalRounds }}</span></h2>
-    </div>
     <div ref="roundList" class="rounds-scroll ds-scrollbar">
       <p v-if="!totalRounds" class="rounds-empty">打开一场对局后查看回合</p>
       <template v-for="row in rows" :key="row.round">
@@ -79,11 +76,8 @@ watch(() => [props.currentRound, props.totalRounds, props.clipMode], async () =>
 </script>
 
 <style scoped>
-.replay-rounds { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0 var(--ds-space-md); }
-.rounds-heading, .selection-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-sm); flex-shrink: 0; }
-.rounds-heading { height: 20px; padding: 0 10px; }
-.rounds-heading h2 { display: flex; align-items: baseline; gap: var(--ds-space-sm); margin: 0; font-size: 12px; font-weight: 500; color: var(--ds-text-muted); }
-.rounds-heading h2 span { font-size: 12px; font-weight: 400; color: var(--ds-text-muted); }
+.replay-rounds { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 10px var(--ds-space-md) 0; border-top: 1px solid var(--ds-border-default); }
+.selection-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-sm); flex-shrink: 0; }
 .text-button { display: inline-flex; align-items: center; justify-content: center; height: var(--sidebar-row-height); padding: 0 10px; background: transparent; border: 0; border-radius: var(--ds-radius-sm); color: var(--ds-text-tertiary); font-size: 12px; cursor: pointer; }
 .text-button:hover:not(:disabled), .text-button[aria-pressed="true"] { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
 .rounds-hint, .rounds-empty { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ds-text-tertiary); }

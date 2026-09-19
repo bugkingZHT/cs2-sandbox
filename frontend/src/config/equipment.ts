@@ -16,25 +16,24 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
   9: 'usp_silencer', // EqUSP
   10: 'revolver',    // EqRevolver
 
-  // Heavy (200-299)
-  // SMGs
-  201: 'mac10',      // EqMac10
-  202: 'mp9',        // EqMP9
-  203: 'mp7',        // EqMP7
-  204: 'mp5',        // EqMP5
-  205: 'ump',        // EqUMP
-  206: 'p90',        // EqP90
-  207: 'bizon',      // EqBizon
+  // SMGs (100-199)
+  101: 'mp7',
+  102: 'mp9',
+  103: 'bizon',
+  104: 'mac10',
+  105: 'ump',
+  106: 'p90',
+  107: 'mp5',
 
   // Shotguns
-  211: 'nova',       // EqNova
-  212: 'xm1014',     // EqXM1014
-  213: 'mag7',       // EqMag7
-  214: 'sawedoff',   // EqSawedOff
+  201: 'sawedoff',
+  202: 'nova',
+  203: 'mag7',
+  204: 'xm1014',
   
   // Machine Guns
-  221: 'm249',       // EqM249
-  222: 'negev',      // EqNegev
+  205: 'm249',
+  206: 'negev',
   
   // Rifles (300-399)
   301: 'galilar',    // EqGalil
@@ -46,13 +45,13 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
   307: 'sg556',      // EqSG556
   308: 'aug',        // EqAUG
   309: 'awp',        // EqAWP
-  310: 'g3sg1',      // EqG3SG1
-  311: 'scar20',     // EqScar20
+  310: 'scar20',     // EqScar20
+  311: 'g3sg1',      // EqG3SG1
 
   // Equipment
   404: 'c4',         // EqBomb (在 utility 目录下)
   405: 'knife',      // EqKnife (在 weapons 目录下)
-  406: 'zeus',       // EqZeus (电击枪)
+  401: 'zeus',       // EqZeus (406 is a defuse kit)
 
   // Grenades (在 utility 目录下)
   501: 'decoy',      // EqDecoy
@@ -62,9 +61,6 @@ export const EQUIPMENT_ID_MAP: Record<number, string> = {
   505: 'smoke',      // EqSmoke
   506: 'hegrenade',  // EqHE
   
-  // Legacy IDs (older demo formats)
-  102: 'mp9',        // Legacy SMG
-  104: 'mac10',      // Legacy SMG
 };
 
 /**
