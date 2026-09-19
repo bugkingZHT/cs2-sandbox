@@ -1,6 +1,8 @@
 <template>
   <div ref="container" class="map-canvas-3d">
     <div ref="viewport" class="sandbox-viewport"></div>
+    <button v-if="firstPersonPlayerId !== undefined" class="exit-first-person" type="button"
+      title="返回沙盘（Escape）" @click="emit('exit-first-person')">退出第一人称</button>
     <DrawingBoard
       :active="!!isDrawingMode"
       :get-background-canvas="getCanvas"
@@ -11,7 +13,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { Frame, ProjectileRenderConfig, ProjectileState, ReplayMeta } from '@/types/replay';
+import type { Frame, ProjectileRenderConfig, ReplayMeta } from '@/types/replay';
 import { PLAYER_DISPLAY_CONTROLS } from '@/config/map';
 import { useMapDisplaySettings } from '@/composables/useMapDisplaySettings';
 import { loadMapGeometry } from '@/composables/scene3d/mapGeometry';
@@ -42,12 +44,11 @@ const props = withDefaults(defineProps<{
   showMapBomb?: boolean;
   isDrawingMode?: boolean;
   grenadeTrackingEnabled?: boolean;
-  projectileAnalysisEnabled?: boolean;
-}>(), { showMapProjectiles: true, showMapDropped: true, showMapBomb: true, grenadeTrackingEnabled: true, projectileAnalysisEnabled: true });
+}>(), { showMapProjectiles: true, showMapDropped: true, showMapBomb: true, grenadeTrackingEnabled: true });
 
 const emit = defineEmits<{
   (e: 'error', message: string): void;
-  (e: 'projectile-click', projectile: ProjectileState): void;
+  (e: 'player-click', playerId: number): void;
   (e: 'close-drawing'): void;
   (e: 'exit-first-person'): void;
 }>();
@@ -91,7 +92,6 @@ function tick() {
   try {
     if (sandbox) {
       sandbox.controls.enabled = !props.isDrawingMode && props.firstPersonPlayerId === undefined;
-      sandbox.projectileAnalysisEnabled = props.projectileAnalysisEnabled;
       if (dirty || lastTime !== props.currentTimeMs || lastFrameIndex !== props.currentFrameIndex) {
         if (trailSource !== props.frames) {
           trailSource = props.frames;
@@ -155,7 +155,7 @@ async function initialize() {
   try {
     const map = await loadMapGeometry(props.mapName || props.replayMeta?.mapName || '', abort.signal);
     if (!mounted || token !== generation || !viewport.value) return;
-    sandbox = new SandboxScene(viewport.value, projectile => emit('projectile-click', projectile));
+    sandbox = new SandboxScene(viewport.value, playerId => emit('player-click', playerId));
     sandbox.renderer.domElement.addEventListener('webglcontextlost', contextLost);
     sandbox.setMap(map);
     sandbox.setFloorView(props.floorView || 'upper');
@@ -203,4 +203,21 @@ defineExpose({ getCanvas, resetView, getSandbox: () => sandbox, inspect: () => s
   position: absolute;
   inset: 0;
 }
+.exit-first-person {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  padding: 9px 14px;
+  border: 1px solid var(--ds-border-default, #c5cbd1);
+  border-radius: 8px;
+  background: var(--ds-bg-secondary, #fff);
+  color: var(--ds-text-primary, #28333f);
+  box-shadow: 0 2px 8px #0002;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.exit-first-person:hover { background: var(--ds-bg-tertiary, #edf0f3); }
+.exit-first-person:focus-visible { outline: 2px solid #8bc5ec; outline-offset: 2px; }
 </style>

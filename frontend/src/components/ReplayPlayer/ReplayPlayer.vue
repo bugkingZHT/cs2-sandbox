@@ -2,19 +2,15 @@
   <div class="viewer-layout">
     <Teleport v-if="teleportReady" to="#replay-sidebar-tools">
       <section class="replay-tools" aria-label="工具区">
-        <h2 class="tools-heading">工具</h2>
         <div class="scene-view-switch" role="group" aria-label="地图视图">
           <button :aria-pressed="!use3DView" @click="setMapView('2d')">2D</button>
-          <button :aria-pressed="use3DView" :disabled="!has3DMap || searchMenuOpen" :title="has3DMap ? '旋转查看三维沙盘' : '当前地图尚未提供三维沙盘'" @click="setMapView('3d')">3D 沙盘</button>
+          <button :aria-pressed="use3DView" :disabled="!has3DMap || searchMenuOpen" :title="has3DMap ? '旋转查看三维地图' : '当前地图尚未提供三维地图'" @click="setMapView('3d')">3D</button>
         </div>
         <div v-if="use3DView && replay?.mapName?.toLowerCase() === 'de_nuke'" class="scene-view-switch" role="group" aria-label="Nuke 楼层">
           <button :aria-pressed="sceneFloor === 'upper'" @click="sceneFloor = 'upper'">上层</button>
           <button :aria-pressed="sceneFloor === 'middle'" @click="sceneFloor = 'middle'">中层</button>
           <button :aria-pressed="sceneFloor === 'lower'" @click="sceneFloor = 'lower'">下层</button>
         </div>
-        <button v-if="use3DView && firstPersonPlayerId !== undefined" class="sidebar-tool" @click="firstPersonPlayerId = undefined" title="再次点击当前玩家卡片或按 Escape 返回">
-          <span>返回沙盘</span>
-        </button>
         <button v-if="use3DView" class="sidebar-tool" @click="mapCanvas3D?.resetView()" title="左键旋转 · 右键平移 · 滚轮缩放 · 双击聚焦">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><circle cx="12" cy="12" r="3"/></svg><span>重置视角</span>
         </button>
@@ -38,7 +34,7 @@
         <button class="sidebar-tool" :class="{ active: isClipMode }" :aria-pressed="isClipMode" :disabled="!replay?.totalRounds || searchBusy || replayerRouteLoading" :title="isClipMode ? '切换为单回合播放' : '选择多个回合，在同一时间线并行播放'" @click="toggleClipMode">
           <img src="/icons/slip.svg" alt="" /><span>多选回合</span>
         </button>
-        <button class="sidebar-tool" :class="{ active: searchMenuOpen }" :aria-expanded="searchMenuOpen" :title="searchTooltip" :disabled="!replay" @click="toggleSearchMenu">
+        <button v-if="!use3DView" class="sidebar-tool" :class="{ active: searchMenuOpen }" :aria-expanded="searchMenuOpen" :title="searchTooltip" :disabled="!replay" @click="toggleSearchMenu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6M10 7v6m-3-3h6"/></svg><span>反查道具</span>
         </button>
         <div v-if="searchMenuOpen" class="grenade-search-options">
@@ -145,13 +141,11 @@
           :floor-view="sceneFloor"
           :first-person-player-id="firstPersonPlayerId"
           @exit-first-person="firstPersonPlayerId = undefined"
+          @player-click="followPlayerModel"
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :hidden-player-ids="hiddenPlayerIdsArray"
-          :show-map-projectiles="showMapProjectiles"
           :show-map-dropped="showMapDropped"
-          :show-map-bomb="showMapBomb"
-          @projectile-click="handleProjectileClick"
           @close-drawing="isDrawingMode = false"
           @error="onSceneError"
         />
@@ -180,9 +174,7 @@
           :replayer-source="replayerSource"
           :replayer-note-id="replayerNoteId"
           :hidden-player-ids="hiddenPlayerIdsArray"
-          :show-map-projectiles="showMapProjectiles"
           :show-map-dropped="showMapDropped"
-          :show-map-bomb="showMapBomb"
         />
 
         <!-- 投掷物分析蒙版 -->
@@ -678,7 +670,7 @@ function toggleClipMode() {
   if (searchMatches.value !== null) { resetGrenadeSearch(); return; }
   isClipMode.value = !isClipMode.value;
 }
-const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb } = useMapDisplaySettings();
+const { defaultMapView, showMapDropped } = useMapDisplaySettings();
 // 导演剪辑模式：多选回合在一条时间线播放（仅 local）
 const isClipMode = ref(false);
 const clipRounds = ref<ClipRoundConfig[]>([]);
@@ -689,16 +681,8 @@ const hiddenPlayerIds = ref<Set<number>>(new Set());
 /** 进入道具解析前保存的隐藏状态，退出时恢复 */
 const hiddenPlayerIdsBeforeAnalyze = ref<Set<number> | null>(null);
 
-// Revealing a player/team while all players are disabled keeps the others hidden.
-function enablePlayerVisibility() {
-  if (showMapPlayers.value) return;
-  hiddenPlayerIds.value = new Set(allPlayerIds.value);
-  showMapPlayers.value = true;
-}
-
 //切换玩家可见性（隐藏/显示）
 function togglePlayerVisibility(playerId: number) {
-  enablePlayerVisibility();
   const next = new Set(hiddenPlayerIds.value);
   if (next.has(playerId)) next.delete(playerId);
   else next.add(playerId);
@@ -707,7 +691,7 @@ function togglePlayerVisibility(playerId: number) {
 
 //检查玩家是否被隐藏
 function isPlayerHidden(playerId: number) {
-  return !showMapPlayers.value || hiddenPlayerIds.value.has(playerId);
+  return hiddenPlayerIds.value.has(playerId);
 }
 
 //从剪辑中移除玩家
@@ -733,9 +717,7 @@ async function copyPlayerPosition(p: PlayerState) {
   }
 }
 
-const hiddenPlayerIdsArray = computed(() => showMapPlayers.value
-  ? Array.from(hiddenPlayerIds.value)
-  : allPlayerIds.value);
+const hiddenPlayerIdsArray = computed(() => Array.from(hiddenPlayerIds.value));
 
 const replayerPureMode = inject<Ref<boolean>>('replayerPureMode');
 const replayerRouteLoading = inject<Ref<boolean>>('replayerRouteLoading', ref(false));
@@ -829,7 +811,7 @@ watch([isClipMode, clipRounds], () => {
   if (isGrenadeAnalyzeMode.value) exitGrenadeAnalyze();
 }, { deep: true });
 
-// 播放笔记时应用 meta 中保存的 replaySettings（玩家可见性、地图投掷物/掉落/C4）
+// 播放笔记时应用仍受支持的设置；旧的投掷物/C4 图层开关不再生效。
 watch(
   [replayerNoteId, () => replay.value?.replaySettings],
   () => {
@@ -837,14 +819,10 @@ watch(
     const s = replay.value?.replaySettings;
     if (!s) return;
     hiddenPlayerIds.value = new Set(s.hiddenPlayerIds ?? []);
-    showMapProjectiles.value = s.showMapProjectiles ?? true;
     showMapDropped.value = s.showMapDropped ?? true;
-    showMapBomb.value = s.showMapBomb ?? true;
   },
   { immediate: true }
 );
-
-const allPlayerIds = computed(() => effectiveReplay.value?.serverPlayer?.map((p) => p.id) ?? []);
 
 /** 单一 cover 类型，按优先级只显示一种。云端下载中时优先展示进度条，不再被 route_loading 遮住。 */
 type CoverType = 'route_loading' | 'cloud_download' | 'not_found' | 'forbidden' | 'no_data' | 'none';
@@ -919,10 +897,7 @@ const isDrawingMode = ref(false);
 const tabRecorder = useGetDisplayMediaRecorder();
 const mapCanvas = ref<InstanceType<typeof MapCanvas>>();
 const mapCanvas3D = ref<{ getCanvas: () => HTMLCanvasElement | null; resetView: () => void }>();
-const mapView = ref<'2d' | '3d'>((() => {
-  try { return localStorage.getItem('cs-sandbox-map-view') === '2d' ? '2d' : '3d'; }
-  catch { return '3d'; }
-})());
+const mapView = ref<'2d' | '3d'>(defaultMapView.value);
 const sceneError = ref('');
 const sceneFloor = ref<'upper' | 'middle' | 'lower'>('upper');
 const firstPersonPlayerId = ref<number>();
@@ -937,17 +912,21 @@ function followPlayer(player: PlayerState) {
   setMapView('3d');
   firstPersonPlayerId.value = player.id;
 }
+function followPlayerModel(playerId: number) {
+  const player = effectiveFrames.value[effectiveFrameIndex.value]?.players[playerId];
+  if (player) followPlayer({ ...player, id: playerId });
+}
 const has3DMap = computed(() => has3DMapAsset(replay.value?.mapName));
-// Area search uses the existing orthographic radar selection and projection.
-// Opening it temporarily returns to 2D without changing the user's preference.
+// Area search uses the existing orthographic radar selection and projection,
+// and is exposed only while the 2D player is active.
 const use3DView = computed(() => has3DMap.value && mapView.value === '3d' && !searchMenuOpen.value && !sceneError.value);
 function setMapView(value: '2d' | '3d') {
   firstPersonPlayerId.value = undefined;
   isDrawingMode.value = false;
   sceneError.value = '';
   mapView.value = value;
-  try { localStorage.setItem('cs-sandbox-map-view', value); } catch { /* Session-only preference. */ }
 }
+watch(defaultMapView, value => setMapView(value));
 function onSceneError(message: string) {
   sceneError.value = `三维视图暂不可用，已切回 2D。${message}`;
 }
@@ -1314,7 +1293,6 @@ watch(
 const isLeftTeamHidden = computed(() => leftTeamIdsRef.value.length > 0 && leftTeamIdsRef.value.every(isPlayerHidden));
 const isRightTeamHidden = computed(() => rightTeamIdsRef.value.length > 0 && rightTeamIdsRef.value.every(isPlayerHidden));
 function toggleLeftTeamVisibility() {
-  enablePlayerVisibility();
   const ids = getPlayerIdsFromContainer(upperTeamCardsRef.value);
   const allHidden = ids.length > 0 && ids.every((id) => hiddenPlayerIds.value.has(id));
   const next = new Set(hiddenPlayerIds.value);
@@ -1324,7 +1302,6 @@ function toggleLeftTeamVisibility() {
   syncTeamIdsFromDom();
 }
 function toggleRightTeamVisibility() {
-  enablePlayerVisibility();
   const ids = getPlayerIdsFromContainer(lowerTeamCardsRef.value);
   const allHidden = ids.length > 0 && ids.every((id) => hiddenPlayerIds.value.has(id));
   const next = new Set(hiddenPlayerIds.value);
@@ -1911,7 +1888,6 @@ onBeforeUnmount(() => {
 .scene-view-switch button { flex: 1; padding: 7px 5px; border: 0; border-radius: 4px; background: transparent; color: var(--ds-text-secondary); font: inherit; font-size: 12px; cursor: pointer; }
 .scene-view-switch button[aria-pressed="true"] { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
 .scene-view-switch button:disabled { opacity: .4; cursor: not-allowed; }
-.tools-heading { display: flex; align-items: center; height: 20px; margin: 0; padding: 0 10px; color: var(--ds-text-muted); font-size: 12px; font-weight: 500; }
 .sidebar-tool { display: flex; align-items: center; gap: 10px; width: 100%; height: var(--sidebar-row-height); padding: 0 10px; background: transparent; border: 0; border-radius: var(--ds-radius-sm); font-size: 13px; color: var(--ds-text-secondary); text-align: left; cursor: pointer; }
 .sidebar-tool:hover:not(:disabled), .sidebar-tool.active { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
 .sidebar-tool:disabled { opacity: .4; cursor: not-allowed; }

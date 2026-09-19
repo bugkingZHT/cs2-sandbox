@@ -27,10 +27,14 @@
     </header>
     <fieldset class="map-settings">
       <legend>地图显示</legend>
-      <label><span>玩家</span><input type="checkbox" v-model="showMapPlayers" /></label>
-      <label><span>投掷物</span><input type="checkbox" v-model="showMapProjectiles" /></label>
+      <label>
+        <span>默认播放器</span>
+        <select v-model="defaultMapView" aria-label="默认播放器">
+          <option value="2d">2D</option>
+          <option value="3d">3D</option>
+        </select>
+      </label>
       <label><span>掉落道具</span><input type="checkbox" v-model="showMapDropped" /></label>
-      <label><span>C4</span><input type="checkbox" v-model="showMapBomb" /></label>
       <label><span>高度缩放效果</span><input type="checkbox" v-model="playerHeightScaling" /></label>
       <div class="size-control">
         <label for="map-player-size"><span>玩家图标大小</span><output for="map-player-size">{{ playerSize }}%</output></label>
@@ -74,7 +78,7 @@ import { ref } from 'vue';
 import { useMapDisplaySettings } from '@/composables/useMapDisplaySettings';
 import { PLAYER_DISPLAY_CONTROLS } from '@/config/map';
 import { localAPI } from '@/local/api';
-const { showMapPlayers, showMapProjectiles, showMapDropped, showMapBomb, playerHeightScaling, playerSize, playerNameSize } = useMapDisplaySettings();
+const { defaultMapView, showMapDropped, playerHeightScaling, playerSize, playerNameSize } = useMapDisplaySettings();
 const { default: defaultPlayerSize, ...playerSizeRange } = PLAYER_DISPLAY_CONTROLS.playerSize;
 const { default: defaultPlayerNameSize, ...playerNameSizeRange } = PLAYER_DISPLAY_CONTROLS.playerNameSize;
 function resetPlayerAppearance() {
@@ -171,8 +175,9 @@ svg { width: 18px; height: 18px; flex-shrink: 0; }
 .map-settings legend { padding: 0 0 var(--ds-space-sm); font-size: 12px; color: var(--ds-text-tertiary); }
 .map-settings label { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-lg); padding: var(--ds-space-md) 0; font-size: 13px; color: var(--ds-text-secondary); cursor: pointer; }
 .map-settings input { margin: 0; accent-color: var(--ds-primary); }
+.map-settings select { min-width: 92px; padding: 5px 28px 5px 9px; border: 1px solid var(--ds-border-default); border-radius: var(--ds-radius-sm); background: var(--ds-bg-primary); color: var(--ds-text-primary); font: inherit; cursor: pointer; }
 .map-settings input[type="checkbox"] { width: 16px; height: 16px; }
-.map-settings input:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 3px; }
+.map-settings input:focus-visible, .map-settings select:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 3px; }
 .map-settings > label + .size-control { margin-top: var(--ds-space-sm); }
 .size-control + .size-control { margin-top: var(--ds-space-md); }
 .size-control label { padding: var(--ds-space-sm) 0; }

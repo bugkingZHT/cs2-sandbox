@@ -128,12 +128,17 @@ try {
     }
   }
   await page.evaluate(()=>window.app3d.unmount()); assert.equal(await page.locator('canvas').count(),0);
+  currentMap=names[0];
+  await page.goto(`${url}/replayer?demo_uuid=${encodeURIComponent(fixtures[currentMap].entry.meta.uuid)}&round=1`);
+  await page.getByRole('button',{name:'2D',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'2D',exact:true}).getAttribute('aria-pressed'),'true','users without a saved preference default to 2D');
+  await page.evaluate(()=>localStorage.setItem('cs2-sandbox-map-display',JSON.stringify({defaultMapView:'3d'})));
   for(const mapName of names) {
     currentMap=mapName;
     await page.goto(`${url}/replayer?demo_uuid=${encodeURIComponent(fixtures[mapName].entry.meta.uuid)}&round=1`);
-    await page.getByRole('button',{name:'3D 沙盘',exact:true}).waitFor();
+    await page.getByRole('button',{name:'3D',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'3D',exact:true}).isEnabled(),true);
     await page.locator('.map-canvas-3d canvas').first().waitFor();
-    assert.equal(await page.getByRole('button',{name:'3D 沙盘',exact:true}).isEnabled(),true);
     if(mapName==='de_nuke') {
       const levels=page.getByRole('group',{name:'Nuke 楼层'});
       assert.deepEqual(await levels.getByRole('button').allTextContents(),['上层','中层','下层']);

@@ -243,12 +243,12 @@ try {
     players: { 1: player({ alive: false, x: 24, y: -80, z: 144, yaw: 75, ...changes }) },
     ...frameChanges,
   });
-  const deathFrames = [frame(100), deathFrame(200), deathFrame(300, { x: 900, yaw: 180 }),
+  const deathFrames = [frame(100), deathFrame(200, { pitch: -20 }), deathFrame(300, { x: 900, yaw: 180, pitch: 60 }),
     frame(400), deathFrame(500, { x: 50 }), deathFrame(600)];
   const originalDeaths = structuredClone(deathFrames);
   const deaths = buildPlayerDeaths(deathFrames);
   const firstDeath = deaths.get(1, 1, 200);
-  assert.deepEqual(firstDeath, { playerId: 1, round: 1, timeMs: 200, x: 24, y: -80, z: 144, yaw: 75 });
+  assert.deepEqual(firstDeath, { playerId: 1, round: 1, timeMs: 200, x: 24, y: -80, z: 144, yaw: 75, pitch: -20 });
   assert.equal(deaths.get(1, 1, 199.999), undefined, 'death animation cannot appear before the first dead sample');
   assert.equal(deaths.get(1, 1, 350), firstDeath, 'later corpse samples retain the original death time and pose');
   assert.equal(deaths.get(1, 1, 400), undefined, 'respawn ends the previous death at its exact timestamp');

@@ -9,6 +9,7 @@ export interface PlayerDeath {
   readonly y: number;
   readonly z?: number;
   readonly yaw: number;
+  readonly pitch: number;
 }
 
 interface DeathInterval {
@@ -92,7 +93,8 @@ export function buildPlayerDeaths(frames: readonly Frame[]): PlayerDeaths {
       if (!interval && before.alive === true) {
         interval = {
           event: { playerId, round: frame.round, timeMs: frame.timeMs,
-            x: current.x, y: current.y, z: current.z, yaw: current.yaw },
+            x: current.x, y: current.y, z: current.z, yaw: current.yaw,
+            pitch: Number.isFinite(current.pitch) ? current.pitch! : Number.isFinite(before.pitch) ? before.pitch! : 0 },
           endTimeMs: Infinity,
           includeEnd: false,
         };

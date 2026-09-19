@@ -45,6 +45,7 @@ window.shotConstants = { MUZZLE_OFFSET, SHOT_SPEED };
 window.app3d = createApp({ setup: () => () => h(MapCanvas3D, { ...props, ref: component,
   onError: message => window.sceneErrors.push(message),
   onExitFirstPerson: () => { props.firstPersonPlayerId = undefined; },
+  onPlayerClick: id => { props.firstPersonPlayerId = id; },
   onProjectileClick: proj => { window.clickedProjectile = proj.entityID; },
 }) });
 window.app3d.mount('#app'); window.get3D = () => component.value;
@@ -211,7 +212,23 @@ try {
     await new Promise(requestAnimationFrame);
   }, timeMs);
   const overview = await page.evaluate(() => window.get3D().inspect().camera);
-  await page.evaluate(() => { window.props3d.firstPersonPlayerId = 1; });
+  const playerModelPoint = id => page.evaluate(id => {
+    const s = window.get3D().getSandbox();
+    s.scene.updateMatrixWorld(true);
+    const p = s.entities.players.get(id).head.getWorldPosition(new window.THREE.Vector3()).project(s.camera);
+    const rect = s.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + (p.x + 1) * rect.width / 2, y: rect.top + (1 - p.y) * rect.height / 2 };
+  }, id);
+  const modelPoint = await playerModelPoint(1);
+  await page.mouse.click(modelPoint.x, modelPoint.y);
+  await page.waitForFunction(() => window.get3D().inspect().firstPerson?.playerId === 1);
+  const exitButton = page.getByRole('button', { name: '退出第一人称', exact: true });
+  const exitBounds = await exitButton.boundingBox();
+  assert.ok(exitBounds.x > 1000, 'exit control sits on the right of the viewport');
+  await exitButton.click();
+  await page.waitForFunction(() => window.get3D().inspect().firstPerson === null);
+  assert.deepEqual((await snapshot()).info.camera, overview, 'exit button restores the previous overview');
+  await page.mouse.click(modelPoint.x, modelPoint.y);
   await seek(50);
   const eyeState = () => page.evaluate(() => {
     const s = window.get3D().getSandbox(), v = s.entities.players.get(s.followPlayerId);
@@ -240,9 +257,35 @@ try {
   await seek(50); await seek(50);
   assert.equal((await eyeState()).eye, null, 'hiding the followed player exits eye view');
   await page.evaluate(() => { window.props3d.hiddenPlayerIds = []; window.props3d.firstPersonPlayerId = 1; });
+  await page.evaluate(() => {
+    window.beforeDeathViewFrames = window.props3d.frames;
+    const original = window.props3d.frames;
+    window.props3d.frames = Array.from({ length: 41 }, (_, i) => {
+      const source = original[Math.min(i, 3)];
+      return { ...source, timeMs: i * 100, tick: i, players: { ...source.players,
+        1: i <= 3 ? source.players[1] : { ...source.players[1], x: 900, yaw: 180, pitch: 70 } } };
+    });
+  });
   await seek(299); assert.equal((await eyeState()).eye.playerId, 1);
   await seek(300); await seek(300);
-  assert.equal((await eyeState()).eye, null, 'death exits at the recorded event time');
+  const deathEye = (await eyeState()).eye;
+  assert.equal(deathEye.playerId, 1, 'death keeps the first-person view');
+  assert.deepEqual(deathEye.position, [60, 154, -0], 'camera stays at the death position and eye height');
+  await seek(800);
+  assert.deepEqual((await eyeState()).eye, deathEye, 'later corpse movement and angles do not move the camera');
+  await page.waitForTimeout(100);
+  assert.deepEqual((await eyeState()).eye, deathEye, 'pausing freezes the death hold');
+  await seek(3299);
+  assert.deepEqual((await eyeState()).eye, deathEye, 'view holds until the full three seconds elapse');
+  await seek(600);
+  assert.deepEqual((await eyeState()).eye, deathEye, 'reverse seeking within the hold restores the same pose');
+  await exitButton.click();
+  await page.waitForFunction(() => window.get3D().inspect().firstPerson === null);
+  await seek(299);
+  await page.evaluate(() => { window.props3d.firstPersonPlayerId = 1; });
+  await seek(299); await seek(3300); await seek(3300);
+  assert.equal((await eyeState()).eye, null, 'death exits at exactly three seconds, including forward seeks');
+  await page.evaluate(() => { window.props3d.frames = window.beforeDeathViewFrames; });
   const restoredOverview = (await eyeState()).overview;
   for (const key of ['position', 'target']) restoredOverview[key].forEach((value, i) => assert.ok(Math.abs(value - overview[key][i]) < 1e-6));
   assert.equal(restoredOverview.zoom, overview.zoom, 'leaving first person preserves overview zoom');
@@ -434,7 +477,8 @@ try {
   }, name);
   const projectilePoint = await entityScreenPoint('projectile-101');
   await page.mouse.click(projectilePoint.x, projectilePoint.y);
-  await page.waitForFunction(() => window.clickedProjectile === 101);
+  await page.waitForTimeout(50);
+  assert.equal(await page.evaluate(() => window.clickedProjectile), null, '3D projectile clicks never open analysis');
   await page.mouse.dblclick(projectilePoint.x, projectilePoint.y);
   await page.waitForTimeout(450);
   assert.notDeepEqual((await snapshot()).target, initial.target, 'double click focuses the selected entity');
@@ -1149,55 +1193,85 @@ try {
   assert.equal(await page.locator('canvas').count(), 0, 'unmount releases canvas');
   assert.deepEqual(pageErrors, []);
 
-  // Run the complete existing replay page as well: view persistence, fallback,
-  // timeline, pure mode exit and the existing reverse-search entry point.
+  // Run the complete existing replay page as well: default view, fallback,
+  // timeline, pure mode exit and the 2D-only reverse-search entry point.
   await page.goto(url + '/replayer?demo_uuid=' + encodeURIComponent(fixtureMeta.uuid) + '&round=1');
-  await page.getByRole('button', { name: '3D 沙盘', exact: true }).waitFor();
+  await page.getByRole('button', { name: '3D', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: '2D', exact: true }).getAttribute('aria-pressed'), 'true', 'new users default to 2D');
+  assert.equal(await page.getByRole('button', { name: '反查道具', exact: true }).count(), 1, '2D offers reverse grenade search');
+  await page.getByRole('button', { name: '系统选项', exact: true }).click();
+  await page.getByRole('menuitem', { name: '设置', exact: true }).click();
+  const settingsDialog = page.getByRole('dialog', { name: '设置', exact: true });
+  for (const name of ['玩家', '投掷物', 'C4']) assert.equal(await settingsDialog.getByRole('checkbox', { name, exact: true }).count(), 0, `${name} visibility cannot be disabled in settings`);
+  assert.equal(await settingsDialog.getByRole('checkbox', { name: '掉落道具', exact: true }).count(), 1, 'dropped equipment remains configurable');
+  await page.getByRole('combobox', { name: '默认播放器', exact: true }).selectOption('3d');
+  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.scene-view-switch button[aria-pressed="true"]')?.textContent?.includes('3D'));
   await page.locator('canvas').first().waitFor();
   await page.waitForTimeout(1800);
   await page.screenshot({ path: resolve(output, 'replay-overview.png') });
   const playerCard = page.locator('.player-card-wrap[data-player-id="2"]:visible .player-pov-button');
+  const liveModelPoint = await page.evaluate(() => {
+    let component = document.querySelector('.map-canvas-3d').__vueParentComponent;
+    while (component && !component.exposed?.getSandbox) component = component.parent;
+    const s = component.exposed.getSandbox(), head = s.entities.players.get(2).head;
+    s.scene.updateMatrixWorld(true);
+    const p = head.getWorldPosition(head.position.clone()).project(s.camera);
+    const rect = s.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + (p.x + 1) * rect.width / 2, y: rect.top + (1 - p.y) * rect.height / 2 };
+  });
+  await page.mouse.click(liveModelPoint.x, liveModelPoint.y);
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor();
+  assert.equal(await playerCard.getAttribute('aria-pressed'), 'true', 'model clicks follow the same player as its card');
+  await page.getByRole('button', { name: '纯净视图', exact: true }).click();
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).click();
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor({ state: 'hidden' });
+  await page.keyboard.press('Escape');
   await playerCard.click({ position: { x: 8, y: 8 } });
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor();
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor();
   assert.equal(await playerCard.getAttribute('aria-pressed'), 'true');
   await page.getByRole('img', { name: '第一人称回放视角：跟随玩家视线，按 Escape 返回沙盘' }).waitFor();
   await page.screenshot({ path: resolve(output, 'replay-first-person.png') });
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor({ state: 'hidden' });
   assert.equal(await playerCard.getAttribute('aria-pressed'), 'false');
   await playerCard.focus(); await page.keyboard.press('Enter');
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor();
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).click();
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor();
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).click();
   assert.equal(await playerCard.getAttribute('aria-pressed'), 'false');
   await playerCard.click({ position: { x: 8, y: 8 } });
   await playerCard.click({ position: { x: 8, y: 8 } });
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor({ state: 'hidden' });
   const visibleCard = page.locator('.player-card-wrap[data-player-id="2"]:visible');
   await playerCard.click({ position: { x: 8, y: 8 } });
   await visibleCard.locator('.toggle-vis').click();
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor({ state: 'hidden' });
   assert.equal(await playerCard.isDisabled(), true, 'card actions stay separate from camera selection');
   await visibleCard.locator('.toggle-vis').click();
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await page.locator('.map-canvas-element canvas').waitFor();
   await playerCard.click({ position: { x: 8, y: 8 } });
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor();
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor();
   await page.getByRole('img', { name: '第一人称回放视角：跟随玩家视线，按 Escape 返回沙盘' }).waitFor();
   assert.equal(await playerCard.getAttribute('aria-pressed'), 'true', 'clicking a card in 2D opens its first-person 3D view');
   await page.getByRole('button', { name: '重置视角', exact: true }).click();
-  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '退出第一人称', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await page.locator('.map-canvas-element canvas').waitFor();
   await page.reload();
-  await page.getByRole('button', { name: '2D', exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: '2D', exact: true }).getAttribute('aria-pressed'), 'true');
-  await page.getByRole('button', { name: '3D 沙盘', exact: true }).click();
+  await page.getByRole('button', { name: '3D', exact: true }).waitFor();
   await page.getByRole('button', { name: '重置视角', exact: true }).waitFor();
-  await page.getByRole('button', { name: '反查道具', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '3D', exact: true }).getAttribute('aria-pressed'), 'true', 'replay opens in 3D even after a previous 2D selection');
+  assert.equal(await page.getByRole('button', { name: '反查道具', exact: true }).count(), 0, '3D does not offer reverse grenade search');
+  assert.equal(await page.getByRole('heading', { name: /^工具|^回合/ }).count(), 0, 'sidebar tools and rounds have no text headings');
+  assert.equal(await page.locator('.replay-rounds').evaluate(element => getComputedStyle(element).borderTopWidth), '1px', 'a horizontal rule separates the round list');
+  await page.getByRole('button', { name: '2D', exact: true }).click();
   await page.locator('.map-canvas-element canvas').waitFor();
   await page.getByRole('button', { name: '反查道具', exact: true }).click();
-  assert.equal(await page.getByRole('button', { name: '3D 沙盘', exact: true }).getAttribute('aria-pressed'), 'true');
+  await page.getByRole('button', { name: '反查道具', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '2D', exact: true }).getAttribute('aria-pressed'), 'true');
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await page.getByRole('button', { name: '重置视角', exact: true }).waitFor();
   await page.getByRole('button', { name: '纯净视图', exact: true }).click();
   await page.waitForTimeout(700);
   await page.screenshot({ path: resolve(output, 'replay-pure.png') });
@@ -1208,7 +1282,7 @@ try {
   await page.locator('.map-canvas-element canvas').waitFor();
   assert.match(await page.locator('.tool-message.error').textContent(), /已切回 2D/, 'asset failure preserves a working 2D replay');
   assert.deepEqual(pageErrors, []);
-  console.log('PASS: identical team trajectories across all grenade types, distinct HE/flash shapes and colored smoke/fire, numeric/aliased projectile types, independent team-colored moving bullets, exact player/wall impacts and clock-driven muzzle flashes, softly lit stone 3D map, team-colored horizontal field of view, deterministic clock-driven death fragments and hidden names, XYZ interpolation, exact detonation, effect hit testing, entity reuse/visibility, orbit/pan/zoom/focus/reset, teardown, failed-asset 2D fallback, preference persistence and reverse-search handoff');
+  console.log('PASS: identical team trajectories across all grenade types, distinct HE/flash shapes and colored smoke/fire, numeric/aliased projectile types, independent team-colored moving bullets, exact player/wall impacts and clock-driven muzzle flashes, softly lit stone 3D map, team-colored horizontal field of view, deterministic clock-driven death fragments and hidden names, XYZ interpolation, exact detonation, effect hit testing, entity reuse/visibility, orbit/pan/zoom/focus/reset, teardown, failed-asset 2D fallback, configurable default playback and 2D-only reverse search');
   console.log('Visual checks:', output);
 } finally {
   await browser?.close();

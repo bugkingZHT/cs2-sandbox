@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { Frame, ProjectileState } from '@/types/replay';
+import type { Frame } from '@/types/replay';
 import { buildMapGeometry, createToonGradient, type MapGeometryData } from './mapGeometry';
 import { ReplayEntities, type EntityOptions } from './replayEntities';
 import { createSkyBackground } from './mapArt';
@@ -10,6 +10,7 @@ import { demoToScene, demoDirectionToScene, PLAYER_EYE_HEIGHT } from './sampleRe
 const DEFAULT_ZOOM = 1.5;
 const ZOOM_RESPONSE_MS = 85;
 const MAX_FLASH_OPACITY = 0.9;
+const DEATH_VIEW_HOLD_MS = 3000;
 
 /** Shared renderer and clock-driven entities for orbit and player-eye views. */
 export class SandboxScene {
@@ -59,9 +60,7 @@ export class SandboxScene {
   private focus?: { target: THREE.Vector3; started: number; from: THREE.Vector3; duration: number };
   private zoomTarget?: number;
   private zoomUpdatedAt = 0;
-  projectileAnalysisEnabled = true;
-
-  constructor(private readonly host: HTMLElement, private readonly onProjectileClick: (projectile: ProjectileState) => void) {
+  constructor(private readonly host: HTMLElement, private readonly onPlayerClick: (playerId: number) => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -223,8 +222,15 @@ export class SandboxScene {
   update(frame: Frame | undefined, options: EntityOptions): void {
     const requested = options.firstPersonPlayerId;
     const player = requested === undefined ? undefined : frame?.players[requested];
-    const next = player?.alive && !options.hiddenPlayerIds?.includes(requested!)
-      && [player.x, player.y, player.z, player.yaw, player.pitch ?? 0].every(Number.isFinite) ? requested : undefined;
+    const death = requested !== undefined && frame && player?.alive === false
+      ? options.playerDeaths?.get(requested, frame.round, options.currentTimeMs) : undefined;
+    // Keep the recorded death pose, never later corpse coordinates. The replay
+    // clock also makes pause, playback speed and seeking deterministic.
+    const holdingDeath = requested !== undefined && requested === this.followPlayerId && death
+      && options.currentTimeMs - death.timeMs < DEATH_VIEW_HOLD_MS;
+    const pose = player?.alive ? player : holdingDeath ? death : undefined;
+    const next = pose && !options.hiddenPlayerIds?.includes(requested!)
+      && [pose.x, pose.y, pose.z, pose.yaw, pose.pitch ?? 0].every(Number.isFinite) ? requested : undefined;
     if (next !== this.followPlayerId) {
       if (this.followPlayerId === undefined && next !== undefined) {
         // Drain orbit inertia without moving the saved overview camera.
@@ -245,12 +251,12 @@ export class SandboxScene {
         : '第一人称回放视角：跟随玩家视线，按 Escape 返回沙盘');
       this.setFloorView(this.floorView);
     }
-    if (next !== undefined && player) {
+    if (next !== undefined && pose) {
       // Replay records feet, not eye offsets. Use a stable standing eye height
       // independent of the sandbox's player-size preference.
-      const position = demoToScene(player.x, player.y, player.z! + PLAYER_EYE_HEIGHT);
+      const position = demoToScene(pose.x, pose.y, pose.z! + PLAYER_EYE_HEIGHT);
       this.eyeCamera.position.set(position.x, position.y, position.z);
-      const direction = demoDirectionToScene(player.yaw, THREE.MathUtils.clamp(player.pitch ?? 0, -89.9, 89.9));
+      const direction = demoDirectionToScene(pose.yaw, THREE.MathUtils.clamp(pose.pitch ?? 0, -89.9, 89.9));
       this.eyeDirection.set(direction.x, direction.y, direction.z);
       this.eyeCamera.lookAt(this.eyeDirection.add(this.eyeCamera.position));
       this.eyeCamera.updateMatrixWorld();
@@ -372,15 +378,19 @@ export class SandboxScene {
     this.pointerDown = { x: event.clientX, y: event.clientY, button: event.button };
   };
 
-  private intersection(event: MouseEvent | PointerEvent, includeMap: boolean) {
+  private intersection(event: MouseEvent | PointerEvent, includeMap: boolean, playersOnly = false) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1,
       -(event.clientY - rect.top) / rect.height * 2 + 1);
     this.scene.updateMatrixWorld(true);
     this.raycaster.setFromCamera(this.pointer, this.activeCamera);
     const candidates: THREE.Object3D[] = [];
-    for (const visual of this.entities.players.values()) if (visual.group.visible) candidates.push(visual.group);
-    for (const visual of this.entities.projectiles.values()) {
+    // Only the living model is clickable; names, view cones and death fragments
+    // must not capture clicks on nearby players or the map.
+    for (const visual of this.entities.players.values()) {
+      if (visual.group.visible && visual.body.visible) candidates.push(visual.torso, visual.head, visual.weaponRig);
+    }
+    if (!playersOnly) for (const visual of this.entities.projectiles.values()) {
       if (visual.group.visible) candidates.push(visual.group);
       if (visual.line.visible) candidates.push(visual.line);
     }
@@ -410,14 +420,11 @@ export class SandboxScene {
     const start = this.pointerDown;
     this.pointerDown = undefined;
     if (!this.controls.enabled || !start || start.button !== 0 || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
-    const hit = this.intersection(event, false);
+    const hit = this.intersection(event, false, true) ?? this.intersection(event, false);
     const entity = hit ? this.entityFor(hit.object) : {};
     this.entities.select(entity.playerId, entity.projectileId);
     this.dirty = true;
-    if (entity.projectileId !== undefined && this.projectileAnalysisEnabled) {
-      const projectile = this.entities.projectiles.get(entity.projectileId)?.projectile;
-      if (projectile) this.onProjectileClick(projectile);
-    }
+    if (entity.playerId !== undefined) this.onPlayerClick(entity.playerId);
     if (entity.playerId === undefined && entity.projectileId === undefined) {
       const mapHit = this.intersection(event, true);
       if (mapHit) this.centerMapPoint(mapHit.point);
