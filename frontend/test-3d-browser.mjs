@@ -171,7 +171,7 @@ try {
   assert.ok(mapValues.wall[0] > 85 && mapValues.wall[0] < 190, 'walls stay readable mid-gray, neither black nor washed-out white');
   assert.ok(mapValues.separateRamp, 'map lighting cannot alter actor or projectile toon ramps');
   assert.deepEqual(mapValues.actorRamp, [125,125,125,255,192,192,192,255,255,255,255,255], 'existing actor lighting is preserved');
-  assert.equal(mapValues.actorColor, 0x559ccd, 'existing CT player palette is preserved');
+  assert.equal(mapValues.actorColor, 0x3270d2, 'CT players use the reference blue');
   assert.ok(mapValues.textureValueRange > 12, 'weathering produces visible moss and pale stone patches on the GPU');
   assert.ok(mapValues.seam <= 4, 'adjacent UV-less wall meshes have no texture seam');
   assert.ok(mapValues.stableTexture, 'weathering does not flicker or animate between refreshes');
@@ -401,7 +401,7 @@ try {
   assert.ok(shotStart.visible && shotStart.effects[2].visible && shotStart.effects[3].visible && !shotStart.effects[0].visible, 'the exact shot timestamp shows its muzzle while the bullet has not yet moved');
   assert.ok(shotStart.effects.every(effect => effect.mesh && !effect.line), 'all shooting effects use solid low-poly meshes instead of one-pixel lines');
   assert.ok(shotStart.effects[2].size.every(size => size >= 25), 'muzzle has a broad crossed flame silhouette visible from different camera directions');
-  assert.notDeepEqual(shotStart.effects[2].color, shotStart.effects[3].color, 'muzzle flame has a distinct bright core');
+  assert.deepEqual(shotStart.effects[2].color, shotStart.effects[3].color, 'muzzle layers share the reference team color');
   assert.ok(shotStart.effects.every(effect => effect.transparent && effect.depthTest && !effect.depthWrite && effect.renderOrder > 0), 'all shot layers share the transparent queue, render over background walls and retain real foreground occlusion');
   assertShotDirection(shotStart, 90, -20);
   await seek(145);
@@ -636,6 +636,8 @@ try {
     window.props3d.currentFrameIndex = 0;
     const sandbox = window.get3D().getSandbox();
     const map = sandbox.scene.getObjectByName('map-whitebox');
+    window.originalGroundQuery = sandbox.groundHeightAt;
+    sandbox.groundHeightAt = () => 0;
     const stage = map.getObjectByName('diorama-base').clone();
     stage.name = 'projectile-qa-stage';
     stage.position.set(-50, -20, 0);
@@ -693,6 +695,10 @@ try {
     }
   }
   const ctTrail = flyingGrenades.projectiles[0].color, tTrail = flyingGrenades.projectiles[6].color;
+  const tActor = await page.evaluate(() => window.get3D().getSandbox().entities.players.get(2).torso.material.color.toArray());
+  assert.deepEqual(tTrail, tActor, 'T players and utility trajectories share the same reference orange');
+  const ctActor = await page.evaluate(() => window.get3D().getSandbox().entities.players.get(1).torso.material.color.toArray());
+  assert.deepEqual(ctTrail, ctActor, 'CT players and utility trajectories share the same reference blue');
   assert.ok(ctTrail[2] > ctTrail[0] && tTrail[0] > tTrail[2] && tTrail[1] > tTrail[2], 'CT trajectories are blue and T trajectories are yellow');
   await page.screenshot({ path: resolve(output, 'scene-grenade-trails.png') });
   await seek(200);
@@ -712,7 +718,7 @@ try {
   const grenadeBursts = await grenadeState();
   assert.ok(widths(grenadeBursts.smoke).every((width, i) => width > widths(earlyEffects.smoke)[i]), 'every smoke lobe grows between source frames');
   assert.ok(widths(grenadeBursts.flames)[0] > earlyFireWidths[0], 'central flame grows while the ignition wave advances');
-  assert.equal(grenadeBursts.smoke.count, 14, 'both smoke grenades have their own seven-instance cloud');
+  assert.equal(grenadeBursts.smoke.count, 14, 'each smoke grenade retains seven layered puffs');
   assert.equal(grenadeBursts.flames.count, 244, 'four molotov/incendiary areas each use a dense 61-cone flame field');
   assert.ok(grenadeBursts.flames.capacity >= 610, 'the flame batch has capacity for at least ten simultaneous areas');
   for (const instances of [grenadeBursts.smoke, grenadeBursts.flames]) {
@@ -720,6 +726,9 @@ try {
     for (let i = 0; i < instances.count; i++) {
       const [r, g, b] = instances.colors.slice(i * 3, i * 3 + 3);
       assert.ok(i < instances.count / 2 ? b > r : r > b && g > b, 'smoke and fire instances retain their thrower team hue');
+      const teamTrail = i < instances.count / 2 ? ctTrail : tTrail;
+      [r, g, b].forEach((value, channel) =>
+        assert.ok(Math.abs(value - teamTrail[channel]) < 1e-6, 'smoke and fire share the same team color as players and trails'));
     }
   }
   for (const row of [0, 1]) {
@@ -727,6 +736,7 @@ try {
       assert.equal(grenade.team, row ? 2 : 3, 'every effect resolves the actual thrower team');
       for (const [r, g, b] of [grenade.markerColor, grenade.ringColor, ...grenade.burst.filter(object => object.visible && object.color).map(object => object.color)]) {
         assert.ok(row ? r > b && g > b : b > r, 'markers, blast clouds, fragments and rings preserve the thrower team hue');
+        assert.deepEqual([r, g, b], row ? tTrail : ctTrail, 'flash rings and explosions share their team trajectory color');
       }
     }
     const [he, flash] = grenadeBursts.projectiles.slice(row * 6, row * 6 + 2);
@@ -739,6 +749,51 @@ try {
   }
   await seek(700);
   const settledEffects = await grenadeState();
+  const domeShape = await page.evaluate(() => {
+    const mesh = window.get3D().getSandbox().entities.smoke;
+    mesh.geometry.computeBoundingBox();
+    return { min: mesh.geometry.boundingBox.min.toArray(), max: mesh.geometry.boundingBox.max.toArray(),
+      opacity: mesh.material.opacity, transparent: mesh.material.transparent,
+      grounds: Array.from({ length: mesh.count }, (_, i) => window.get3D().getSandbox().entities.smokeHoles.rows.getZ(i)),
+      fireOpacity: window.get3D().getSandbox().entities.flames.material.opacity };
+  });
+  assert.ok(domeShape.min[1] < 0 && domeShape.max[1] > 0, 'the cloud retains its spherical puffs');
+  assert.ok(domeShape.grounds.every(y => y === 0), 'all puffs share the same flat ground clipping plane');
+  const puffTop = i => settledEffects.smoke.matrices[i * 16 + 13] + widths(settledEffects.smoke)[i];
+  for (const base of [0, 7]) {
+    for (let i = base; i < base + 6; i++) assert.ok(puffTop(base + 6) > puffTop(i) + 20,
+      'the center is taller than the outer puffs, making a grounded hemisphere silhouette');
+  }
+  assert.equal(domeShape.opacity, .7); assert.equal(domeShape.transparent, true);
+  assert.equal(domeShape.fireOpacity, .8, 'fire opacity stays unchanged');
+  const belowGroundSmoke = await page.evaluate(() => {
+    const s = window.get3D().getSandbox(), mesh = s.entities.smoke, camera = s.camera;
+    const position = camera.position.clone(), rotation = camera.quaternion.clone();
+    const cameraLayers = camera.layers.mask, smokeLayers = mesh.layers.mask;
+    const smokeCount = mesh.count;
+    mesh.count = 7; // Inspect one cloud; the two test rows overlap in a side view.
+    mesh.layers.set(1); camera.layers.set(1);
+    camera.position.set(-50, 80, -2200); camera.lookAt(-50, 80, 0); camera.updateMatrixWorld();
+    s.renderer.render(s.scene, camera);
+    const gl = s.renderer.getContext(), width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const groundY = (new window.THREE.Vector3(0, 0, 0).project(camera).y + 1) * height / 2;
+    let above = 0, below = 0;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const k = (y * width + x) * 4;
+      if (pixels[k + 2] > pixels[k] + 20 && pixels[k + 2] > pixels[k + 1] + 10) {
+        if (y < groundY - 2) below++; else above++;
+      }
+    }
+    camera.layers.mask = cameraLayers; mesh.layers.mask = smokeLayers;
+    mesh.count = smokeCount;
+    camera.position.copy(position); camera.quaternion.copy(rotation); camera.updateMatrixWorld();
+    s.renderer.render(s.scene, camera);
+    return { above, below };
+  });
+  assert.ok(belowGroundSmoke.above > 100, 'the stacked smoke remains visible from the side');
+  assert.equal(belowGroundSmoke.below, 0, 'no puff surface renders below the shared ground plane');
   assert.ok(widths(settledEffects.smoke).every((width, i) => width > widths(grenadeBursts.smoke)[i]), 'smoke reaches its full footprint after the bloom');
   for (const [zone, projectileIndex] of [3, 4, 9, 10].entries()) {
     const position = settledEffects.projectiles[projectileIndex].position;
@@ -918,6 +973,7 @@ try {
   await page.evaluate(() => {
     const sandbox = window.get3D().getSandbox();
     sandbox.scene.remove(sandbox.scene.getObjectByName('projectile-qa-stage'));
+    sandbox.groundHeightAt = window.originalGroundQuery;
     sandbox.scene.getObjectByName('map-whitebox').visible = true;
     window.props3d.frames = window.originalGrenadeFixture.frames;
     window.props3d.projectileConfigs = window.originalGrenadeFixture.configs;

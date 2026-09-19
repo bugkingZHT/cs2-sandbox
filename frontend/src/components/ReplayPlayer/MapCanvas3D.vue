@@ -205,7 +205,7 @@ defineExpose({ getCanvas, resetView, getSandbox: () => sandbox, inspect: () => s
 }
 .exit-first-person {
   position: absolute;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
   z-index: 2;
   padding: 9px 14px;

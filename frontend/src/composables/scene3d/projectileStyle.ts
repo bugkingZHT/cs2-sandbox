@@ -1,5 +1,6 @@
 import type { Frame, PlayerInfo } from '../../types/replay';
 import { getDisplayTeam } from '../../config/game';
+import { T_TEAM_COLOR, CT_TEAM_COLOR } from './teamStyle';
 
 export interface ProjectileTeamStyle {
   readonly trail: number;
@@ -10,8 +11,8 @@ export interface ProjectileTeamStyle {
 
 /** Every projectile type on a side shares exactly the same trajectory RGB. */
 export const PROJECTILE_TEAM_STYLES: Readonly<Record<number, ProjectileTeamStyle>> = Object.freeze({
-  3: Object.freeze({ trail: 0x459eed, smoke: 0x4f77a0, fire: 0x529ae1, blast: 0x3676ad }),
-  2: Object.freeze({ trail: 0xf4c542, smoke: 0xab9657, fire: 0xe4bc4e, blast: 0xc9a330 }),
+  3: Object.freeze({ trail: CT_TEAM_COLOR, smoke: CT_TEAM_COLOR, fire: CT_TEAM_COLOR, blast: CT_TEAM_COLOR }),
+  2: Object.freeze({ trail: T_TEAM_COLOR, smoke: T_TEAM_COLOR, fire: T_TEAM_COLOR, blast: T_TEAM_COLOR }),
   0: Object.freeze({ trail: 0x999999, smoke: 0x777777, fire: 0xaaaaaa, blast: 0x777777 }),
 });
 

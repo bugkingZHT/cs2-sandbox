@@ -11,6 +11,7 @@ import { ReplayShots, type ShotRenderOptions } from './replayShots';
 import { projectileKind, projectileTypeId, resolveProjectileTeam, PROJECTILE_TEAM_STYLES, projectileEffectDefaults } from './projectileStyle';
 import { equipmentKind, isHandheldUtility, WEAPON_HOLD_RIGHT, WEAPON_HOLD_HEIGHT } from './equipmentKinds';
 import { EquipmentModels } from './equipmentModels';
+import { T_TEAM_COLOR, CT_TEAM_COLOR, preserveTeamColor } from './teamStyle';
 import type { SmokeDispersals } from './smokeDispersal';
 import { SmokeHoleMask } from './smokeHoleMask';
 
@@ -73,11 +74,12 @@ interface ProjectileVisual {
   trail?: ProjectileTrail;
   trailHead: number;
   projectile: ProjectileState;
+  smokeGround?: { x: number; y: number; z: number; height: number };
   seen: boolean;
 }
 
-const CT_COLOR = 0x559ccd;
-const T_COLOR = 0xe2a16c;
+const CT_COLOR = CT_TEAM_COLOR;
+const T_COLOR = T_TEAM_COLOR;
 const DEATH_DURATION_MS = 800;
 const FRAGMENT_COUNT = 14;
 const FIRE_INSTANCE_CAPACITY = 1024;
@@ -144,6 +146,7 @@ export class ReplayEntities {
     ring: new THREE.RingGeometry(22, 27, 32),
     effect: new THREE.RingGeometry(0.86, 1, 40),
     particle: new THREE.IcosahedronGeometry(1, 1),
+    smokeDome: new THREE.SphereGeometry(1, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2),
     flame: new THREE.ConeGeometry(1, 2, 6),
     dropped: new THREE.BoxGeometry(25, 8, 13),
   };
@@ -172,19 +175,23 @@ export class ReplayEntities {
     this.equipment = new EquipmentModels(gradientMap);
     this.group.name = 'replay-entities';
     this.ct = new THREE.MeshToonMaterial({ color: CT_COLOR, gradientMap });
+    preserveTeamColor(this.ct);
     this.t = new THREE.MeshToonMaterial({ color: T_COLOR, gradientMap });
+    preserveTeamColor(this.t);
     this.neutral = new THREE.MeshToonMaterial({ color: 0x8a949a, gradientMap });
     this.white = new THREE.MeshToonMaterial({ color: 0xfff8d9, gradientMap });
     this.c4Material = new THREE.MeshToonMaterial({ color: 0x9e3633, gradientMap });
     for (const [team, color] of [[3, CT_COLOR], [2, T_COLOR], [0, 0x999999]]) {
       this.fieldsOfView.set(team, new THREE.MeshBasicMaterial({
         color, map: this.fieldOfViewFade, transparent: true, opacity: 0.46,
+        toneMapped: team === 0,
         side: THREE.DoubleSide, depthWrite: false, polygonOffset: true,
         polygonOffsetFactor: -2, polygonOffsetUnits: -2,
       }));
     }
     for (const [team, style] of Object.entries(PROJECTILE_TEAM_STYLES)) {
       this.projectileMaterials.set(Number(team), new THREE.MeshToonMaterial({ color: style.trail, gradientMap }));
+      if (Number(team) !== 0) preserveTeamColor(this.projectileMaterials.get(Number(team))!);
       this.trajectoryMaterials.set(Number(team), new THREE.LineBasicMaterial({ color: style.trail, transparent: true, opacity: 0.95, toneMapped: false }));
     }
     this.dropped = new THREE.InstancedMesh(this.geometry.dropped,
@@ -194,14 +201,16 @@ export class ReplayEntities {
     this.dropped.frustumCulled = false;
     this.dropped.count = 0;
     this.smokeHoles = new SmokeHoleMask(this.geometry.particle, gradientMap);
+    preserveTeamColor(this.smokeHoles.material);
     this.smoke = new THREE.InstancedMesh(this.smokeHoles.geometry, this.smokeHoles.material, 256);
     this.smoke.name = 'smoke-volumes';
     this.smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.smoke.frustumCulled = false;
     this.smoke.count = 0;
     this.flames = new THREE.InstancedMesh(this.geometry.flame,
-      new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap }), FIRE_INSTANCE_CAPACITY);
+      new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap, transparent: true, opacity: 0.8, depthWrite: false }), FIRE_INSTANCE_CAPACITY);
     this.flames.name = 'fire-volumes';
+    preserveTeamColor(this.flames.material as THREE.MeshToonMaterial);
     this.flames.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.flames.frustumCulled = false;
     this.flames.count = 0;
@@ -327,6 +336,7 @@ export class ReplayEntities {
     const blast = new THREE.Mesh(this.geometry.fragment, new THREE.MeshToonMaterial({
       color: 0x777777, gradientMap: this.gradientMap, transparent: true, opacity: 0.7, depthWrite: false,
     }));
+    preserveTeamColor(blast.material);
     blast.name = `he-blast-${id}`;
     const shards = new THREE.InstancedMesh(this.geometry.fragment, blast.material, 8);
     shards.name = `he-shards-${id}`;
@@ -540,6 +550,7 @@ export class ReplayEntities {
       const team = resolveProjectileTeam(projectile.throwerID, frame, this.metadataById);
       const style = PROJECTILE_TEAM_STYLES[team];
       visual.kind = kind;
+      visual.hitArea.geometry = kind === 'smoke' && projectile.isExploded ? this.geometry.smokeDome : this.geometry.particle;
       visual.team = team;
       // Team owns every trail/effect hue, including direct seeks and reused IDs.
       this.equipment.set(visual.marker, equipmentKind(projectile.type), this.projectileMaterials.get(team)!);
@@ -587,21 +598,29 @@ export class ReplayEntities {
         const holes = options.smokeDispersals?.get(projectile);
         const bloomDuration = Math.min(900, duration * 0.6);
         const spread = effectGrowth(effectAge, bloomDuration);
-        visual.hitArea.scale.multiplyScalar(spread);
-        visual.hitArea.position.y *= spread;
+        // Keep the layered puffs, but arrange a tall center and low outer ring.
+        // A shared ground plane clips their undersides into a grounded dome.
+        if (!visual.smokeGround || visual.smokeGround.x !== p.x || visual.smokeGround.y !== p.y || visual.smokeGround.z !== p.z) {
+          const support = options.groundHeightAt?.(p);
+          visual.smokeGround = { ...p, height: support !== undefined && Math.abs(support - p.y) <= 64 ? support : p.y };
+        }
+        visual.hitArea.scale.setScalar(radius * fade * spread * 1.05);
+        visual.hitArea.position.y = visual.smokeGround.height - p.y;
         for (let i = 0; i < 7 && smokeCount < 256; i++) {
+          const center = i === 6;
           const angle = i / 6 * Math.PI * 2;
-          const offset = i === 6 ? 0 : radius * 0.46 * spread;
-          const delay = i === 6 ? 0 : bloomDuration * (0.08 + (i % 3) * 0.04);
+          const delay = center ? 0 : bloomDuration * (0.08 + (i % 3) * 0.04);
           const growth = effectGrowth(effectAge, bloomDuration - delay, delay);
           const breath = 1 + Math.sin(options.currentTimeMs / 1100 + id + i) * 0.025;
-          const size = radius * (i === 6 ? 0.74 : 0.62) * breath * fade * growth;
-          this.matrixObject.position.set(p.x + Math.cos(angle) * offset, p.y + radius * 0.65 * growth, p.z + Math.sin(angle) * offset);
+          const size = radius * (center ? 0.8 : 0.6) * breath * fade * growth;
+          const offset = center ? 0 : radius * 0.43 * fade * spread;
+          const height = radius * (center ? 0.25 : 0.1) * fade * growth;
+          this.matrixObject.position.set(p.x + Math.cos(angle) * offset, visual.smokeGround.height + height, p.z + Math.sin(angle) * offset);
           this.matrixObject.rotation.set(0, angle, 0);
-          this.matrixObject.scale.set(size, size * 0.92, size);
+          this.matrixObject.scale.setScalar(size);
           this.matrixObject.updateMatrix();
           this.smoke.setMatrixAt(smokeCount, this.matrixObject.matrix);
-          this.smokeHoles.set(smokeCount, holes, options.currentTimeMs, fadeStart);
+          this.smokeHoles.set(smokeCount, holes, options.currentTimeMs, fadeStart, visual.smokeGround.height);
           this.smoke.setColorAt(smokeCount++, this.instanceColor.setHex(style.smoke));
         }
       } else if (kind === 'molotov' || kind === 'incendiary') {

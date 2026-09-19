@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ReplayMeta } from '@/types/replay';
 import { getDisplayTeam } from '@/config/game';
+import { T_TEAM_COLOR, CT_TEAM_COLOR } from './teamStyle';
 import type { ScenePoint } from './sampleReplayFrame';
 import { SHOT_SPEED, SHOT_RANGE, MUZZLE_DURATION_MS, IMPACT_DURATION_MS,
   type ShotFlight, type ShotFlights } from './shotFlights';
@@ -72,7 +73,7 @@ export class ReplayShots {
 
   constructor() {
     this.group.name = 'flying-bullets';
-    for (const [team, color, coreColor] of [[2, 0xf4c542, 0xfff3b0], [3, 0x459eed, 0xc7edff], [0, 0xaaaaaa, 0xffffff]]) {
+    for (const [team, color, coreColor] of [[2, T_TEAM_COLOR, T_TEAM_COLOR], [3, CT_TEAM_COLOR, CT_TEAM_COLOR], [0, 0xaaaaaa, 0xffffff]]) {
       this.materials.set(team, {
         bullet: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.86, depthWrite: false, toneMapped: false }),
         core: new THREE.MeshBasicMaterial({ color: coreColor, transparent: true, depthWrite: false, toneMapped: false }),
