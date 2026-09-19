@@ -39,6 +39,29 @@ try {
   const { buildProjectileEffectStarts, effectGrowth } =
     await server.ssrLoadModule('/src/composables/scene3d/projectileEffects.ts');
   const effectFrame = (time, projectiles = {}, extra = {}) => frame(time, { projectiles, ...extra });
+  const { buildPlayerFlashes, isPlayerBlinded } = await server.ssrLoadModule('/src/composables/scene3d/playerFlashes.ts');
+  const flashFrames=Array.from({length:23},(_,i)=>frame(i*100,{players:{1:player({isBlinded:i>=1 && i<21,flashDuration:2})}}));
+  const flashOriginal=structuredClone(flashFrames), flashes=buildPlayerFlashes(flashFrames);
+  assert.equal(flashes.opacity(1,1,99),0);
+  assert.equal(flashes.opacity(1,1,100),1,'flash activates immediately on the recorded boundary');
+  assert.equal(flashes.opacity(1,1,400),1,'full white briefly persists before fading');
+  assert.ok(flashes.opacity(1,1,1100)>flashes.opacity(1,1,1800));
+  assert.ok(flashes.opacity(1,1,1800)>0);
+  assert.equal(flashes.opacity(1,1,2100),0,'isBlinded=false overrides stale total duration');
+  assert.equal(flashes.opacity(2,1,100),0); assert.equal(flashes.opacity(1,2,100),0);
+  assert.equal(flashes.opacity(1,1,NaN),0);
+  assert.equal(isPlayerBlinded(player({isBlinded:false,flashDuration:2})),false);
+  const tailFlash=buildPlayerFlashes(flashFrames.slice(10));
+  assert.equal(tailFlash.opacity(1,1,1100),flashes.opacity(1,1,1100),'already-flashed clip starts infer the original elapsed fade instead of replaying a full flash');
+  const renewedFlash=buildPlayerFlashes(flashFrames.map(f=>f.timeMs>=1000?{...f,players:{1:{...f.players[1],flashDuration:3}}}:f));
+  assert.equal(renewedFlash.opacity(1,1,1000),1,'a newly observed flash duration restarts the burst');
+  const invalidated=buildPlayerFlashes([flashFrames[0],flashFrames[1],frame(200,{players:{}})]);
+  assert.equal(invalidated.opacity(1,1,200),0,'disappearing players cannot leave a stale flash');
+  const gapFlash=buildPlayerFlashes([flashFrames[0],flashFrames[1],frame(2000,{players:{1:player({isBlinded:false,flashDuration:2})}})]);
+  assert.equal(gapFlash.opacity(1,1,600),0,'a missing-data gap cannot sustain the old flash');
+  const duplicateClear=frame(100,{players:{1:player({isBlinded:false,flashDuration:2})}});
+  assert.equal(buildPlayerFlashes([flashFrames[0],flashFrames[1],duplicateClear]).opacity(1,1,100),0,'last duplicate owns the flash state');
+  assert.deepEqual(flashFrames,flashOriginal,'flash indexing never mutates source frames');
   const smokeBirth = projectile({ isExploded: true, ttl: 19900 });
   const smokeLater = { ...smokeBirth, ttl: 19800 };
   const fireBirth = projectile({ entityID: 8, type: 503, isExploded: true, ttl: 5400 });
@@ -310,7 +333,8 @@ try {
   const originalShots = structuredClone(shotSource);
   const shotIndex = buildShotFlights(shotSource);
   const shot = shotIndex.active(1, 100)[0];
-  assert.deepEqual(shot.origin, { x: 0, y: 52, z: -0 });
+  assert.deepEqual(shot.origin, { x: 0, y: 64, z: -0 }, 'hit detection starts at the eye, unaffected by weapon offset');
+  assert.deepEqual(shot.visualOrigin, { x: 0, y: 52, z: 14 });
   assert.deepEqual(shot.direction, { x: 1, y: -0, z: -0 });
   assert.deepEqual(shot.hit, { distance: 490, playerId: 2 }, 'stationary player collision hits the front of its 18u proxy');
   assert.equal(shot.team, 3);
@@ -327,6 +351,29 @@ try {
   for (const badTime of [NaN, Infinity, -Infinity]) assert.deepEqual(shotIndex.active(1, badTime), []);
   assert.deepEqual(shotSource, originalShots, 'shot indexing does not modify future player samples');
 
+  const offsetOnlyTarget = buildShotFlights([shotFrame(0, {}, { 2: targetPlayer({ y: -25 }) })]).active(1, 0)[0];
+  assert.equal(offsetOnlyTarget.hit, undefined, 'a player on the cosmetic muzzle ray but outside the eye ray is not hit');
+  const eyeOnlyTarget = buildShotFlights([shotFrame(0, {}, { 2: targetPlayer({ y: 15 }) })]).active(1, 0)[0];
+  assert.equal(eyeOnlyTarget.hit?.playerId, 2, 'a player on the eye ray is hit even when the cosmetic muzzle ray misses');
+  const gunHeightOnlyTarget = buildShotFlights([shotFrame(0, {}, { 2: targetPlayer({ z: -14 }) })]).active(1, 0)[0];
+  assert.equal(gunHeightOnlyTarget.hit, undefined, 'collision uses eye height rather than the lower gun mount');
+  const viewShots = new ReplayShots();
+  let queriedOrigin;
+  const query = origin => { queriedOrigin = { ...origin }; return 240; };
+  viewShots.update(shotIndex, 1, { currentTimeMs: 100, shotDistanceAt: query });
+  const cosmetic = [...viewShots.activeVisuals.values()][0];
+  assert.deepEqual(queriedOrigin, { x: 0, y: 64, z: -0 }, 'walls are queried from the eye too');
+  viewShots.group.updateMatrixWorld(true);
+  assert.deepEqual(cosmetic.muzzle.getWorldPosition(cosmetic.muzzle.position.clone()).toArray(), [48, 52, 14]);
+  viewShots.update(shotIndex, 1, { currentTimeMs: 120, shotDistanceAt: query });
+  viewShots.group.updateMatrixWorld(true);
+  const halfway = cosmetic.bullet.position.clone().set(1, 0, 0).applyMatrix4(cosmetic.bullet.matrixWorld);
+  [144, 58, 7].forEach((value, i) => assert.ok(Math.abs(halfway.getComponent(i) - value) < 1e-8, 'visible bullet converges from the right muzzle to the eye-ray hit'));
+  viewShots.update(shotIndex, 1, { currentTimeMs: 140, shotDistanceAt: query });
+  viewShots.group.updateMatrixWorld(true);
+  assert.deepEqual(cosmetic.impact.getWorldPosition(cosmetic.impact.position.clone()).toArray(), [240, 64, 0]);
+  viewShots.dispose();
+
   const lastShot = buildShotFlights([shotFrame(0)]).active(1, 0)[0];
   assert.equal(lastShot.hit, undefined, 'a shooter cannot hit their own proxy');
   assert.equal(lastShot.endTimeMs, fullFlightMs + IMPACT_DURATION_MS, 'a genuine clip endpoint allows the complete bounded flight');
@@ -334,7 +381,8 @@ try {
   assert.equal(pointBlank.hit.distance, 10, 'an enemy inside the longer gun barrel is hit at its near body surface');
   assert.equal(pointBlank.endTimeMs, MUZZLE_DURATION_MS, 'point-blank impact does not shorten the muzzle flash');
   const angled = buildShotFlights([shotFrame(0, { x: 10, y: 20, z: 100, yaw: 0, shotYaw: 90, pitch: -30 })]).active(1, 0)[0];
-  assert.deepEqual(angled.origin, { x: 10, y: 152, z: -20 });
+  assert.deepEqual(angled.origin, { x: 10, y: 164, z: -20 });
+  assert.deepEqual(angled.visualOrigin, { x: 24, y: 152, z: -20 });
   assert.ok(Math.abs(angled.direction.y - 0.5) < 1e-10 && Math.abs(angled.direction.z + Math.sqrt(3) / 2) < 1e-10,
     'event shotYaw and Source pitch determine a three-dimensional flight');
   const elevated = buildShotFlights([shotFrame(0, { pitch: -45 }, { 2: targetPlayer({ x: 200, z: 200 }) })]).active(1, 0)[0];
@@ -346,7 +394,8 @@ try {
     shotFrame(100, { shotsFired: 0 }, { 2: targetPlayer({ x: MUZZLE_OFFSET + 240, y: -200 }) })];
   const crossingHit = buildShotFlights(movingFrames).active(1, 0)[0].hit;
   assert.equal(crossingHit.playerId, 2);
-  assert.ok(Math.abs(crossingHit.distance - (MUZZLE_OFFSET + 222)) < 1e-9, 'relative segment collision catches a moving player between two clear endpoint poses');
+  assert.ok(Math.abs(crossingHit.distance - (MUZZLE_OFFSET + 222)) < 1e-9,
+    'moving-target collision stays on the eye ray regardless of the right-hand visual offset');
   const movingAway = [shotFrame(0, {}, { 2: targetPlayer({ x: 268, y: 0 }) }),
     shotFrame(100, { shotsFired: 0 }, { 2: targetPlayer({ x: 268, y: 200 }) })];
   assert.equal(buildShotFlights(movingAway).active(1, 0)[0].hit, undefined, 'a target leaving the ray before arrival is not hit at its old position');

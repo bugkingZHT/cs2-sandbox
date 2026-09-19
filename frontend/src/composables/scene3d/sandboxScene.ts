@@ -5,17 +5,32 @@ import { buildMapGeometry, createToonGradient, type MapGeometryData } from './ma
 import { ReplayEntities, type EntityOptions } from './replayEntities';
 import { createSkyBackground } from './mapArt';
 import { getMapArt } from './mapCatalog';
+import { demoToScene, demoDirectionToScene, PLAYER_EYE_HEIGHT } from './sampleReplayFrame';
 
 const DEFAULT_ZOOM = 1.5;
 const ZOOM_RESPONSE_MS = 85;
+const MAX_FLASH_OPACITY = 0.9;
 
-/** One renderer, one camera and one clock-driven entity layer for a mounted canvas. */
+/** Shared renderer and clock-driven entities for orbit and player-eye views. */
 export class SandboxScene {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.OrthographicCamera(-3000, 3000, 3000, -3000, 1, 50000);
+  readonly eyeCamera = new THREE.PerspectiveCamera(74, 1, 1, 50000);
+  followPlayerId: number | undefined;
+  private floorView: 'upper' | 'middle' | 'lower' = 'upper';
+  private readonly eyeDirection = new THREE.Vector3();
+  get activeCamera(): THREE.Camera { return this.followPlayerId === undefined ? this.camera : this.eyeCamera; }
   readonly renderer: THREE.WebGLRenderer;
   readonly controls: OrbitControls;
   readonly entities: ReplayEntities;
+  // Clip-space overlay stays inside the WebGL canvas, including recordings and
+  // drawing snapshots. No render target, postprocessing stack or external texture.
+  readonly flashOverlay = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+    uniforms: { opacity: { value: 0 } }, transparent: true, depthTest: false, depthWrite: false,
+    vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'uniform float opacity; void main() { gl_FragColor = vec4(vec3(0.91), opacity); }',
+    toneMapped: false,
+  }));
   private readonly gradient = createToonGradient();
   private readonly sun = new THREE.DirectionalLight(0xffffff, 1.9);
   private readonly raycaster = new THREE.Raycaster();
@@ -73,6 +88,12 @@ export class SandboxScene {
     this.scene.add(this.sun, this.sun.target);
     this.entities = new ReplayEntities(this.gradient);
     this.scene.add(this.entities.group);
+    this.flashOverlay.name = 'first-person-flash';
+    this.flashOverlay.frustumCulled = false;
+    this.flashOverlay.renderOrder = 100000;
+    this.flashOverlay.visible = false;
+    this.flashOverlay.raycast = () => undefined;
+    this.scene.add(this.flashOverlay);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
@@ -154,11 +175,15 @@ export class SandboxScene {
     this.camera.top = span / 2;
     this.camera.bottom = -span / 2;
     this.camera.updateProjectionMatrix();
+    this.eyeCamera.aspect = aspect;
+    this.eyeCamera.updateProjectionMatrix();
     this.dirty = true;
   }
 
   /** Preserve true world height; a section view removes occluding Nuke floors. */
   setFloorView(view: 'upper' | 'middle' | 'lower'): void {
+    this.floorView = view;
+    if (this.followPlayerId !== undefined) view = 'upper';
     // Upper is the complete model. Middle cuts buildings at standing height
     // above the main floor (-416 + 72), without slicing airborne game entities.
     this.renderer.clippingPlanes = this.mapName === 'de_nuke' && view === 'lower'
@@ -196,7 +221,44 @@ export class SandboxScene {
   }
 
   update(frame: Frame | undefined, options: EntityOptions): void {
-    this.entities.update(frame, { ...options, groundHeightAt: this.groundHeightAt, shotDistanceAt: this.shotDistanceAt });
+    const requested = options.firstPersonPlayerId;
+    const player = requested === undefined ? undefined : frame?.players[requested];
+    const next = player?.alive && !options.hiddenPlayerIds?.includes(requested!)
+      && [player.x, player.y, player.z, player.yaw, player.pitch ?? 0].every(Number.isFinite) ? requested : undefined;
+    if (next !== this.followPlayerId) {
+      if (this.followPlayerId === undefined && next !== undefined) {
+        // Drain orbit inertia without moving the saved overview camera.
+        const position = this.camera.position.clone(), rotation = this.camera.quaternion.clone();
+        const target = this.controls.target.clone(), zoom = this.camera.zoom;
+        const damping = this.controls.enableDamping;
+        this.controls.enableDamping = false;
+        this.controls.update();
+        this.camera.position.copy(position); this.camera.quaternion.copy(rotation);
+        this.camera.zoom = zoom; this.camera.updateProjectionMatrix();
+        this.controls.target.copy(target); this.controls.enableDamping = damping;
+      }
+      this.focus = undefined;
+      this.zoomTarget = undefined;
+      this.followPlayerId = next;
+      this.renderer.domElement.setAttribute('aria-label', next === undefined
+        ? '三维战术沙盘：单击地图平滑居中，拖拽旋转，右键或中键平移，滚轮缩放，双击实体聚焦'
+        : '第一人称回放视角：跟随玩家视线，按 Escape 返回沙盘');
+      this.setFloorView(this.floorView);
+    }
+    if (next !== undefined && player) {
+      // Replay records feet, not eye offsets. Use a stable standing eye height
+      // independent of the sandbox's player-size preference.
+      const position = demoToScene(player.x, player.y, player.z! + PLAYER_EYE_HEIGHT);
+      this.eyeCamera.position.set(position.x, position.y, position.z);
+      const direction = demoDirectionToScene(player.yaw, THREE.MathUtils.clamp(player.pitch ?? 0, -89.9, 89.9));
+      this.eyeDirection.set(direction.x, direction.y, direction.z);
+      this.eyeCamera.lookAt(this.eyeDirection.add(this.eyeCamera.position));
+      this.eyeCamera.updateMatrixWorld();
+    }
+    const flash = next !== undefined && frame ? options.playerFlashes?.opacity(next, frame.round, options.currentTimeMs) ?? 0 : 0;
+    this.flashOverlay.material.uniforms.opacity.value = flash * MAX_FLASH_OPACITY;
+    this.flashOverlay.visible = flash > 0;
+    this.entities.update(frame, { ...options, firstPersonPlayerId: next, groundHeightAt: this.groundHeightAt, shotDistanceAt: this.shotDistanceAt });
     if (this.renderer.clippingPlanes.length) this.updateSectionShadows();
     this.renderer.shadowMap.needsUpdate = true;
     this.dirty = true;
@@ -282,7 +344,7 @@ export class SandboxScene {
       this.dirty = true;
       if (t === 1) this.focus = undefined;
     }
-    const changed = this.controls.enabled ? this.controls.update() : false;
+    const changed = this.controls.enabled && this.followPlayerId === undefined ? this.controls.update() : false;
     // Panning cannot lose the entire model beyond recovery.
     const target = this.controls.target;
     const clamped = target.clone();
@@ -296,9 +358,9 @@ export class SandboxScene {
     }
     if (!changed && !this.dirty) return;
     const unitsPerPixel = (this.camera.top - this.camera.bottom) / this.camera.zoom / this.height;
-    this.entities.updateLabels(unitsPerPixel);
+    this.entities.updateLabels(unitsPerPixel, this.followPlayerId === undefined ? undefined : this.eyeCamera, this.height);
     this.raycaster.params.Line = { threshold: unitsPerPixel * 5 };
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.activeCamera);
     this.dirty = false;
   }
 
@@ -315,7 +377,7 @@ export class SandboxScene {
     this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1,
       -(event.clientY - rect.top) / rect.height * 2 + 1);
     this.scene.updateMatrixWorld(true);
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.raycaster.setFromCamera(this.pointer, this.activeCamera);
     const candidates: THREE.Object3D[] = [];
     for (const visual of this.entities.players.values()) if (visual.group.visible) candidates.push(visual.group);
     for (const visual of this.entities.projectiles.values()) {
@@ -436,6 +498,8 @@ export class SandboxScene {
       players: [...this.entities.players].filter(([, v]) => v.group.visible).map(([id, v]) => ({ id, position: v.group.position.toArray() })),
       projectiles: [...this.entities.projectiles].filter(([, v]) => v.group.visible).map(([id, v]) => ({ id, position: v.group.position.toArray(), exploded: !!v.projectile.isExploded })),
       camera: { position: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom },
+      firstPerson: this.followPlayerId === undefined ? null : { playerId: this.followPlayerId,
+        position: this.eyeCamera.position.toArray(), direction: this.eyeCamera.getWorldDirection(new THREE.Vector3()).toArray() },
       mapTriangles: this.mapTriangles,
       drawCalls: this.renderer.info.render.calls,
       triangles: this.renderer.info.render.triangles,

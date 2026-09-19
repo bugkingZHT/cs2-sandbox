@@ -12,6 +12,9 @@
           <button :aria-pressed="sceneFloor === 'middle'" @click="sceneFloor = 'middle'">中层</button>
           <button :aria-pressed="sceneFloor === 'lower'" @click="sceneFloor = 'lower'">下层</button>
         </div>
+        <button v-if="use3DView && firstPersonPlayerId !== undefined" class="sidebar-tool" @click="firstPersonPlayerId = undefined" title="再次点击当前玩家卡片或按 Escape 返回">
+          <span>返回沙盘</span>
+        </button>
         <button v-if="use3DView" class="sidebar-tool" @click="mapCanvas3D?.resetView()" title="左键旋转 · 右键平移 · 滚轮缩放 · 双击聚焦">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><circle cx="12" cy="12" r="3"/></svg><span>重置视角</span>
         </button>
@@ -140,6 +143,8 @@
           :is-dragging="isDraggingTimeline"
           :map-name="replay?.mapName"
           :floor-view="sceneFloor"
+          :first-person-player-id="firstPersonPlayerId"
+          @exit-first-person="firstPersonPlayerId = undefined"
           :projectile-configs="replay?.projectileRenderConfig"
           :is-drawing-mode="isDrawingMode"
           :hidden-player-ids="hiddenPlayerIdsArray"
@@ -217,7 +222,12 @@
           <!-- First Half (1-12): T on top, Second Half (13+): CT on top. left-team-score-eye 控制上侧 -->
           <div class="upper-team-cards-slot" ref="upperTeamCardsRef">
           <div v-if="currentRound <= 12" class="team-cards-container t">
-            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!), 'is-following': firstPersonPlayerId === p.id }">
+              <button class="player-pov-button" type="button" :disabled="!canFollowPlayer(p)"
+                :aria-pressed="firstPersonPlayerId === p.id"
+                :aria-label="firstPersonPlayerId === p.id ? '退出 ' + p.name + ' 的第一人称视角' : '观看 ' + p.name + ' 的第一人称视角'"
+                :title="canFollowPlayer(p) ? (firstPersonPlayerId === p.id ? '点击返回沙盘' : '点击切换第一人称视角') : '仅可观看有三维坐标的存活可见玩家'"
+                @click="followPlayer(p)"></button>
               <div class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
               <!-- Column 1: Player Info -->
               <div class="card-col col-info">
@@ -299,7 +309,12 @@
             </div>
           </div>
           <div v-else class="team-cards-container ct">
-            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!), 'is-following': firstPersonPlayerId === p.id }">
+              <button class="player-pov-button" type="button" :disabled="!canFollowPlayer(p)"
+                :aria-pressed="firstPersonPlayerId === p.id"
+                :aria-label="firstPersonPlayerId === p.id ? '退出 ' + p.name + ' 的第一人称视角' : '观看 ' + p.name + ' 的第一人称视角'"
+                :title="canFollowPlayer(p) ? (firstPersonPlayerId === p.id ? '点击返回沙盘' : '点击切换第一人称视角') : '仅可观看有三维坐标的存活可见玩家'"
+                @click="followPlayer(p)"></button>
               <div class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
               <!-- Column 1: Player Info (first half CT) -->
               <div class="card-col col-info">
@@ -422,7 +437,12 @@
           <!-- Second Team (CT for rounds 1-12, T for rounds 13+). right-team-score-eye 控制下侧 -->
           <div class="lower-team-cards-slot" ref="lowerTeamCardsRef">
           <div v-if="currentRound <= 12" class="team-cards-container ct">
-            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+            <div v-for="p in teamCTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!), 'is-following': firstPersonPlayerId === p.id }">
+              <button class="player-pov-button" type="button" :disabled="!canFollowPlayer(p)"
+                :aria-pressed="firstPersonPlayerId === p.id"
+                :aria-label="firstPersonPlayerId === p.id ? '退出 ' + p.name + ' 的第一人称视角' : '观看 ' + p.name + ' 的第一人称视角'"
+                :title="canFollowPlayer(p) ? (firstPersonPlayerId === p.id ? '点击返回沙盘' : '点击切换第一人称视角') : '仅可观看有三维坐标的存活可见玩家'"
+                @click="followPlayer(p)"></button>
               <div class="player-card-bottom ct" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 'ct')">
               <div class="card-col col-info">
                 <div class="player-id">{{ p.name || 'UNKNOWN' }}</div>
@@ -493,7 +513,12 @@
             </div>
           </div>
           <div v-else class="team-cards-container t">
-            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!) }">
+            <div v-for="p in teamTPlayers" :key="p.id" class="player-card-wrap" :data-player-id="p.id" :class="{ 'is-hidden': isPlayerHidden(p.id!), 'is-following': firstPersonPlayerId === p.id }">
+              <button class="player-pov-button" type="button" :disabled="!canFollowPlayer(p)"
+                :aria-pressed="firstPersonPlayerId === p.id"
+                :aria-label="firstPersonPlayerId === p.id ? '退出 ' + p.name + ' 的第一人称视角' : '观看 ' + p.name + ' 的第一人称视角'"
+                :title="canFollowPlayer(p) ? (firstPersonPlayerId === p.id ? '点击返回沙盘' : '点击切换第一人称视角') : '仅可观看有三维坐标的存活可见玩家'"
+                @click="followPlayer(p)"></button>
               <div class="player-card-bottom t" :class="{ 'is-dead': !p.alive }" :style="getCardBackgroundStyle(p, 't')">
               <!-- Column 1: Player Info -->
               <div class="card-col col-info">
@@ -900,11 +925,24 @@ const mapView = ref<'2d' | '3d'>((() => {
 })());
 const sceneError = ref('');
 const sceneFloor = ref<'upper' | 'middle' | 'lower'>('upper');
+const firstPersonPlayerId = ref<number>();
+function canFollowPlayer(player: PlayerState) {
+  return has3DMap.value && !searchMenuOpen.value && !sceneError.value && !isGrenadeAnalyzeMode.value
+    && player.id !== undefined && player.alive && !isPlayerHidden(player.id)
+    && [player.x, player.y, player.z, player.yaw, player.pitch ?? 0].every(Number.isFinite);
+}
+function followPlayer(player: PlayerState) {
+  if (!canFollowPlayer(player)) return;
+  if (firstPersonPlayerId.value === player.id) { firstPersonPlayerId.value = undefined; return; }
+  setMapView('3d');
+  firstPersonPlayerId.value = player.id;
+}
 const has3DMap = computed(() => has3DMapAsset(replay.value?.mapName));
 // Area search uses the existing orthographic radar selection and projection.
 // Opening it temporarily returns to 2D without changing the user's preference.
 const use3DView = computed(() => has3DMap.value && mapView.value === '3d' && !searchMenuOpen.value && !sceneError.value);
 function setMapView(value: '2d' | '3d') {
+  firstPersonPlayerId.value = undefined;
   isDrawingMode.value = false;
   sceneError.value = '';
   mapView.value = value;
@@ -1836,7 +1874,16 @@ watch(
   }
 );
 
+watch([() => replay.value?.uuid, () => replay.value?.mapName, () => currentRound.value,
+  isGrenadeAnalyzeMode, isClipMode], () => { firstPersonPlayerId.value = undefined; });
+watch(use3DView, value => { if (!value) firstPersonPlayerId.value = undefined; });
+
 function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && firstPersonPlayerId.value !== undefined && !isDrawingMode.value) {
+    firstPersonPlayerId.value = undefined;
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape' && pureMode.value && !isDrawingMode.value) {
     pureMode.value = false;
     return;
@@ -1993,6 +2040,15 @@ onBeforeUnmount(() => {
   width: fit-content;
 }
 
+.player-pov-button {
+  position: absolute; inset: 0; z-index: 1; border: 0; padding: 0;
+  background: transparent; border-radius: var(--ds-radius-sm); cursor: pointer;
+}
+.player-pov-button:disabled { cursor: default; }
+.player-pov-button:focus-visible, .player-card-wrap.is-following .player-pov-button {
+  outline: 2px solid #8bc5ec; outline-offset: 1px;
+}
+
 .player-card-hover-cover {
   position: absolute;
   inset: 0;
@@ -2009,15 +2065,16 @@ onBeforeUnmount(() => {
 
 .player-card-wrap:hover .player-card-hover-cover {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .player-card-wrap.is-hidden .player-card-hover-cover {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .player-card-action {
+  position: relative; z-index: 2; pointer-events: auto;
   width: 32px;
   height: 32px;
   border: none;

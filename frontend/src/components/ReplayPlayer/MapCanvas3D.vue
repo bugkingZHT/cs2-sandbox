@@ -18,6 +18,7 @@ import { loadMapGeometry } from '@/composables/scene3d/mapGeometry';
 import { sampleReplayFrame } from '@/composables/scene3d/sampleReplayFrame';
 import { buildProjectileTrails, type ProjectileTrails } from '@/composables/scene3d/projectileTrails';
 import { buildPlayerDeaths, type PlayerDeaths } from '@/composables/scene3d/playerDeaths';
+import { buildPlayerFlashes, type PlayerFlashes } from '@/composables/scene3d/playerFlashes';
 import { buildProjectileEffectStarts, type ProjectileEffectStarts } from '@/composables/scene3d/projectileEffects';
 import { buildShotFlights, type ShotFlights } from '@/composables/scene3d/shotFlights';
 import { buildSmokeDispersals, type SmokeDispersals } from '@/composables/scene3d/smokeDispersal';
@@ -33,6 +34,7 @@ const props = withDefaults(defineProps<{
   isDragging?: boolean;
   mapName?: string;
   floorView?: 'upper' | 'middle' | 'lower';
+  firstPersonPlayerId?: number;
   projectileConfigs?: Record<number, ProjectileRenderConfig>;
   hiddenPlayerIds?: number[];
   showMapProjectiles?: boolean;
@@ -47,6 +49,7 @@ const emit = defineEmits<{
   (e: 'error', message: string): void;
   (e: 'projectile-click', projectile: ProjectileState): void;
   (e: 'close-drawing'): void;
+  (e: 'exit-first-person'): void;
 }>();
 const container = ref<HTMLElement>();
 const viewport = ref<HTMLElement>();
@@ -63,6 +66,7 @@ let failed = false;
 let trailSource: Frame[] | undefined;
 let projectileTrails: ProjectileTrails | undefined;
 let playerDeaths: PlayerDeaths | undefined;
+let playerFlashes: PlayerFlashes | undefined;
 let projectileEffectStarts: ProjectileEffectStarts | undefined;
 let shotFlights: ShotFlights | undefined;
 let smokeDispersals: SmokeDispersals | undefined;
@@ -71,7 +75,7 @@ let smokeConfigs: typeof props.projectileConfigs;
 let smokeMetaConfigs: ReplayMeta['projectileRenderConfig'];
 
 function getCanvas() { return sandbox?.renderer.domElement || null; }
-function resetView() { sandbox?.resetView(); }
+function resetView() { emit('exit-first-person'); sandbox?.resetView(); dirty = true; }
 function reportError(error: unknown) {
   if (failed) return;
   failed = true;
@@ -86,13 +90,14 @@ function tick() {
   if (!mounted || failed) return;
   try {
     if (sandbox) {
-      sandbox.controls.enabled = !props.isDrawingMode;
+      sandbox.controls.enabled = !props.isDrawingMode && props.firstPersonPlayerId === undefined;
       sandbox.projectileAnalysisEnabled = props.projectileAnalysisEnabled;
       if (dirty || lastTime !== props.currentTimeMs || lastFrameIndex !== props.currentFrameIndex) {
         if (trailSource !== props.frames) {
           trailSource = props.frames;
           projectileTrails = buildProjectileTrails(trailSource || []);
           playerDeaths = buildPlayerDeaths(trailSource || []);
+          playerFlashes = buildPlayerFlashes(trailSource || []);
           projectileEffectStarts = buildProjectileEffectStarts(trailSource || []);
           shotFlights = buildShotFlights(trailSource || []);
         }
@@ -106,8 +111,10 @@ function tick() {
         const frame = sampleReplayFrame(props.frames || [], props.currentTimeMs, props.currentFrameIndex);
         sandbox.update(frame, {
           currentTimeMs: props.currentTimeMs,
+          firstPersonPlayerId: props.firstPersonPlayerId,
           projectileTrails,
           playerDeaths,
+          playerFlashes,
           projectileEffectStarts,
           smokeDispersals,
           shotFlights,
@@ -121,6 +128,7 @@ function tick() {
           playerScale: playerSize.value / PLAYER_DISPLAY_CONTROLS.playerSize.default,
           nameScale: playerNameSize.value / PLAYER_DISPLAY_CONTROLS.playerNameSize.default,
         });
+        if (props.firstPersonPlayerId !== undefined && sandbox.followPlayerId === undefined) emit('exit-first-person');
         lastTime = props.currentTimeMs;
         lastFrameIndex = props.currentFrameIndex;
         dirty = false;
@@ -162,6 +170,7 @@ watch(() => props.mapName || props.replayMeta?.mapName, initialize);
 watch(() => props.floorView, value => sandbox?.setFloorView(value || 'upper'));
 watch(() => [props.frames, props.replayMeta, props.projectileConfigs, props.hiddenPlayerIds?.join(','),
   props.showMapProjectiles, props.showMapDropped, props.showMapBomb, props.grenadeTrackingEnabled,
+  props.firstPersonPlayerId,
   playerSize.value, playerNameSize.value], () => { dirty = true; });
 onMounted(() => {
   mounted = true;

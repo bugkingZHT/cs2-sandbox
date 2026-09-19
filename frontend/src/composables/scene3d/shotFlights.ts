@@ -1,6 +1,6 @@
 import type { Frame, PlayerState } from '../../types/replay';
-import { demoDirectionToScene, demoToScene, type ScenePoint } from './sampleReplayFrame';
-import { equipmentKind, weaponMuzzleOffset } from './equipmentKinds';
+import { demoDirectionToScene, demoToScene, PLAYER_EYE_HEIGHT, type ScenePoint } from './sampleReplayFrame';
+import { equipmentKind, weaponMuzzleOffset, WEAPON_HOLD_RIGHT, WEAPON_HOLD_HEIGHT } from './equipmentKinds';
 
 export const SHOT_SPEED = 4.8;
 export const SHOT_RANGE = 1800;
@@ -20,7 +20,10 @@ export interface ShotFlight {
   /** Exclusive visibility boundary, including impact time unless a clip cuts it. */
   readonly endTimeMs: number;
   readonly team: number;
+  /** Eye position for all player and wall collision queries. */
   readonly origin: Readonly<ScenePoint>;
+  /** Cosmetic right-hand mount only; never used for collision queries. */
+  readonly visualOrigin: Readonly<ScenePoint>;
   readonly direction: Readonly<ScenePoint>;
   readonly muzzleOffset: number;
   /** Distance from origin, including the muzzle offset; effects wait for arrival. */
@@ -177,7 +180,13 @@ export function buildShotFlights(source: readonly Frame[]): ShotFlights {
       const yaw = player.shotYaw ?? player.yaw;
       const pitch = player.pitch ?? 0;
       if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) continue;
-      const origin = demoToScene(player.x, player.y, (player.z ?? 0) + 52);
+      const origin = demoToScene(player.x, player.y, (player.z ?? 0) + PLAYER_EYE_HEIGHT);
+      const visualOrigin = demoToScene(player.x, player.y, (player.z ?? 0) + WEAPON_HOLD_HEIGHT);
+      // Match the right-hand mount at the recorded firing yaw. Pitch rotates
+      // around the mount; it must not roll the shoulder offset up or down.
+      const yawRadians = yaw * Math.PI / 180;
+      visualOrigin.x += Math.sin(yawRadians) * WEAPON_HOLD_RIGHT;
+      visualOrigin.z += Math.cos(yawRadians) * WEAPON_HOLD_RIGHT;
       const direction = demoDirectionToScene(yaw, pitch);
       const muzzleOffset = weaponMuzzleOffset(equipmentKind(player.activeWeapon));
       const boundary = flightBoundary(frames, i, shooterId, frame.timeMs + MAX_VISIBLE_MS);
@@ -187,7 +196,7 @@ export function buildShotFlights(source: readonly Frame[]): ShotFlights {
         key: `${frame.round}:${frame.timeMs}:${shooterId}`,
         shooterId, round: frame.round, timeMs: frame.timeMs,
         endTimeMs: Math.min(boundary, Math.max(frame.timeMs + MUZZLE_DURATION_MS, arrival + IMPACT_DURATION_MS)),
-        team: player.team ?? 0, origin, direction, hit, muzzleOffset,
+        team: player.team ?? 0, origin, visualOrigin, direction, hit, muzzleOffset,
       };
       let shots = rounds.get(frame.round);
       if (!shots) rounds.set(frame.round, shots = []);

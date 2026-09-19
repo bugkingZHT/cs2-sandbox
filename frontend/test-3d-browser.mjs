@@ -44,6 +44,7 @@ window.THREE = THREE;
 window.shotConstants = { MUZZLE_OFFSET, SHOT_SPEED };
 window.app3d = createApp({ setup: () => () => h(MapCanvas3D, { ...props, ref: component,
   onError: message => window.sceneErrors.push(message),
+  onExitFirstPerson: () => { props.firstPersonPlayerId = undefined; },
   onProjectileClick: proj => { window.clickedProjectile = proj.entityID; },
 }) });
 window.app3d.mount('#app'); window.get3D = () => component.value;
@@ -84,7 +85,7 @@ try {
   browser = await chromium.launch({ executablePath, headless: true, args: ['--enable-webgl', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const pageErrors = [];
-  page.on('pageerror', e => pageErrors.push(e.message));
+  page.on('pageerror', e => { if (!pageErrors.length) console.error(e.stack); pageErrors.push(e.message); });
   page.on('console', message => {
     if (message.type() === 'error' && /WebGLProgram|VALIDATE_STATUS|Shader Error/.test(message.text())) pageErrors.push(message.text());
   });
@@ -209,6 +210,81 @@ try {
     await new Promise(requestAnimationFrame);
     await new Promise(requestAnimationFrame);
   }, timeMs);
+  const overview = await page.evaluate(() => window.get3D().inspect().camera);
+  await page.evaluate(() => { window.props3d.firstPersonPlayerId = 1; });
+  await seek(50);
+  const eyeState = () => page.evaluate(() => {
+    const s = window.get3D().getSandbox(), v = s.entities.players.get(s.followPlayerId);
+    return { eye: s.inspect().firstPerson, overview: s.inspect().camera, orbit: s.controls.enabled,
+      self: v && { head: v.head.visible, torso: v.torso.visible, label: v.label.visible, fan: v.fieldOfView.visible,
+        weapon: v.weaponRig.visible, body: v.body.visible }, perspective: s.activeCamera.isPerspectiveCamera === true };
+  });
+  const eye50 = await eyeState();
+  assert.deepEqual(eye50.eye.position, [10, 79, -0], 'eye follows interpolated XYZ plus a fixed eye height');
+  assert.ok(Math.abs(eye50.eye.direction[0] - Math.cos(Math.PI / 9)) < 1e-6);
+  assert.ok(Math.abs(eye50.eye.direction[1] - Math.sin(Math.PI / 9)) < 1e-6);
+  assert.ok(Math.abs(eye50.eye.direction[2]) < 1e-6, 'yaw interpolation crosses zero along the short path');
+  assert.equal(eye50.perspective, true); assert.equal(eye50.orbit, false);
+  assert.deepEqual(eye50.self, { head: false, torso: false, label: false, fan: false, weapon: true, body: true });
+  await page.mouse.move(500, 300); await page.mouse.wheel(0, 180);
+  await page.mouse.down(); await page.mouse.move(700, 350); await page.mouse.up();
+  assert.deepEqual(await eyeState(), eye50, 'paused eye view ignores orbit and zoom inputs');
+  await seek(150); const eye150 = await eyeState();
+  assert.deepEqual(eye150.eye.position, [30, 109, -0]);
+  await page.screenshot({ path: resolve(output, 'first-person.png') });
+  await seek(50); assert.deepEqual(await eyeState(), eye50, 'seeking backwards restores the exact eye pose');
+  await page.evaluate(() => { window.props3d.firstPersonPlayerId = 2; });
+  await seek(50); assert.equal((await eyeState()).eye.playerId, 2);
+  assert.equal(await page.evaluate(() => window.get3D().getSandbox().entities.players.get(1).head.visible), true, 'switching restores the previous actor');
+  await page.evaluate(() => { window.props3d.hiddenPlayerIds = [2]; });
+  await seek(50); await seek(50);
+  assert.equal((await eyeState()).eye, null, 'hiding the followed player exits eye view');
+  await page.evaluate(() => { window.props3d.hiddenPlayerIds = []; window.props3d.firstPersonPlayerId = 1; });
+  await seek(299); assert.equal((await eyeState()).eye.playerId, 1);
+  await seek(300); await seek(300);
+  assert.equal((await eyeState()).eye, null, 'death exits at the recorded event time');
+  const restoredOverview = (await eyeState()).overview;
+  for (const key of ['position', 'target']) restoredOverview[key].forEach((value, i) => assert.ok(Math.abs(value - overview[key][i]) < 1e-6));
+  assert.equal(restoredOverview.zoom, overview.zoom, 'leaving first person preserves overview zoom');
+  await seek(0);
+  await page.evaluate(() => {
+    window.beforeFlashFrames = window.props3d.frames;
+    window.props3d.frames = Array.from({length:23}, (_,i) => ({...window.beforeFlashFrames[0],timeMs:i*100,tick:i,
+      players:{1:{...window.beforeFlashFrames[0].players[1],isBlinded:i>=1 && i<21,flashDuration:2},
+        2:{...window.beforeFlashFrames[0].players[2],isBlinded:false,flashDuration:2}}}));
+    window.props3d.firstPersonPlayerId = 1;
+  });
+  const flashState = () => page.evaluate(() => {
+    const s=window.get3D().getSandbox(), m=s.flashOverlay, gl=s.renderer.getContext();
+    s.renderer.render(s.scene,s.activeCamera);
+    const pixel=new Uint8Array(4);gl.readPixels(20,20,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    return {visible:m.visible,opacity:m.material.uniforms.opacity.value,pixel:[...pixel],mesh:m.uuid};
+  });
+  await seek(99); assert.equal((await flashState()).opacity,0,'no flash before the original activation sample');
+  await seek(100); const fullFlash=await flashState();
+  assert.equal(fullFlash.opacity,.9); assert.equal(fullFlash.visible,true);
+  const unflashedPixel = await page.evaluate(() => {
+    const s=window.get3D().getSandbox(), m=s.flashOverlay, gl=s.renderer.getContext();
+    m.visible=false; s.renderer.render(s.scene,s.activeCamera);
+    const pixel=new Uint8Array(4);gl.readPixels(20,20,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    m.visible=true;s.renderer.render(s.scene,s.activeCamera);return [...pixel];
+  });
+  fullFlash.pixel.slice(0,3).forEach((v,i)=>assert.ok(Math.abs(v-(unflashedPixel[i]*.1+255*.91*.9))<=2,
+    'the peak gray-white flash retains 25% of the scene in captured pixels'));
+  await page.screenshot({path:resolve(output,'first-person-flashed.png')});
+  await seek(1100); const fadingFlash=await flashState();
+  assert.ok(fadingFlash.opacity>0 && fadingFlash.opacity<1);
+  await page.screenshot({path:resolve(output,'first-person-flash-fading.png')});
+  await page.waitForTimeout(150); assert.deepEqual(await flashState(),fadingFlash,'paused flash does not fade by wall clock');
+  await seek(1800); assert.ok((await flashState()).opacity<fadingFlash.opacity);
+  await seek(2100); assert.equal((await flashState()).visible,false,'stale total flashDuration cannot keep the screen white');
+  await seek(1100); assert.deepEqual(await flashState(),fadingFlash,'reverse seek reconstructs the flash fade');
+  await page.evaluate(()=>{window.props3d.firstPersonPlayerId=2;});
+  await seek(1100); assert.equal((await flashState()).visible,false,'changing observer clears the previous player flash');
+  await page.evaluate(()=>{window.props3d.firstPersonPlayerId=undefined;});
+  await seek(100); assert.equal((await flashState()).visible,false,'third person is not covered by an actor flash');
+  await page.evaluate(()=>{window.props3d.frames=window.beforeFlashFrames;});
+  await seek(0);
   const shotState = (id = 1, timeMs = 100) => page.evaluate(({ id, timeMs }) => {
     const sandbox = window.get3D().getSandbox();
     const visual = [...sandbox.entities.shots.activeVisuals.values()].find(shot => shot.event.shooterId === id && shot.event.timeMs === timeMs);
@@ -227,7 +303,7 @@ try {
         transform: [...mesh.position.toArray(), ...mesh.quaternion.toArray(), ...mesh.scale.toArray()] };
     });
     return { visible: visible(visual.group), effects, event: visual.event, endpoint: visual.endpoint,
-      origin: visual.group.position.toArray(), head: visual.bullet.position.x + visual.bullet.scale.x,
+      origin: visual.group.position.toArray(), head: visual.bullet.position.x + visual.bullet.position.clone().set(visual.bullet.scale.x, 0, 0).applyQuaternion(visual.bullet.quaternion).x,
       forward: visual.group.position.clone().set(1, 0, 0).transformDirection(visual.group.matrixWorld).toArray() };
   }, { id, timeMs });
   const shotPose = state => state && ({ origin: state.origin, forward: state.forward, head: state.head,
@@ -1081,6 +1157,36 @@ try {
   await page.locator('canvas').first().waitFor();
   await page.waitForTimeout(1800);
   await page.screenshot({ path: resolve(output, 'replay-overview.png') });
+  const playerCard = page.locator('.player-card-wrap[data-player-id="2"]:visible .player-pov-button');
+  await playerCard.click({ position: { x: 8, y: 8 } });
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor();
+  assert.equal(await playerCard.getAttribute('aria-pressed'), 'true');
+  await page.getByRole('img', { name: '第一人称回放视角：跟随玩家视线，按 Escape 返回沙盘' }).waitFor();
+  await page.screenshot({ path: resolve(output, 'replay-first-person.png') });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  assert.equal(await playerCard.getAttribute('aria-pressed'), 'false');
+  await playerCard.focus(); await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor();
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).click();
+  assert.equal(await playerCard.getAttribute('aria-pressed'), 'false');
+  await playerCard.click({ position: { x: 8, y: 8 } });
+  await playerCard.click({ position: { x: 8, y: 8 } });
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  const visibleCard = page.locator('.player-card-wrap[data-player-id="2"]:visible');
+  await playerCard.click({ position: { x: 8, y: 8 } });
+  await visibleCard.locator('.toggle-vis').click();
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
+  assert.equal(await playerCard.isDisabled(), true, 'card actions stay separate from camera selection');
+  await visibleCard.locator('.toggle-vis').click();
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await page.locator('.map-canvas-element canvas').waitFor();
+  await playerCard.click({ position: { x: 8, y: 8 } });
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor();
+  await page.getByRole('img', { name: '第一人称回放视角：跟随玩家视线，按 Escape 返回沙盘' }).waitFor();
+  assert.equal(await playerCard.getAttribute('aria-pressed'), 'true', 'clicking a card in 2D opens its first-person 3D view');
+  await page.getByRole('button', { name: '重置视角', exact: true }).click();
+  await page.getByRole('button', { name: '返回沙盘', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await page.locator('.map-canvas-element canvas').waitFor();
   await page.reload();

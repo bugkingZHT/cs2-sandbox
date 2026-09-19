@@ -4,6 +4,7 @@ const MAX_SAMPLE_GAP_MS = 500;
 const MAX_PLAYER_DISPLACEMENT = 512;
 
 export interface ScenePoint { x: number; y: number; z: number }
+export const PLAYER_EYE_HEIGHT = 64;
 
 /** Source uses Z-up. Keep its world-unit scale and handedness in Three's Y-up space. */
 export function demoToScene(x: number, y: number, z = 0): ScenePoint {

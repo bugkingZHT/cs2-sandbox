@@ -104,6 +104,22 @@ try {
       assert.equal(middle.ground,72); assert.ok(middle.roof<0);
       assert.ok(middle.shadow && middle.entitiesUncut && middle.unchanged,'middle section removes tall buildings and their shadows, not game entities or camera state');
       await page.screenshot({path:resolve(output,'de_nuke-middle.png')});
+      const eyeSection = await page.evaluate(async () => {
+        const p = window.props3d, s = window.get3D().getSandbox();
+        const id = +Object.keys(p.frames[p.currentFrameIndex].players).find(id => p.frames[p.currentFrameIndex].players[id].alive);
+        p.firstPersonPlayerId = id;
+        await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+        return { active: s.followPlayerId === id, global: s.renderer.clippingPlanes.length,
+          wall: s.scene.getObjectByName('map-wall').material.clippingPlanes.length };
+      });
+      assert.deepEqual(eyeSection, { active: true, global: 0, wall: 0 }, 'first person sees the full Nuke world rather than a section');
+      await page.screenshot({path:resolve(output,'de_nuke-first-person.png')});
+      await page.evaluate(async () => {
+        window.props3d.firstPersonPlayerId = undefined;
+        await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+      });
+      assert.equal(await page.evaluate(() => window.get3D().getSandbox().scene.getObjectByName('map-wall').material.clippingPlanes[0].constant), -344,
+        'leaving first person restores the selected Nuke section');
       await page.evaluate(()=>{window.props3d.floorView='upper';}); await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>{
         const s=window.get3D().getSandbox(); return s.renderer.clippingPlanes.length+s.scene.getObjectByName('map-wall').material.clippingPlanes.length;

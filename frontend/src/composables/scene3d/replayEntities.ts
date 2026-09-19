@@ -4,11 +4,12 @@ import { getDisplayTeam } from '@/config/game';
 import { demoToScene } from './sampleReplayFrame';
 import { trailPointCount, type ProjectileTrail, type ProjectileTrails } from './projectileTrails';
 import type { PlayerDeaths } from './playerDeaths';
+import { isPlayerBlinded, type PlayerFlashes } from './playerFlashes';
 import { effectGrowth, type ProjectileEffectStarts } from './projectileEffects';
 import type { ShotFlights } from './shotFlights';
 import { ReplayShots, type ShotRenderOptions } from './replayShots';
 import { projectileKind, projectileTypeId, resolveProjectileTeam, PROJECTILE_TEAM_STYLES, projectileEffectDefaults } from './projectileStyle';
-import { equipmentKind, isHandheldUtility } from './equipmentKinds';
+import { equipmentKind, isHandheldUtility, WEAPON_HOLD_RIGHT, WEAPON_HOLD_HEIGHT } from './equipmentKinds';
 import { EquipmentModels } from './equipmentModels';
 import type { SmokeDispersals } from './smokeDispersal';
 import { SmokeHoleMask } from './smokeHoleMask';
@@ -26,8 +27,10 @@ export interface EntityOptions extends ShotRenderOptions {
   currentTimeMs: number;
   projectileTrails?: ProjectileTrails;
   playerDeaths?: PlayerDeaths;
+  playerFlashes?: PlayerFlashes;
   projectileEffectStarts?: ProjectileEffectStarts;
   smokeDispersals?: SmokeDispersals;
+  firstPersonPlayerId?: number;
   shotFlights?: ShotFlights;
   groundHeightAt?: (point: { x: number; y: number; z: number }) => number | undefined;
 }
@@ -244,7 +247,7 @@ export class ReplayEntities {
     bearing.add(fieldOfView);
     const weaponRig = new THREE.Group();
     weaponRig.name = `player-weapon-${id}`;
-    weaponRig.position.y = 52;
+    weaponRig.position.set(0, WEAPON_HOLD_HEIGHT, WEAPON_HOLD_RIGHT);
     const weapon = this.equipment.create('rifle', this.neutral);
     const arms = new THREE.Mesh(this.equipment.longArms, this.neutral);
     arms.castShadow = true;
@@ -463,18 +466,22 @@ export class ReplayEntities {
       const p = death ? demoToScene(death.x, death.y, death.z) : demoToScene(player.x, player.y, player.z);
       visual.group.position.set(p.x, p.y, p.z);
       visual.group.visible = true;
-      const scale = Math.max(0.1, options.playerScale ?? 1);
+      const firstPerson = id === options.firstPersonPlayerId;
+      const scale = firstPerson ? 1 : Math.max(0.1, options.playerScale ?? 1);
       visual.body.scale.setScalar(scale);
       visual.corpse.scale.setScalar(scale);
       visual.body.visible = player.alive;
+      // Keep the existing hands/weapon, but never look through our own head,
+      // outline, torso, name or tactical markers from inside the actor.
+      for (const child of visual.body.children) if (child !== visual.bearing) child.visible = !firstPerson;
       // Keep only the short break-up animation, never a persistent debris pile.
       visual.corpse.visible = !player.alive && deathAge >= 0 && deathAge < DEATH_DURATION_MS;
       const material = team === 3 ? this.ct : team === 2 ? this.t : this.neutral;
       visual.torso.material = material;
-      visual.head.material = player.isBlinded || (player.flashDuration ?? 0) > 0 ? this.white : material;
+      visual.head.material = isPlayerBlinded(player) ? this.white : material;
       visual.fragments.material = material;
       visual.fieldOfView.material = this.fieldsOfView.get(team) || this.fieldsOfView.get(0)!;
-      visual.fieldOfView.visible = player.alive;
+      visual.fieldOfView.visible = player.alive && !firstPerson;
       if (death && visual.corpse.visible) {
         const pose = `${frame.round}:${death.timeMs}:${p.x}:${p.y}:${p.z}`;
         if (pose !== visual.deathPose) {
@@ -491,19 +498,24 @@ export class ReplayEntities {
       visual.weaponRig.visible = !!heldKind && (heldKind !== 'c4' || options.showMapBomb !== false);
       const utility = !!heldKind && isHandheldUtility(heldKind);
       const knife = heldKind === 'knife';
+      const holdingC4 = heldKind === 'c4';
       // Keep hand-held canisters and the blade upright even when looking up/down.
       visual.weaponRig.rotation.z = utility || knife ? 0
         : -THREE.MathUtils.degToRad(Number.isFinite(player.pitch) ? player.pitch! : 0);
-      visual.weapon.rotation.z = knife ? Math.PI / 2 : 0;
+      // C4's front panel is local +Z; turn it upward to lie flat on both hands.
+      // Reset every axis on each sample so switching items or seeking cannot
+      // leave the previous C4 pose on another held model.
+      visual.weapon.rotation.set(holdingC4 ? -Math.PI / 2 : 0, 0, knife ? Math.PI / 2 : 0);
       // Rotate the knife around its grip, keeping the handle inside the hand.
       visual.weapon.position.set(utility ? 23 : knife ? 18 : 20, utility ? -4 : knife ? -15 : 0, 0);
-      visual.arms.geometry = utility || heldKind === 'knife' ? this.equipment.utilityArms
+      visual.arms.geometry = holdingC4 ? this.equipment.c4Arms : utility || knife ? this.equipment.utilityArms
         : heldKind === 'pistol' ? this.equipment.shortArms : this.equipment.longArms;
       visual.arms.material = material;
-      visual.c4.visible = heldKind !== 'c4' && options.showMapBomb !== false && (player.inventory || []).some(item => equipmentKind(item) === 'c4');
-      visual.selection.visible = id === this.selectedPlayer && (player.alive || visual.corpse.visible);
+      visual.c4.visible = !firstPerson && heldKind !== 'c4' && options.showMapBomb !== false && (player.inventory || []).some(item => equipmentKind(item) === 'c4');
+      visual.selection.visible = !firstPerson && id === this.selectedPlayer && (player.alive || visual.corpse.visible);
       visual.selection.scale.setScalar(scale);
-      visual.label.visible = player.alive;
+      visual.label.visible = player.alive && !firstPerson;
+      visual.label.material.depthTest = options.firstPersonPlayerId !== undefined;
       visual.label.position.y = 78 * scale;
       if (player.alive) this.updateName(visual, metadata?.name || player.name || `#${id}`);
     }
@@ -685,11 +697,13 @@ export class ReplayEntities {
     }
   }
 
-  updateLabels(worldUnitsPerPixel: number): void {
+  updateLabels(worldUnitsPerPixel: number, camera?: THREE.PerspectiveCamera, viewportHeight = 1): void {
     for (const visual of this.players.values()) {
       if (!visual.group.visible || !visual.label.visible) continue;
-      visual.label.scale.set(visual.labelPixels.width * worldUnitsPerPixel * this.nameScale,
-        visual.labelPixels.height * worldUnitsPerPixel * this.nameScale, 1);
+      const depth = camera ? -visual.label.getWorldPosition(this.matrixObject.position).applyMatrix4(camera.matrixWorldInverse).z : 0;
+      const units = camera ? Math.max(1, depth) * 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / viewportHeight : worldUnitsPerPixel;
+      visual.label.scale.set(visual.labelPixels.width * units * this.nameScale,
+        visual.labelPixels.height * units * this.nameScale, 1);
     }
   }
 

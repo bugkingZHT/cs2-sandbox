@@ -78,6 +78,27 @@ try {
     first.players[1].alive=true;first.players[1].activeWeapon='999';update(first);const unknown=!visible(v.weaponRig);
     first.players[1].activeWeapon='404';first.players[1].inventory=['404'];update(first);
     const c4=visible(v.weapon)&&!visible(v.c4);update(first,{showMapBomb:false});const c4Hidden=!visible(v.weapon);
+    const c4Frames = [0,100,200].map(timeMs => ({...structuredClone(frame),timeMs,
+      players:{1:{...frame.players[1],activeWeapon:'404',yaw:75,pitch:-65,buttons:timeMs===100?[1]:[]}}}));
+    const pose = timeMs => {
+      update(sampleReplayFrame(c4Frames,timeMs));
+      return {normal:new THREE.Vector3(0,0,1).transformDirection(v.weapon.matrixWorld).toArray(),
+        arms:v.arms.geometry.uuid,triangles:v.arms.geometry.attributes.position.count/3,
+        rotation:v.weapon.rotation.toArray(),mesh:v.weapon.uuid,handMesh:v.arms.uuid};
+    };
+    const idleC4=pose(99), plantingC4=pose(100), heldC4=pose(150), releasedC4=pose(200), reverseC4=pose(99);
+    update(c4Frames[1],{firstPersonPlayerId:1});
+    const firstPersonC4=new THREE.Vector3(0,0,1).transformDirection(v.weapon.matrixWorld).toArray();
+    const singles=[];
+    for(const id of [405,505,504,506,502,503,501]) {
+      first.players[1].activeWeapon=String(id); first.players[1].buttons=[]; update(first);
+      singles.push({arms:v.arms.geometry.uuid,triangles:v.arms.geometry.attributes.position.count/3});
+    }
+    first.players[1].activeWeapon='303'; update(first);
+    const resetAfterC4=v.weapon.rotation.toArray().slice(0,3);
+    first.players[1].activeWeapon='404'; first.players[1].buttons=[2048]; update(first);
+    const secondaryAttack=v.arms.geometry.uuid;
+    first.players[1].buttons=[];
     update(frame);render();const baseline=renderer.info.memory.geometries;
     // Stress switches and backwards seeks; allocated Mesh objects and GPU resources must stay bounded.
     for(let i=0;i<140;i++){
@@ -88,11 +109,12 @@ try {
     // Unmounted cached variants must be freed too (scene traversal cannot reach them).
     const cache=new EquipmentModels(gradient), accent=new THREE.MeshBasicMaterial(), resources=new Set();
     for(const kind of EQUIPMENT_KINDS){const mesh=cache.create(kind,accent);resources.add(mesh.geometry);resources.add(mesh.children[0].geometry);}
-    resources.add(cache.longArms);resources.add(cache.shortArms);resources.add(cache.utilityArms);resources.add(cache.material);
+    resources.add(cache.longArms);resources.add(cache.shortArms);resources.add(cache.utilityArms);resources.add(cache.c4Arms);resources.add(cache.material);
     let disposed=0;for(const resource of resources)resource.addEventListener('dispose',()=>disposed++);
     cache.dispose();accent.dispose();
     update(frame);for(const p of entities.players.values())p.fieldOfView.visible=false;render();
-    return {initial,after,muzzleEnds,before,at,direction,expected,hidden,dead,unknown,c4,c4Hidden,baseline,memory,disposed,resources:resources.size};
+    return {initial,after,muzzleEnds,before,at,direction,expected,hidden,dead,unknown,c4,c4Hidden,baseline,memory,disposed,resources:resources.size,
+      idleC4,plantingC4,heldC4,releasedC4,reverseC4,firstPersonC4,singles,resetAfterC4,secondaryAttack};
   });
   assert.deepEqual(results.initial.map(v=>v.kind),['sniper','rifle','smg','shotgun','machinegun','pistol','knife','smoke','flash','hegrenade','molotov','incendiary','decoy','c4']);
   assert.equal(new Set(results.initial.map(v=>v.geometry)).size,14);
@@ -105,6 +127,26 @@ try {
   assert.deepEqual(results.after.map(v=>[v.mesh,v.arms]),results.initial.map(v=>[v.mesh,v.arms]));
   assert.equal(results.memory,results.baseline,'repeated switching does not allocate GPU geometry');
   assert.equal(results.disposed,results.resources,'dispose includes all cached models');
+  assert.equal(results.idleC4.triangles,results.singles[0].triangles*2,'C4 always has two arms while other utility holds have one');
+  assert.deepEqual(results.singles,Array(7).fill(results.singles[0]),'knife and all grenades use the single right arm');
+  assert.notEqual(results.idleC4.arms,results.singles[0].arms);
+  for(const normal of [results.idleC4.normal,results.plantingC4.normal,results.firstPersonC4]) [0,1,0].forEach((value,i)=>assert.ok(Math.abs(normal[i]-value)<1e-6,'C4 always lies parallel to the ground, in both perspectives'));
+  assert.deepEqual(results.idleC4,results.plantingC4,'pressing attack does not change the C4 hold');
+  assert.deepEqual(results.plantingC4,results.heldC4,'holding primary attack keeps the same cached pose');
+  assert.deepEqual(results.idleC4,results.releasedC4,'releasing attack keeps two-handed horizontal C4');
+  assert.deepEqual(results.idleC4,results.reverseC4,'reverse seek restores the exact pre-attack pose');
+  assert.equal(results.secondaryAttack,results.idleC4.arms,'secondary attack also leaves C4 two-handed');
+  assert.deepEqual(results.resetAfterC4,[0,0,0],'C4 rotation cannot leak onto the next weapon');
+  for(const [name,buttons] of [['c4-idle-horizontal',[]],['c4-horizontal',[1]]]) {
+    await page.evaluate(buttons=>{
+      const {frame,entities,update,render,camera,THREE}=window.qa;
+      const f=structuredClone(frame); f.players={1:{...f.players[1],activeWeapon:'404',yaw:-30,pitch:-55,buttons}};
+      update(f); entities.players.get(1).fieldOfView.visible=false;
+      const target=entities.players.get(1).group.position.clone().add(new THREE.Vector3(10,38,0));
+      camera.position.copy(target).add(new THREE.Vector3(150,100,180));camera.lookAt(target);camera.zoom=4;camera.updateProjectionMatrix();render();
+    },buttons);
+    await page.screenshot({path:resolve(output,name+'.png')});
+  }
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({models:results.initial.map(v=>({kind:v.kind,triangles:v.triangles})),geometryCount:results.memory,screenshot:resolve(output,'held-equipment.png')}));
 } finally { await browser?.close();await server.close(); }

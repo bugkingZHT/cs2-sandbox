@@ -5,6 +5,10 @@ export const EQUIPMENT_KINDS = ['sniper', 'rifle', 'smg', 'shotgun', 'machinegun
   'smoke', 'flash', 'hegrenade', 'molotov', 'incendiary', 'decoy', 'c4'] as const;
 export type EquipmentKind = typeof EQUIPMENT_KINDS[number];
 
+// Actor-local +X is forward and +Z is right. Shared by hands and shot origins.
+export const WEAPON_HOLD_RIGHT = 14;
+export const WEAPON_HOLD_HEIGHT = 52;
+
 /** Standard-scale muzzle distance from the actor; shared by models and shot effects. */
 export function weaponMuzzleOffset(kind?: EquipmentKind): number {
   return kind === 'sniper' ? 76 : 48;

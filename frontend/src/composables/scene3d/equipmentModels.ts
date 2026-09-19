@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { EQUIPMENT_KINDS, isHandheldUtility, weaponMuzzleOffset, type EquipmentKind } from './equipmentKinds';
+import { EQUIPMENT_KINDS, isHandheldUtility, weaponMuzzleOffset, WEAPON_HOLD_RIGHT, type EquipmentKind } from './equipmentKinds';
 
 const METAL = 0x39434a, EDGE = 0x77848b, STOCK = 0x80634b, RUBBER = 0x263037;
 const SILVER = 0xb6bfc2, OLIVE = 0x63735b, PAPER = 0xded7bb;
@@ -126,12 +126,15 @@ function firearm(kind: EquipmentKind, body: Parts, accent: Parts): void {
   accent.box(0, 0, heavy ? 4.7 : 3.2, 6, 3, 0.6, 0xffffff);
 }
 
-function armsGeometry(twoHanded: boolean, forward = 20): THREE.BufferGeometry {
+function armsGeometry(pose: 'longGun' | 'shortGun' | 'single' | 'c4'): THREE.BufferGeometry {
   const parts = new Parts();
   const start = new THREE.Vector3(), end = new THREE.Vector3(), midpoint = new THREE.Vector3();
-  for (const side of [-1, 1]) {
-    start.set(0, -12, side * 13);
-    end.set(forward + (twoHanded ? side === 1 ? 3 : 17 : 19), twoHanded ? -6 : -5, side * 3);
+  for (const side of pose === 'single' ? [1] : [-1, 1]) {
+    const utility = pose === 'single' || pose === 'c4';
+    start.set(0, -12, side * 13 - (utility ? WEAPON_HOLD_RIGHT : 0));
+    if (pose === 'single') end.set(19, -5, 0);
+    else if (pose === 'c4') end.set(23, -11, side * 8);
+    else end.set(20 + (pose === 'longGun' ? side === 1 ? 3 : 17 : 19), pose === 'longGun' ? -6 : -5, side * 3);
     const sleeve = new THREE.CylinderGeometry(4.4, 5.2, start.distanceTo(end), 6);
     sleeve.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize()));
     midpoint.copy(start).add(end).multiplyScalar(0.5);
@@ -144,9 +147,10 @@ function armsGeometry(twoHanded: boolean, forward = 20): THREE.BufferGeometry {
 /** Shared geometry/material cache: switching a held item only changes references. */
 export class EquipmentModels {
   readonly material: THREE.MeshToonMaterial;
-  readonly longArms = armsGeometry(true);
-  readonly shortArms = armsGeometry(false);
-  readonly utilityArms = armsGeometry(false, 0);
+  readonly longArms = armsGeometry('longGun');
+  readonly shortArms = armsGeometry('shortGun');
+  readonly utilityArms = armsGeometry('single');
+  readonly c4Arms = armsGeometry('c4');
   private readonly models = new Map<EquipmentKind, { body: THREE.BufferGeometry; accent: THREE.BufferGeometry }>();
 
   constructor(gradientMap: THREE.DataTexture) {
@@ -187,6 +191,7 @@ export class EquipmentModels {
     this.longArms.dispose();
     this.shortArms.dispose();
     this.utilityArms.dispose();
+    this.c4Arms.dispose();
     for (const model of this.models.values()) { model.body.dispose(); model.accent.dispose(); }
     this.models.clear();
   }

@@ -61,6 +61,9 @@ export class ReplayShots {
   }>();
   private readonly axis = new THREE.Vector3(1, 0, 0);
   private readonly direction = new THREE.Vector3();
+  private readonly muzzlePosition = new THREE.Vector3();
+  private readonly visualPath = new THREE.Vector3();
+  private readonly inverseRotation = new THREE.Quaternion();
   private source?: ShotFlights;
   private collisionQuery?: ShotRenderOptions['shotDistanceAt'];
   private endpoints = new WeakMap<ShotFlight, ShotEndpoint>();
@@ -148,7 +151,6 @@ export class ReplayShots {
         this.activeVisuals.set(event.key, visual);
       }
       visual.event = event;
-      visual.muzzle.position.x = visual.muzzleCore.position.x = muzzleOffset;
       visual.endpoint = endpoint;
       visual.seen = true;
       visual.group.name = `shot-${event.key}`;
@@ -156,6 +158,19 @@ export class ReplayShots {
       visual.group.position.set(event.origin.x, event.origin.y, event.origin.z);
       this.direction.set(event.direction.x, event.direction.y, event.direction.z);
       visual.group.quaternion.setFromUnitVectors(this.axis, this.direction);
+      // The group and collision endpoint stay on the eye ray. Only the visible
+      // muzzle is offset; tracers converge from that muzzle to the same hit point.
+      this.inverseRotation.copy(visual.group.quaternion).invert();
+      this.muzzlePosition.set(event.visualOrigin.x - event.origin.x, event.visualOrigin.y - event.origin.y,
+        event.visualOrigin.z - event.origin.z).applyQuaternion(this.inverseRotation);
+      this.muzzlePosition.x += muzzleOffset;
+      visual.muzzle.position.copy(this.muzzlePosition);
+      visual.muzzleCore.position.copy(this.muzzlePosition);
+      this.visualPath.set(endpoint.distance, 0, 0).sub(this.muzzlePosition);
+      const pathLength = this.visualPath.length();
+      if (pathLength > 0) this.visualPath.divideScalar(pathLength);
+      visual.bullet.quaternion.setFromUnitVectors(this.axis, this.visualPath);
+      visual.core.quaternion.copy(visual.bullet.quaternion);
       const team = getDisplayTeam(this.teams.get(event.shooterId) ?? event.team, event.round);
       const material = this.materials.get(team) || this.materials.get(0)!;
       visual.bullet.material = material.bullet;
@@ -165,12 +180,13 @@ export class ReplayShots {
 
       // Only a short segment travels with the head. It never stretches back to
       // the player's current position and survives subsequent non-firing frames.
-      const head = Math.min(endpoint.distance, muzzleOffset + age * SHOT_SPEED);
-      const tail = Math.max(muzzleOffset, head - 64);
-      visual.bullet.position.x = visual.core.position.x = tail;
+      const head = pathLength * (flightDuration > 0 ? Math.min(1, age / flightDuration) : 1);
+      const tail = Math.max(0, head - 64);
+      visual.bullet.position.copy(this.muzzlePosition).addScaledVector(this.visualPath, tail);
+      visual.core.position.copy(visual.bullet.position);
       visual.bullet.scale.set(Math.max(0, head - tail), 5.5, 5.5);
       visual.core.scale.set(Math.max(0, head - tail), 2.1, 2.1);
-      visual.bullet.visible = visual.core.visible = head > muzzleOffset && age < flightDuration;
+      visual.bullet.visible = visual.core.visible = head > 0 && age < flightDuration;
       const muzzleSpace = Math.max(0, endpoint.distance - muzzleOffset);
       visual.muzzle.visible = visual.muzzleCore.visible = age < MUZZLE_DURATION_MS && muzzleSpace > 0;
       const flare = 0.55 + 0.45 * Math.max(0, 1 - age / MUZZLE_DURATION_MS) ** 2;
