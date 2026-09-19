@@ -46,6 +46,43 @@ try {
   const effectFrames = [effectFrame(0, { 7: projectile() }),
     effectFrame(100, { 7: smokeBirth, 8: fireBirth }), effectFrame(200, { 7: smokeLater, 8: fireLater })];
   const effectStarts = buildProjectileEffectStarts(effectFrames);
+  const { buildSmokeDispersals, smokeRestoration, smokeHoleRadius } = await server.ssrLoadModule('/src/composables/scene3d/smokeDispersal.ts');
+  const clearFrames = Array.from({ length: 41 }, (_, i) => effectFrame(i * 100, {
+    7: projectile({ isExploded: true, z: 0, ttl: 15000 - i * 100 }),
+    ...(i <= 5 ? { 8: projectile({ entityID: 8, type: '506', z: 70, isExploded: i >= 2, ttl: i >= 2 ? 3200 - i * 100 : undefined }) } : {}),
+  }));
+  const clearOriginal = structuredClone(clearFrames);
+  const dispersals = buildSmokeDispersals(clearFrames);
+  const lateSmoke = clearFrames[25].projectiles[7];
+  assert.deepEqual(dispersals.get(lateSmoke), [{ timeMs: 200, x: 0, y: 0, z: 70, radius: 160 }], 'retain the actual blast position/radius after the HE entity disappears');
+  for (const [time, expected] of [[199, 1], [200, 0], [1199, 0], [1200, 0], [2200, .5], [3200, 1]]) {
+    assert.equal(smokeRestoration(dispersals.get(lateSmoke)[0].timeMs, time), expected, `clear/recovery boundary at ${time}`);
+  }
+  assert.equal(smokeRestoration(dispersals.get(sampleReplayFrame(clearFrames, 2450).projectiles[7])[0].timeMs, 2450),
+    smokeRestoration(dispersals.get(lateSmoke)[0].timeMs, 2450), 'interpolated frames and direct seeks share the indexed smoke history');
+  assert.equal(smokeRestoration(200, 2700, 2200), .5, 'restoration freezes when natural fading begins');
+  assert.equal(smokeRestoration(200, 3500, 2200), .5, 'a frozen restoration cannot resume after its ordinary three-second timer');
+  assert.equal(smokeRestoration(2400, 3500, 2200), 0, 'a blast during natural fade clears without restoring');
+  const firstHole = dispersals.get(lateSmoke)[0], secondHole = { ...firstHole, timeMs: 2000, x: 100 };
+  assert.equal(smokeHoleRadius(firstHole, 2200), 80);
+  assert.equal(smokeHoleRadius(secondHole, 2200), 160, 'a new blast has its own spatial hole without restarting an earlier hole');
+  assert.equal(smokeHoleRadius(secondHole, 1999), 0, 'future blasts cannot affect backwards seeks');
+  const disabled = buildSmokeDispersals(clearFrames, { 506: { canClearSmoke: false } });
+  assert.equal(disabled.get(lateSmoke), undefined);
+  const movedFrames = change => clearFrames.map(f => ({ ...f, projectiles: Object.fromEntries(Object.entries(f.projectiles).map(([id, p]) => [id, id === '8' ? { ...p, ...change } : p])) }));
+  for (const change of [{ type: 'flashbang' }, { x: 1000 }, { z: 700 }, { x: NaN }]) {
+    assert.equal(buildSmokeDispersals(movedFrames(change)).get(lateSmoke), undefined, 'only nearby finite HE explosions clear smoke, with floor height respected');
+  }
+  assert.equal(buildSmokeDispersals(clearFrames.slice(2)).get(lateSmoke), undefined, 'already-active blasts at clip start do not invent a new clear event');
+  for (const change of [{ round: 2 }, { timeMs: 1500 }]) {
+    const isolated = { ...clearFrames[6], ...change };
+    assert.equal(buildSmokeDispersals([...clearFrames.slice(0, 6), isolated]).get(isolated.projectiles[7]), undefined, 'rounds and data gaps clear histories');
+  }
+  const reborn = { ...clearFrames[6], projectiles: { 7: { ...clearFrames[6].projectiles[7], ttl: 20000 } } };
+  assert.equal(buildSmokeDispersals([...clearFrames.slice(0, 6), reborn]).get(reborn.projectiles[7]), undefined, 'reused smoke IDs with a fresh TTL do not inherit an older clear');
+  const duplicate = { ...clearFrames[2], projectiles: { 7: clearFrames[2].projectiles[7] } };
+  assert.equal(buildSmokeDispersals([clearFrames[0], clearFrames[1], clearFrames[2], duplicate]).get(duplicate.projectiles[7]), undefined, 'the final duplicate sample owns the activation state');
+  assert.deepEqual(clearFrames, clearOriginal, 'smoke clearance indexing never mutates replay data');
   assert.equal(effectStarts.get(smokeBirth), 100, 'smoke starts on the observed detonation sample');
   assert.equal(effectStarts.get(fireBirth), 100, 'a new inferno ID starts on first appearance, independently of its shorter TTL');
   assert.equal(effectStarts.get(fireLater), 100, 'aliases and later samples retain the same onset');

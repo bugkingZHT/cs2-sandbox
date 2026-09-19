@@ -710,6 +710,91 @@ try {
   await page.evaluate(() => { window.props3d.frames = window.originalDenseFireFrames; });
   await seek(320);
   assert.deepEqual(await grenadeState(), grenadeBursts, 'returning from ten fire areas restores the original instance transforms and colors');
+  // The middle smoke naturally fades during recovery; the right smoke is outside both blasts.
+  await page.evaluate(() => {
+    window.props3d.projectileConfigs = { 505: { explosionRadius: 160, durationInMs: 20000 },
+      506: { explosionRadius: 160, durationInMs: 3000, canClearSmoke: true } };
+    window.props3d.frames = Array.from({ length: 131 }, (_, tick) => {
+      const timeMs = tick * 100;
+      const smoke = (entityID, x, expiry, throwerID) => ({ entityID, type: '505', x, y: 0, z: 0,
+        throwerID, isExploded: true, ttl: Math.max(0, expiry - timeMs) });
+      return { timeMs, tick, round: 1, players: {}, projectiles: {
+        1001: smoke(1001, -800, 12000, 1), 1002: smoke(1002, 0, 4700, 2), 1003: smoke(1003, 800, 12000, 1),
+        ...(timeMs <= 400 ? Object.fromEntries([-800, 0].map((x, i) => [1010 + i, {
+          entityID: 1010 + i, type: '506', x: x + 100, y: 0, z: 60, throwerID: 1,
+          isExploded: timeMs >= 200, ttl: timeMs >= 200 ? 3200 - timeMs : undefined,
+        }])) : {}),
+      } };
+    });
+  });
+  const smokeState = () => page.evaluate(() => {
+    const entities = window.get3D().getSandbox().entities, mesh = entities.smoke;
+    return { count: mesh.count, matrices: Array.from(mesh.instanceMatrix.array.slice(0, mesh.count * 16)),
+      visible: [1001, 1002, 1003].map(id => entities.projectiles.get(id)?.group.visible),
+      holes: [0, 7, 14].map(i => ({ count: entities.smokeHoles.rows.getY(i),
+        sphere: entities.smokeHoles.rows.getY(i) ? Array.from(entities.smokeHoles.data.slice(i * 16 * 4, i * 16 * 4 + 4)) : [] })),
+      geometry: mesh.geometry.uuid, material: mesh.material.uuid };
+  });
+  await seek(199); const unbrokenSmoke = await smokeState();
+  assert.equal(unbrokenSmoke.count, 21);
+  await page.screenshot({ path: resolve(output, 'smoke-clear-before.png') });
+  await seek(200); const clearedSmoke = await smokeState();
+  assert.deepEqual(clearedSmoke.visible, [true, true, true], 'HE cuts local holes without hiding the cloud');
+  assert.equal(clearedSmoke.count, 21, 'all cloud puffs remain in place');
+  assert.deepEqual(clearedSmoke.holes.map(h=>h.count), [1, 1, 0]);
+  assert.deepEqual(clearedSmoke.holes[0].sphere, [-700, 60, -0, 160], 'the hole uses the exact blast world position and radius');
+  await page.screenshot({ path: resolve(output, 'smoke-clear-empty.png') });
+  await seek(1199); assert.equal((await smokeState()).holes[0].sphere[3], 160, 'the cut-out stays full size for one second');
+  await seek(1200); assert.equal((await smokeState()).holes[0].sphere[3], 160, 'recovery begins at exactly one second');
+  const localCutPixels = await page.evaluate(() => {
+    const s = window.get3D().getSandbox(), gl = s.renderer.getContext(), rows = s.entities.smokeHoles.rows;
+    const width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+    const read = () => { s.renderer.render(s.scene, s.camera); const bytes = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, bytes); return bytes; };
+    const cut = read(), saved = rows.array.slice();
+    for (let i=0; i<rows.count; i++) rows.setY(i, 0);
+    rows.needsUpdate = true; const full = read();
+    rows.array.set(saved); rows.needsUpdate = true; s.renderer.render(s.scene, s.camera);
+    let blueCut=0, blueFull=0, changedRight=0;
+    for(let y=0;y<height;y++) for(let x=0;x<width;x++) {
+      const k=(y*width+x)*4;
+      if(x<width/3) {
+        if(cut[k+2]>cut[k]+10 && cut[k+2]>cut[k+1]+3) blueCut++;
+        if(full[k+2]>full[k]+10 && full[k+2]>full[k+1]+3) blueFull++;
+      }
+      if(x>width*2/3 && Math.abs(cut[k]-full[k])+Math.abs(cut[k+1]-full[k+1])+Math.abs(cut[k+2]-full[k+2])>3) changedRight++;
+    }
+    return {blueCut,blueFull,changedRight};
+  });
+  assert.ok(localCutPixels.blueCut > 100 && localCutPixels.blueCut < localCutPixels.blueFull * .95, 'rendered smoke loses a local portion, while the rest stays visible');
+  assert.equal(localCutPixels.changedRight, 0, 'another cloud outside the blast is pixel-identical');
+  await page.screenshot({ path: resolve(output, 'smoke-local-hole.png') });
+  await seek(2200); const halfRestored = await smokeState();
+  assert.equal(halfRestored.count, 21);
+  await page.screenshot({ path: resolve(output, 'smoke-clear-recovering.png') });
+  const smokeWidth = (state, instance) => Math.hypot(...state.matrices.slice(instance * 16, instance * 16 + 3));
+  await seek(3000); const naturallyFading = await smokeState();
+  assert.ok(naturallyFading.holes[0].sphere[3] < halfRestored.holes[0].sphere[3], 'the local hole shrinks as smoke recovers');
+  assert.ok(smokeWidth(naturallyFading, 7) < smokeWidth(halfRestored, 7), 'natural fading takes priority and never regrows the expiring cloud');
+  await seek(3200); const restoredSmoke = await smokeState();
+  await page.screenshot({ path: resolve(output, 'smoke-clear-restored-and-fading.png') });
+  // Compare against the same time without clearance to exclude natural breath/fade differences.
+  await page.evaluate(() => { window.props3d.projectileConfigs = { ...window.props3d.projectileConfigs,
+    506: { explosionRadius: 160, durationInMs: 3000, canClearSmoke: false } }; });
+  await seek(3200); const normalSmoke = await smokeState();
+  assert.ok(Math.abs(smokeWidth(restoredSmoke, 0) - smokeWidth(normalSmoke, 0)) < .001, 'non-expiring smoke restores fully at three seconds');
+  assert.deepEqual(restoredSmoke.matrices, normalSmoke.matrices, 'cut-outs never resize or move the underlying cloud, including its natural fade');
+  assert.equal(restoredSmoke.holes[0].count, 0, 'the recovered cloud has no remaining hole at three seconds');
+  assert.equal(restoredSmoke.holes[1].sphere[3], 80, 'natural fade freezes the local hole radius at fade onset');
+  await page.evaluate(() => { window.props3d.projectileConfigs = { ...window.props3d.projectileConfigs,
+    506: { explosionRadius: 160, durationInMs: 3000, canClearSmoke: true } }; });
+  await seek(2200); assert.deepEqual(await smokeState(), halfRestored, 'config changes and reverse seeking reproduce the exact recovery pose');
+  await page.waitForTimeout(150); assert.deepEqual(await smokeState(), halfRestored, 'paused recovery does not advance with wall time');
+  await seek(199); assert.deepEqual(await smokeState(), unbrokenSmoke, 'seeking before the explosion restores the original cloud');
+  await seek(4700); assert.deepEqual((await smokeState()).visible, [true, false, true], 'expired smoke cannot be resurrected by restoration');
+  await seek(12000); assert.equal((await smokeState()).count, 0, 'normal expiry removes every cloud');
+  assert.equal(restoredSmoke.geometry, unbrokenSmoke.geometry);
+  assert.equal(restoredSmoke.material, unbrokenSmoke.material);
   await page.evaluate(() => {
     const sandbox = window.get3D().getSandbox();
     sandbox.scene.remove(sandbox.scene.getObjectByName('projectile-qa-stage'));

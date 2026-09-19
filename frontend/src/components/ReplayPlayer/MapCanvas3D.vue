@@ -20,6 +20,7 @@ import { buildProjectileTrails, type ProjectileTrails } from '@/composables/scen
 import { buildPlayerDeaths, type PlayerDeaths } from '@/composables/scene3d/playerDeaths';
 import { buildProjectileEffectStarts, type ProjectileEffectStarts } from '@/composables/scene3d/projectileEffects';
 import { buildShotFlights, type ShotFlights } from '@/composables/scene3d/shotFlights';
+import { buildSmokeDispersals, type SmokeDispersals } from '@/composables/scene3d/smokeDispersal';
 import { SandboxScene } from '@/composables/scene3d/sandboxScene';
 import DrawingBoard from './DrawingBoard.vue';
 
@@ -64,6 +65,10 @@ let projectileTrails: ProjectileTrails | undefined;
 let playerDeaths: PlayerDeaths | undefined;
 let projectileEffectStarts: ProjectileEffectStarts | undefined;
 let shotFlights: ShotFlights | undefined;
+let smokeDispersals: SmokeDispersals | undefined;
+let smokeSource: Frame[] | undefined;
+let smokeConfigs: typeof props.projectileConfigs;
+let smokeMetaConfigs: ReplayMeta['projectileRenderConfig'];
 
 function getCanvas() { return sandbox?.renderer.domElement || null; }
 function resetView() { sandbox?.resetView(); }
@@ -91,6 +96,12 @@ function tick() {
           projectileEffectStarts = buildProjectileEffectStarts(trailSource || []);
           shotFlights = buildShotFlights(trailSource || []);
         }
+        if (smokeSource !== props.frames || smokeConfigs !== props.projectileConfigs || smokeMetaConfigs !== props.replayMeta?.projectileRenderConfig) {
+          smokeSource = props.frames;
+          smokeConfigs = props.projectileConfigs;
+          smokeMetaConfigs = props.replayMeta?.projectileRenderConfig;
+          smokeDispersals = buildSmokeDispersals(smokeSource || [], { ...smokeMetaConfigs, ...smokeConfigs });
+        }
         // Paused seeks and grenade analysis also advance this clock independently of isPlaying.
         const frame = sampleReplayFrame(props.frames || [], props.currentTimeMs, props.currentFrameIndex);
         sandbox.update(frame, {
@@ -98,6 +109,7 @@ function tick() {
           projectileTrails,
           playerDeaths,
           projectileEffectStarts,
+          smokeDispersals,
           shotFlights,
           replayMeta: props.replayMeta,
           hiddenPlayerIds: props.hiddenPlayerIds,

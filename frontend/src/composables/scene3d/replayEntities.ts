@@ -10,6 +10,8 @@ import { ReplayShots, type ShotRenderOptions } from './replayShots';
 import { projectileKind, projectileTypeId, resolveProjectileTeam, PROJECTILE_TEAM_STYLES, projectileEffectDefaults } from './projectileStyle';
 import { equipmentKind, isHandheldUtility } from './equipmentKinds';
 import { EquipmentModels } from './equipmentModels';
+import type { SmokeDispersals } from './smokeDispersal';
+import { SmokeHoleMask } from './smokeHoleMask';
 
 export interface EntityOptions extends ShotRenderOptions {
   replayMeta?: ReplayMeta;
@@ -25,6 +27,7 @@ export interface EntityOptions extends ShotRenderOptions {
   projectileTrails?: ProjectileTrails;
   playerDeaths?: PlayerDeaths;
   projectileEffectStarts?: ProjectileEffectStarts;
+  smokeDispersals?: SmokeDispersals;
   shotFlights?: ShotFlights;
   groundHeightAt?: (point: { x: number; y: number; z: number }) => number | undefined;
 }
@@ -126,6 +129,7 @@ export class ReplayEntities {
   readonly shots = new ReplayShots();
   readonly dropped: THREE.InstancedMesh;
   readonly smoke: THREE.InstancedMesh;
+  readonly smokeHoles: SmokeHoleMask;
   readonly flames: THREE.InstancedMesh;
   readonly bomb: THREE.Group;
   readonly equipment: EquipmentModels;
@@ -186,8 +190,8 @@ export class ReplayEntities {
     this.dropped.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.dropped.frustumCulled = false;
     this.dropped.count = 0;
-    this.smoke = new THREE.InstancedMesh(this.geometry.particle,
-      new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap, transparent: true, opacity: 0.5, depthWrite: false }), 256);
+    this.smokeHoles = new SmokeHoleMask(this.geometry.particle, gradientMap);
+    this.smoke = new THREE.InstancedMesh(this.smokeHoles.geometry, this.smokeHoles.material, 256);
     this.smoke.name = 'smoke-volumes';
     this.smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.smoke.frustumCulled = false;
@@ -566,6 +570,9 @@ export class ReplayEntities {
       const effectAge = effectStart === undefined ? Infinity : Math.max(0, options.currentTimeMs - effectStart);
       if (kind === 'smoke') {
         visual.effect.visible = false;
+        const fade = Math.min(1, remaining * 8);
+        const fadeStart = frame.timeMs + (projectile.ttl ?? 0) - duration / 8;
+        const holes = options.smokeDispersals?.get(projectile);
         const bloomDuration = Math.min(900, duration * 0.6);
         const spread = effectGrowth(effectAge, bloomDuration);
         visual.hitArea.scale.multiplyScalar(spread);
@@ -576,12 +583,13 @@ export class ReplayEntities {
           const delay = i === 6 ? 0 : bloomDuration * (0.08 + (i % 3) * 0.04);
           const growth = effectGrowth(effectAge, bloomDuration - delay, delay);
           const breath = 1 + Math.sin(options.currentTimeMs / 1100 + id + i) * 0.025;
-          const size = radius * (i === 6 ? 0.74 : 0.62) * breath * Math.min(1, remaining * 8) * growth;
+          const size = radius * (i === 6 ? 0.74 : 0.62) * breath * fade * growth;
           this.matrixObject.position.set(p.x + Math.cos(angle) * offset, p.y + radius * 0.65 * growth, p.z + Math.sin(angle) * offset);
           this.matrixObject.rotation.set(0, angle, 0);
           this.matrixObject.scale.set(size, size * 0.92, size);
           this.matrixObject.updateMatrix();
           this.smoke.setMatrixAt(smokeCount, this.matrixObject.matrix);
+          this.smokeHoles.set(smokeCount, holes, options.currentTimeMs, fadeStart);
           this.smoke.setColorAt(smokeCount++, this.instanceColor.setHex(style.smoke));
         }
       } else if (kind === 'molotov' || kind === 'incendiary') {
@@ -647,6 +655,7 @@ export class ReplayEntities {
       for (const [id, visual] of this.projectiles) if (!visual.seen) this.deleteProjectile(id, visual);
     }
     this.smoke.count = smokeCount;
+    if (smokeCount) this.smokeHoles.update();
     this.flames.count = flameCount;
     this.smoke.instanceMatrix.needsUpdate = smokeCount > 0;
     this.flames.instanceMatrix.needsUpdate = flameCount > 0;
@@ -693,6 +702,7 @@ export class ReplayEntities {
 
   /** Resources unattached to the scene (e.g. cached materials) need explicit disposal too. */
   dispose(): void {
+    this.smokeHoles.dispose();
     this.equipment.dispose();
     this.shots.dispose();
     for (const geometry of Object.values(this.geometry)) geometry.dispose();
