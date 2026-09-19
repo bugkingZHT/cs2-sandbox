@@ -2,7 +2,7 @@
 
 ## 燃烧效果直接读取 Inferno 网络状态
 
-`xxttggxg.dem` 第二回合最早的两处火焰属于 Diff（燃烧瓶）和 damage（燃烧弹）。原实现把 `InfernoStart` 写成 `EqUnknown`，再用上一输出帧的附近弹体猜类型。距离平方与线性阈值混用使匹配范围只有约 14 单位，而样本中的弹体与火焰起点相差约 67 和 42 单位，最终导出未知类型、TTL 为 0。
+`example-nuke.dem` 第二回合最早的两处火焰属于 两名测试玩家（分别投掷燃烧瓶和燃烧弹）。原实现把 `InfernoStart` 写成 `EqUnknown`，再用上一输出帧的附近弹体猜类型。距离平方与线性阈值混用使匹配范围只有约 14 单位，而样本中的弹体与火焰起点相差约 67 和 42 单位，最终导出未知类型、TTL 为 0。
 
 最终方案移除了空间匹配及烟雾距离灭火推测。每个输出帧直接读取 `GameState.Infernos()`：
 
@@ -16,7 +16,7 @@
 `TestInfernoNetworkState` 覆盖真实时长、回放从燃烧中途开始、提前灭火、残留效果、部分火点存活及缺失字段。`TestDemoRoundTwoFireEffects` 在 1:1、1:4、1:8 采样下验证上述两处火焰的类型、正 TTL 和完整持续时间：
 
 ```powershell
-$env:CS_FIRE_TEST_FILE='C:\Users\A\Desktop\xxttggxg.dem'
+$env:CS_FIRE_TEST_FILE="$env:USERPROFILE/Desktop/example.dem"
 go test -mod=vendor -count=1 -v ./pkg/engine -run 'TestInfernoNetworkState|TestDemoRoundTwoFireEffects'
 ```
 
@@ -24,16 +24,16 @@ go test -mod=vendor -count=1 -v ./pkg/engine -run 'TestInfernoNetworkState|TestD
 
 ## 文件头缺少地图名的录制兼容
 
-`xxttggxg.dem`（network protocol 14181）的首条 `CDemoFileHeader.map_name` 为空，第二条 demo command 中的 `CSVCMsg_ServerInfo.map_name` 为 `de_nuke`；`host_map` 也为空。`jjxhss.dem` 同样缺少文件头地图名，但 ServerInfo 提供 `de_dust2`。因此不能只在第一条 command 之后读取文件头，也不能只依赖 ConVar 兜底。
+`example-nuke.dem`（network protocol 14181）的首条 `CDemoFileHeader.map_name` 为空，第二条 demo command 中的 `CSVCMsg_ServerInfo.map_name` 为 `de_nuke`；`host_map` 也为空。`example-dust2.dem` 同样缺少文件头地图名，但 ServerInfo 提供 `de_dust2`。因此不能只在第一条 command 之后读取文件头，也不能只依赖 ConVar 兜底。
 
 修复在内嵌解析器中用 ServerInfo 补齐空的 Header.MapName，保留已有文件头值。共享 engine 在地图缺失时最多继续解析 64 条开场 command，遇到地图名或正式比赛开始即停止；最后一条预读 command 留给回合迭代器处理，保持帧统计和采样位置。原有 `host_map` 兜底保留，BackfillMeta 也会补齐稍后才出现的地图名。本地与 WASM 共用此逻辑。
 
 `pkg/engine/map_metadata_test.go` 用真实 protobuf demo 消息流覆盖正常文件头、空地图名、延迟 signon、预读上限及最终回填、全部来源缺失，并检查消费 command 数和原始帧计数。真实文件测试新增非空地图断言及可选 `CS_DEMO_TEST_MAP` 预期值。
 
-本机完整解析与缓存重载回归：`xxttggxg.dem` 为 `de_nuke`，24 回合、61,011 帧，与原缓存帧数一致；Ancient 对照文件为 `de_ancient`，24 回合、37,194 帧。WASM 编译通过。已有 `entry.json` 不会因源码更新自动迁移，使用新构建重新解析后才会写入修复后的地图名。
+本机完整解析与缓存重载回归：`example-nuke.dem` 为 `de_nuke`，24 回合、61,011 帧，与原缓存帧数一致；Ancient 对照文件为 `de_ancient`，24 回合、37,194 帧。WASM 编译通过。已有 `entry.json` 不会因源码更新自动迁移，使用新构建重新解析后才会写入修复后的地图名。
 
 ```powershell
-$env:CS_DEMO_TEST_FILE='C:\Users\A\Desktop\xxttggxg.dem'
+$env:CS_DEMO_TEST_FILE="$env:USERPROFILE/Desktop/example.dem"
 $env:CS_DEMO_TEST_MAP='de_nuke'
 go test -mod=vendor -count=1 -v ./pkg/localapp -run '^TestRealDemo$'
 go test -mod=vendor ./pkg/engine -run TestMapMetadataSources
@@ -58,7 +58,7 @@ Spirit vs Falcons / Ancient 的测试文件在解析初期报 `unable to find ex
 
 ```powershell
 go test ./pkg/demoinfocs/sendtables/sendtablescs2
-$env:CS_DEMO_TEST_FILE='C:\path\spirit-vs-falcons-m2-ancient.dem'
+$env:CS_DEMO_TEST_FILE='C:\path\example-ancient.dem'
 go test -count=1 -v ./pkg/localapp -run TestRealDemo
 ```
 
@@ -66,7 +66,7 @@ go test -count=1 -v ./pkg/localapp -run TestRealDemo
 
 本机回归结果（1:4 抽样后的输出帧）：
 
-- `spirit-vs-falcons-m2-ancient.dem`：完整到 EOF，24 个正式回合，37,194 帧。
+- `example-ancient.dem`：完整到 EOF，24 个正式回合，37,194 帧。
 - `vitality-vs-the-mongolz-m2-dust2.dem`：完整到 EOF，16 个正式回合，31,352 帧。
 - `go test -mod=vendor ./...` 通过；真实文件测试需要显式设置上述环境变量，默认跳过。
 

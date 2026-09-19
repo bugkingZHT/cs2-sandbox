@@ -3,6 +3,22 @@
     <Teleport v-if="teleportReady" to="#replay-sidebar-tools">
       <section class="replay-tools" aria-label="工具区">
         <h2 class="tools-heading">工具</h2>
+        <div class="scene-view-switch" role="group" aria-label="地图视图">
+          <button :aria-pressed="!use3DView" @click="setMapView('2d')">2D</button>
+          <button :aria-pressed="use3DView" :disabled="!has3DMap || searchMenuOpen" :title="has3DMap ? '旋转查看三维沙盘' : '当前地图尚未提供三维沙盘'" @click="setMapView('3d')">3D 沙盘</button>
+        </div>
+        <div v-if="use3DView && replay?.mapName?.toLowerCase() === 'de_nuke'" class="scene-view-switch" role="group" aria-label="Nuke 楼层">
+          <button :aria-pressed="sceneFloor === 'upper'" @click="sceneFloor = 'upper'">上层</button>
+          <button :aria-pressed="sceneFloor === 'middle'" @click="sceneFloor = 'middle'">中层</button>
+          <button :aria-pressed="sceneFloor === 'lower'" @click="sceneFloor = 'lower'">下层</button>
+        </div>
+        <button v-if="use3DView" class="sidebar-tool" @click="mapCanvas3D?.resetView()" title="左键旋转 · 右键平移 · 滚轮缩放 · 双击聚焦">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><circle cx="12" cy="12" r="3"/></svg><span>重置视角</span>
+        </button>
+        <button v-if="use3DView" class="sidebar-tool" :aria-pressed="pureMode" title="隐藏侧栏和玩家卡；按 Escape 返回" @click="togglePureMode">
+          <img src="/icons/scale.svg" alt=""/><span>纯净视图</span>
+        </button>
+        <p v-if="sceneError" class="tool-message error" role="status">{{ sceneError }}</p>
         <button class="sidebar-tool" :class="{ active: isDrawingMode }" :aria-pressed="isDrawingMode" :disabled="!replay || searchBusy" @click="onToggleDrawing">
           <img src="/icons/pencil.svg" alt="" /><span>画笔</span>
         </button>
@@ -113,7 +129,29 @@
 
       <!-- 地图画布 -->
       <div v-else class="map-canvas-wrapper">
+        <MapCanvas3D
+          v-if="use3DView"
+          ref="mapCanvas3D"
+          :frames="effectiveFrames"
+          :current-frame-index="effectiveFrameIndex"
+          :current-time-ms="isGrenadeAnalyzeMode ? analyzeTimeRange.startMs + grenadeLocalPlaybackTimeMs : currentTimeMs"
+          :replay-meta="effectiveReplay"
+          :is-playing="isPlaying"
+          :is-dragging="isDraggingTimeline"
+          :map-name="replay?.mapName"
+          :floor-view="sceneFloor"
+          :projectile-configs="replay?.projectileRenderConfig"
+          :is-drawing-mode="isDrawingMode"
+          :hidden-player-ids="hiddenPlayerIdsArray"
+          :show-map-projectiles="showMapProjectiles"
+          :show-map-dropped="showMapDropped"
+          :show-map-bomb="showMapBomb"
+          @projectile-click="handleProjectileClick"
+          @close-drawing="isDrawingMode = false"
+          @error="onSceneError"
+        />
         <MapCanvas
+          v-else
           ref="mapCanvas"
           :area-selection-icon="GRENADE_TYPES.find(t => t.id === searchType)?.icon"
           @select-area="searchGrenades"
@@ -121,7 +159,7 @@
           :frames="effectiveFrames" 
           :bounds="bounds"
           :current-frame-index="effectiveFrameIndex"
-          :current-time-ms="isGrenadeAnalyzeMode ? grenadeLocalPlaybackTimeMs : currentTimeMs"
+          :current-time-ms="isGrenadeAnalyzeMode ? analyzeTimeRange.startMs + grenadeLocalPlaybackTimeMs : currentTimeMs"
           :replay-meta="effectiveReplay"
           :is-playing="isPlaying"
           :is-dragging="isDraggingTimeline"
@@ -583,8 +621,10 @@
 
 <script setup lang="ts">
 import type { Ref } from 'vue';
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MapCanvas from './MapCanvas.vue';
+import { has3DMapAsset } from '@/composables/scene3d/mapCatalog';
+const MapCanvas3D = defineAsyncComponent(() => import('./MapCanvas3D.vue'));
 import TimelineControl from './TimelineControl.vue';
 import GrenadeAnalyzeOverlay from './GrenadeAnalyzeOverlay.vue';
 import { useGetDisplayMediaRecorder } from '@/composables/useGetDisplayMediaRecorder';
@@ -853,6 +893,27 @@ const isDrawingMode = ref(false);
 
 const tabRecorder = useGetDisplayMediaRecorder();
 const mapCanvas = ref<InstanceType<typeof MapCanvas>>();
+const mapCanvas3D = ref<{ getCanvas: () => HTMLCanvasElement | null; resetView: () => void }>();
+const mapView = ref<'2d' | '3d'>((() => {
+  try { return localStorage.getItem('cs-sandbox-map-view') === '2d' ? '2d' : '3d'; }
+  catch { return '3d'; }
+})());
+const sceneError = ref('');
+const sceneFloor = ref<'upper' | 'middle' | 'lower'>('upper');
+const has3DMap = computed(() => has3DMapAsset(replay.value?.mapName));
+// Area search uses the existing orthographic radar selection and projection.
+// Opening it temporarily returns to 2D without changing the user's preference.
+const use3DView = computed(() => has3DMap.value && mapView.value === '3d' && !searchMenuOpen.value && !sceneError.value);
+function setMapView(value: '2d' | '3d') {
+  isDrawingMode.value = false;
+  sceneError.value = '';
+  mapView.value = value;
+  try { localStorage.setItem('cs-sandbox-map-view', value); } catch { /* Session-only preference. */ }
+}
+function onSceneError(message: string) {
+  sceneError.value = `三维视图暂不可用，已切回 2D。${message}`;
+}
+watch(() => replay.value?.mapName, () => { sceneError.value = ''; sceneFloor.value = 'upper'; });
 const searchMenuOpen = ref(false);
 const searchType = ref<string | null>(null);
 const searchBusy = ref(false);
@@ -1422,7 +1483,11 @@ const togglePlay = () => {
   const frame = arr[idx];
   const expectedTimeMs = frame?.timeMs ?? 0;
   const outOfBounds = idx < 0 || idx >= arr.length;
-  const timeMismatch = Math.abs(currentPlaybackTimeMs.value - expectedTimeMs) > 100;
+  // Any time inside the current sample interval is valid, including a paused
+  // interpolated position. A fixed 100ms threshold rewound sparse replays.
+  const nextTimeMs = arr[idx + 1]?.timeMs;
+  const timeMismatch = currentPlaybackTimeMs.value < expectedTimeMs
+    || (nextTimeMs != null ? currentPlaybackTimeMs.value >= nextTimeMs : currentPlaybackTimeMs.value > expectedTimeMs);
   if (outOfBounds || timeMismatch) {
     const clampedIdx = Math.max(0, Math.min(arr.length - 1, idx));
     currentFrameIndex.value = clampedIdx;
@@ -1772,6 +1837,10 @@ watch(
 );
 
 function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && pureMode.value && !isDrawingMode.value) {
+    pureMode.value = false;
+    return;
+  }
   if (e.code !== 'Space' && e.key !== ' ') return;
   const target = e.target as HTMLElement;
   if (target.closest('button, input, textarea, select, a, dialog, [role="menu"]') || target.isContentEditable) return;
@@ -1791,6 +1860,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .replay-tools { padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+.scene-view-switch { display: flex; gap: 3px; margin: 0 0 4px; padding: 3px; border-radius: var(--ds-radius-sm); background: var(--ds-bg-secondary); }
+.scene-view-switch button { flex: 1; padding: 7px 5px; border: 0; border-radius: 4px; background: transparent; color: var(--ds-text-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.scene-view-switch button[aria-pressed="true"] { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
+.scene-view-switch button:disabled { opacity: .4; cursor: not-allowed; }
 .tools-heading { display: flex; align-items: center; height: 20px; margin: 0; padding: 0 10px; color: var(--ds-text-muted); font-size: 12px; font-weight: 500; }
 .sidebar-tool { display: flex; align-items: center; gap: 10px; width: 100%; height: var(--sidebar-row-height); padding: 0 10px; background: transparent; border: 0; border-radius: var(--ds-radius-sm); font-size: 13px; color: var(--ds-text-secondary); text-align: left; cursor: pointer; }
 .sidebar-tool:hover:not(:disabled), .sidebar-tool.active { background: var(--ds-surface-hover); color: var(--ds-text-primary); }
