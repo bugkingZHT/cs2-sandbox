@@ -4,17 +4,19 @@
   <img src="frontend/public/logo/sandbox-icon.png" width="152" alt="cs2-sandbox 雪豹图标" />
 </p>
 
-<p align="center">CS2 Demo 复盘与分析沙盒</p>
+<p align="center">CS2 Demo 复盘与分析沙盒 </p>
 
-`cs2-sandbox` 是一个免安装的 Windows Demo 复盘工具。双击 EXE，可在浏览器中打开控制台，上传解析 `.dem` 文件即可开始，所有解析、播放和缓存都在你的电脑上快速完成。
+官方网站： [snowbo.cn](https://snowbo.cn)
+ 
+ `cs2-sandbox` 是 Snowbo 团队提供的免安装 Windows Demo 本地复盘沙盒工具。
+ 
+ 基于本地引擎于浏览器前端，上传解析 `.dem` 文件即可开始，所有解析、播放和缓存都在你的电脑上快速完成。
 
-## 开始使用
+## 快速开始
 
-1. 下载并双击 [cs2-sandbox-v0.0.4.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/download/v0.0.4/cs2-sandbox-v0.0.4.exe)。
-2. 在“Demo 库”点击“解析 DEMO”，多选或拖入 `.dem`、`.zip` 文件。ZIP 内各级目录及嵌套 ZIP 中的 Demo 会自动提取并依次解析；解析期间可继续添加文件。
-3. 解析完成后选择回合，进入 2D 播放器复盘。
-
-首次运行无需安装，也不需要登录。已经解析的回放会保存在本机；关闭后再次打开仍可直接播放。
+1. **下载：** 下载并打开 [cs2-sandbox.exe](https://github.com/bugkingZHT/cs2-sandbox/releases/)；
+2. **解析：** 在“Demo 库”点击“解析 DEMO”，多选或拖入 `.dem`、`.zip` 文件（ZIP 内各级目录及嵌套 ZIP 中的 Demo 会自动提取并依次解析；解析期间可继续添加文件）；
+5. **播放：** 解析完成后选择回合，进入 2D / 3D 播放器复盘（首次运行无需安装与登录。已经解析的回放会保存在本机；关闭后再次打开仍可直接播放）。
 
 ## 从落点反查每一颗道具
 
@@ -52,4 +54,4 @@
 
 ## 版本更新
 
-修复部分 Demo map 解析失效与部分关键投掷物与开火事件丢失问题，优化显示与动画效果。
+支持 3D 沙盘。
