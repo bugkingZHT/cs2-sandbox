@@ -6,7 +6,11 @@
 
 <p align="center">CS2 Demo 复盘与分析沙盒 </p>
 
-官方网站： [snowbo.cn](https://snowbo.cn)
+
+> [!WARNING]
+> 本地工具存在安全风险，现已停止更新。请到官方网站耍起： [https://snowbo.cn](https://snowbo.cn)
+> 
+> Local tool is no longer updated. Please switch to the official online website.
  
  `cs2-sandbox` 是 Snowbo 团队提供的免安装 Windows Demo 本地复盘沙盒工具。
  
